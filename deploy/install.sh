@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Installation in einem Debian/Ubuntu-LXC (oder VM) auf Proxmox – als root ausführen:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/deploy/install.sh)
+#   apt update && apt install -y git
+#   git clone https://github.com/Tillhnz/tradinghelper.git /opt/tradehelper
+#   bash /opt/tradehelper/deploy/install.sh
+# Erneut ausführen = Update (git pull + Neuinstallation, .env bleibt erhalten).
 set -euo pipefail
 
 REPO="${REPO:-https://github.com/Tillhnz/tradinghelper.git}"
@@ -11,6 +14,8 @@ apt-get install -y --no-install-recommends git python3 python3-venv python3-pip 
 
 id tradehelper &>/dev/null || useradd -r -m -d "$DIR" -s /usr/sbin/nologin tradehelper
 
+# Repo gehört nach dem ersten Lauf dem Service-User; ohne safe.directory verweigert git als root
+git config --global --add safe.directory "$DIR"
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" pull --ff-only
 else
@@ -37,7 +42,8 @@ chmod +x /usr/local/bin/tradehelper
 
 cp "$DIR/deploy/tradehelper.service" /etc/systemd/system/tradehelper.service
 systemctl daemon-reload
-systemctl enable --now tradehelper
+systemctl enable tradehelper
+systemctl restart tradehelper
 
 echo
 echo "Fertig. Nächste Schritte:"

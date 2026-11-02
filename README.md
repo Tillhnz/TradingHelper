@@ -24,16 +24,18 @@ Selbst gehosteter Trading-Assistent für Proxmox: Kurse per API, Chartanalyse mi
 1. In Proxmox einen Debian-12- oder Ubuntu-24.04-LXC anlegen (1 vCPU, 512 MB RAM, 4 GB Disk reichen).
 2. In der Konsole des Containers als root:
    ```bash
-   apt update && apt install -y curl
-   bash <(curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/deploy/install.sh)
+   apt update && apt install -y git
+   git clone https://github.com/Tillhnz/tradinghelper.git /opt/tradehelper
+   bash /opt/tradehelper/deploy/install.sh
    ```
+   Das Skript installiert Python-Abhängigkeiten in ein venv, legt den Befehl `tradehelper` an und richtet den systemd-Dienst ein.
 3. `.env` anpassen und neu starten:
    ```bash
    nano /opt/tradehelper/.env
    systemctl restart tradehelper
    ```
 
-Update später: Installationsskript erneut ausführen (macht `git pull` + Neuinstallation) und `systemctl restart tradehelper`.
+Update später: `bash /opt/tradehelper/deploy/install.sh` erneut ausführen (macht `git pull` + Neuinstallation, deine `.env` bleibt erhalten).
 
 ### Variante B: Docker
 
