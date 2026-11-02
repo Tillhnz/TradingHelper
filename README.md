@@ -1,150 +1,105 @@
 # TradeHelper
 
-Selbst gehosteter Trading-Assistent für Proxmox: Kurse per API, Chartanalyse mit bekannten Indikatoren, TradingView-ähnliche Alarme und ein Morgenreport mit Handlungsempfehlungen für deine Watchlist – alles über den Befehl `tradehelper`.
+Selbst gehosteter Trading-Assistent für Proxmox: Watchlist, Chartanalyse mit bekannten Indikatoren, Alarme wie bei TradingView und jeden Morgen eine Einschätzung per Push aufs Handy. Bedienung, Einstellungen und Updates laufen komplett über die Weboberfläche.
 
-> ⚠️ Die Empfehlungen sind regelbasiert und automatisch erzeugt. Sie sind **keine Anlageberatung**.
+> ⚠️ Die Einschätzungen sind regelbasiert und automatisch erzeugt. Sie sind **keine Anlageberatung**.
+
+## Installation auf Proxmox (ein Befehl)
+
+In der Shell des **Proxmox-Hosts** (als root):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/proxmox/tradehelper-lxc.sh)"
+```
+
+Das Skript legt einen Debian-12-Container mit Docker an, installiert TradeHelper darin und zeigt am Ende die Adresse, z. B. `http://192.168.178.51:8080`. Dort legst du beim ersten Aufruf dein Konto an.
+
+Anpassen lässt sich der Container über Variablen vor dem Befehl, z. B. feste IP:
+
+```bash
+CT_IP=192.168.178.51/24 CT_GW=192.168.178.1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/proxmox/tradehelper-lxc.sh)"
+```
+
+Alle Optionen stehen oben in [`proxmox/tradehelper-lxc.sh`](proxmox/tradehelper-lxc.sh).
+
+**Ohne Proxmox** (Debian/Ubuntu-Server, VM oder vorhandener LXC mit Nesting):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.sh | bash
+```
+
+## Erste Schritte in der Oberfläche
+
+1. **Konto anlegen** – beim ersten Aufruf.
+2. **Einstellungen → Benachrichtigungen:** [ntfy](https://ntfy.sh)-App installieren, ein Topic mit zufälligem Namen abonnieren, denselben Namen eintragen, „Testnachricht senden“.
+3. **Einstellungen → Nachrichten:** kostenlosen Schlüssel von [finnhub.io](https://finnhub.io/register) eintragen (optional, sonst ohne News).
+4. **Watchlist** füllen. Ab dem nächsten Morgen (Standard Mo–Fr 07:30) kommt der Report.
+5. **Alarme** anlegen.
 
 ## Funktionen
 
 | Bereich | Details |
 |---|---|
-| Kurse | yfinance (kein Key), Yahoo-Notation: `AAPL`, `SAP.DE`, `^GDAXI`, `BTC-USD`, `EURUSD=X` |
-| News | Finnhub Company News (Gratis-Key) mit regelbasiertem Sentiment (DE/EN-Lexikon) |
-| Indikatoren | SMA 20/50/200, EMA 9/21, RSI, MACD, Bollinger, Stochastik, ADX/DI, ATR, OBV, Volumen, Unterstützung/Widerstand |
-| Analyse | Einzelsignale (−2…+2) → normierter Score; 70 % Technik + 30 % News → 🟢 Kaufen prüfen / 🟡 Halten / 🔴 Reduzieren prüfen |
-| Alarme | 16 Typen (Kurs, Crossings, RSI, MACD, MA-Cross, Bollinger-Ausbruch, Volumen, neue Hochs/Tiefs), beliebiges Intervall, Cooldown, einmalig oder dauerhaft |
-| Benachrichtigung | ntfy (ntfy.sh oder selbst gehostet) |
-| Morgenreport | Mo–Fr um 07:30 (konfigurierbar) per ntfy |
-| Web | REST-API mit Swagger unter `/docs`, interaktiver Chart unter `/chart/{SYMBOL}` (Candles, SMA, Bollinger, RSI, MACD) |
+| Heute | Einschätzung je Watchlist-Wert: 🟢 Kaufen prüfen · 🟡 Halten · 🔴 Reduzieren prüfen, mit Begründung und Schlagzeile; per Knopf als Push senden |
+| Watchlist | Kurs, Tagesänderung, 30-Tage-Verlauf, RSI, Einschätzung |
+| Chart | Kerzen mit Volumen, SMA 20/50/200, Bollinger, Unterstützung/Widerstand, RSI- und MACD-Fenster; Tag, Woche, Stunde, 15 Minuten |
+| Analyse | SMA, EMA, RSI, MACD, Bollinger, Stochastik, ADX, ATR, OBV, Volumen → Einzelsignale und Score; News-Stimmung aus Finnhub-Schlagzeilen (Gewicht einstellbar) |
+| Alarme | 16 Bedingungen: Kurs über/unter, Kreuzungen, RSI-Schwellen, MACD-Kreuz, Golden/Death Cross, Kurs kreuzt MA, Bollinger-Ausbruch, Volumenspitze, neue Hochs/Tiefs, Tagesbewegung; beliebiges Kerzenintervall, Pause nach Auslösung, einmalig |
+| Einstellungen | ntfy, Finnhub, Zeitplan von Report und Alarmprüfung, Zeitzone – alles ohne Neustart |
+| Administration | Zustand der Dienste, **Update per Knopf** (mit Sicherung vorher und automatischem Zurückrollen), Sicherungen |
 
-## Installation auf Proxmox
+Symbole in Yahoo-Schreibweise: `AAPL`, `SAP.DE` (Xetra), `^GDAXI` (DAX), `BTC-EUR`, `EURUSD=X`, `IWDA.AS`.
 
-### Variante A: LXC-Container mit systemd (empfohlen)
+## Updates
 
-1. In Proxmox einen Debian-12- oder Ubuntu-24.04-LXC anlegen (1 vCPU, 512 MB RAM, 4 GB Disk reichen).
-2. In der Konsole des Containers als root:
-   ```bash
-   apt update && apt install -y git
-   git clone https://github.com/Tillhnz/tradinghelper.git /opt/tradehelper
-   bash /opt/tradehelper/deploy/install.sh
-   ```
-   Das Skript installiert Python-Abhängigkeiten in ein venv, legt den Befehl `tradehelper` an und richtet den systemd-Dienst ein.
-3. `.env` anpassen und neu starten:
-   ```bash
-   nano /opt/tradehelper/.env
-   systemctl restart tradehelper
-   ```
+In der Oberfläche unter **Administration → Nach Updates suchen → Jetzt aktualisieren**. Ein Hinweis „Update verfügbar“ erscheint auch in der Seitenleiste. Vor jedem Update wird die Datenbank gesichert; startet die neue Version nicht, läuft wieder die alte.
 
-Update später: `bash /opt/tradehelper/deploy/install.sh` erneut ausführen (macht `git pull` + Neuinstallation, deine `.env` bleibt erhalten).
-
-### Variante B: Docker
+Im Terminal geht es auch:
 
 ```bash
-git clone https://github.com/Tillhnz/tradinghelper.git && cd tradinghelper
-cp .env.example .env && nano .env
-docker compose up -d --build
-# Befehle im Container:
-docker compose exec tradehelper tradehelper watchlist add AAPL
+pct enter <ID>                    # vom Proxmox-Host in den Container
+cd ~/tradinghelper && ./install.sh update
 ```
 
-Eigener ntfy-Server dazu: `docker compose --profile ntfy up -d` und `TH_NTFY_URL=http://ntfy:80`.
-
-## Konfiguration (`.env`)
-
-| Variable | Default | Bedeutung |
-|---|---|---|
-| `TH_FINNHUB_API_KEY` | – | Key von [finnhub.io](https://finnhub.io/register) für News |
-| `TH_NTFY_URL` | `https://ntfy.sh` | ntfy-Server |
-| `TH_NTFY_TOPIC` | – | Topic, das du in der ntfy-App abonnierst (bei ntfy.sh zufällig wählen!) |
-| `TH_NTFY_TOKEN` | – | Optionaler Access-Token |
-| `TH_API_KEY` | – | Wenn gesetzt, braucht jeder API-Call den Header `X-API-Key` (Chart: `?key=…`) |
-| `TH_REPORT_TIME` | `07:30` | Uhrzeit des Morgenreports (Mo–Fr) |
-| `TH_ALERT_INTERVAL_MINUTES` | `5` | Prüfintervall der Alarme |
-| `TH_ALERT_HOURS` | `8-22` | Stunden, in denen geprüft wird |
-| `TH_ALERT_COOLDOWN_MINUTES` | `240` | Mindestabstand zwischen zwei Auslösungen desselben Alarms |
-
-## Befehle
+## Befehle im Container
 
 ```bash
-tradehelper quote AAPL SAP.DE ^GDAXI          # Kurse
-tradehelper analyze NVDA                       # Chartanalyse + Einschätzung
-tradehelper analyze BTC-USD --interval 1h --period 1mo
-tradehelper news AAPL                          # Nachrichten mit Sentiment
-
-tradehelper watchlist add AAPL MSFT SAP.DE
-tradehelper watchlist list
-tradehelper report                             # Morgenreport jetzt anzeigen
-tradehelper report --send                      # ... und per ntfy senden
-
-tradehelper alert kinds                        # alle Alarmtypen
-tradehelper alert add AAPL price_above -v 250
-tradehelper alert add AAPL rsi_below -v 30
-tradehelper alert add SAP.DE ma_cross_up -p fast=50 -p slow=200      # Golden Cross
-tradehelper alert add BTC-USD bb_break --interval 1h
-tradehelper alert add TSLA pct_change -v 5 --once
-tradehelper alert list
-tradehelper alert check --dry-run              # sofort prüfen, ohne zu senden
-tradehelper alert log
-
-tradehelper notify-test                        # ntfy testen
-tradehelper serve                              # API + Scheduler (läuft als Dienst)
+cd ~/tradinghelper
+./install.sh update        # neueste Version
+./install.sh backup        # Sicherung nach backups/
+./install.sh restore backups/tradehelper-….db.gz
+./install.sh reset-login   # Passwort vergessen: Konto neu anlegen (Daten bleiben)
+./install.sh logs
 ```
 
-## Alarmtypen
+## Aufbau
 
-| Typ | Parameter | Auslösung |
-|---|---|---|
-| `price_above` / `price_below` | `value` | Kurs über/unter Wert (wiederholt nach Cooldown) |
-| `cross_up` / `cross_down` | `value` | Kurs kreuzt Wert |
-| `pct_change` | `value=5` | Bewegung ggü. Vorkerze ≥ ±X % |
-| `rsi_above` / `rsi_below` | `value`, `period=14` | RSI kreuzt Schwelle |
-| `macd_cross_up` / `macd_cross_down` | – | MACD kreuzt Signallinie |
-| `ma_cross_up` / `ma_cross_down` | `fast=50`, `slow=200`, `type=sma\|ema` | MA-Crossover (Golden/Death Cross) |
-| `price_cross_ma` | `period=200`, `type=sma` | Kurs kreuzt MA |
-| `bb_break` | `period=20`, `k=2` | Ausbruch aus Bollinger-Bändern |
-| `volume_spike` | `factor=2` | Volumen ≥ Faktor × 20er-Schnitt |
-| `new_high` / `new_low` | `lookback=52` | Neues N-Perioden-Hoch/-Tief |
-
-Crossing-Alarme vergleichen die letzten beiden Kerzen – wie `ta.crossover` in TradingView. Bei Tageskerzen wird die laufende Tageskerze verwendet, ein Signal kann also intraday auslösen.
-
-## REST-API
-
-Swagger-Doku: `http://<host>:8080/docs`
-
-| Methode | Pfad | Beschreibung |
-|---|---|---|
-| GET | `/quote/{symbol}` | Aktueller Kurs |
-| GET | `/history/{symbol}?period=1y&interval=1d` | OHLCV + Indikatoren |
-| GET | `/analysis/{symbol}` | Analyse, Signale, Einschätzung, News |
-| GET | `/news/{symbol}` | News mit Sentiment |
-| GET/POST/DELETE | `/watchlist` | Watchlist verwalten |
-| GET/POST/DELETE | `/alerts` | Alarme verwalten (`GET /alerts/kinds` für Typen) |
-| POST | `/alerts/check` | Alarme sofort prüfen |
-| GET | `/report` | Morgenreport als JSON |
-| GET | `/chart/{symbol}` | Interaktiver Chart im Browser |
-
-Beispiel:
-```bash
-curl -X POST localhost:8080/alerts -H 'Content-Type: application/json' \
-  -d '{"symbol":"AAPL","kind":"rsi_below","params":{"value":30}}'
+```
+backend/    FastAPI, Analyse, Alarme, Scheduler, SQLite (data/tradehelper.db)
+frontend/   React + Vite, Charts mit lightweight-charts, ausgeliefert von nginx
+updater/    kleiner Dienst für den Update-Knopf (git pull, neu bauen, zurückrollen)
+proxmox/    Skript für den Proxmox-Host
+install.sh  Installation und Wartung
 ```
 
-## Wie die Empfehlung entsteht
+Die API ist unter `/api/docs` dokumentiert (Anmeldung über `/api/auth/login`, Token als `Authorization: Bearer …`).
 
-Jeder Indikator liefert ein Signal zwischen −2 und +2 (Trend über SMA200, Golden/Death Cross, RSI-Zone, MACD-Kreuzung bzw. -Lage, Bollinger-Übertreibung, Stochastik-Wende, ADX-Trendstärke, Volumenbestätigung). Die Summe wird auf −1…+1 normiert und mit dem News-Sentiment der letzten Tage gewichtet (70/30). Ab +0,35 lautet die Einschätzung „Kaufen prüfen“, ab −0,35 „Reduzieren prüfen“, dazwischen „Halten / beobachten“. Die Logik steht in `src/tradehelper/analysis.py` und lässt sich leicht anpassen.
+## Wie die Einschätzung entsteht
+
+Jeder Indikator liefert ein Signal zwischen −2 und +2 (Trend über SMA200, Golden/Death Cross, RSI-Zone, MACD-Kreuzung bzw. -Lage, Bollinger-Übertreibung, Stochastik-Wende, ADX-Trendstärke, Volumenbestätigung). Die Summe wird auf −1…+1 normiert und mit der News-Stimmung gewichtet (Standard 70/30). Ab +0,35 „Kaufen prüfen“, ab −0,35 „Reduzieren prüfen“, dazwischen „Halten / beobachten“. Die Logik steht in `backend/app/analysis.py`.
 
 ## Entwicklung
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-pytest
+cd backend && pip install -r requirements-dev.txt && pytest
+uvicorn app.main:app --reload              # Backend auf :8000
+cd frontend && npm install && npm run dev  # Oberfläche auf :5173
 ```
 
 ## Grenzen
 
-- yfinance nutzt inoffizielle Yahoo-Endpunkte; Ausfälle oder Rate-Limits sind möglich, Kurse können verzögert sein.
-- Finnhub-Company-News deckt vor allem US-Werte ab; für deutsche Werte (`SAP.DE`) wird das Basissymbol gesucht, das nicht immer Treffer liefert.
-- Das Sentiment ist ein einfaches Lexikon-Verfahren und erkennt keine Ironie oder Zusammenhänge.
+- Kurse über yfinance (inoffizielle Yahoo-Schnittstelle): Ausfälle oder Verzögerungen sind möglich, Intraday-Daten nur für begrenzte Zeiträume.
+- Finnhub-News decken vor allem US-Werte ab.
+- Die News-Stimmung ist ein einfaches Wortlisten-Verfahren.
 
 Lizenz: MIT

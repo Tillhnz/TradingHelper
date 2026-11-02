@@ -1,13 +1,64 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
 jobs:
-  test:
+  backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - run: ruff check src tests
-      - run: pytest -q
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Statische Prüfung
+        run: ruff check --select F,E9,B --ignore B008 app tests ../updater
+      - name: Tests
+        run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
+      - name: Bauen
+        run: npm run build
+
+  deploy-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skripte und Compose-Datei prüfen
+        run: |
+          bash -n install.sh
+          bash -n proxmox/tradehelper-lxc.sh
+          SECRET_KEY=x docker compose config -q
+      - name: nginx-Konfiguration prüfen
+        run: |
+          docker run --rm --add-host backend:127.0.0.1 \
+            -v "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/frontend/security-headers.conf:/etc/nginx/snippets/security-headers.conf:ro" \
+            nginx:1.27-alpine nginx -t
+      - name: Kompletter Stack startet
+        run: |
+          echo "SECRET_KEY=ci-secret" > .env
+          mkdir -p data && sudo chown 10001:10001 data
+          docker compose up -d --build
+          for i in $(seq 1 60); do curl -fsS localhost:8080/api/health && break; sleep 3; done
+          curl -fsS localhost:8080/api/auth/status
+          curl -fsS localhost:8080/ | grep -q TradeHelper
+          docker compose logs --tail 50
+          docker compose down
