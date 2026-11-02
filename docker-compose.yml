@@ -1,0 +1,29 @@
+services:
+  tradehelper:
+    build: .
+    image: tradehelper:latest
+    container_name: tradehelper
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TH_DATA_DIR: /data
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+
+  # Optional: eigener ntfy-Server statt ntfy.sh. Aktivieren mit:
+  #   docker compose --profile ntfy up -d
+  # und in .env TH_NTFY_URL=http://ntfy:80 setzen (App auf dem Handy: http://<proxmox-ip>:8081).
+  ntfy:
+    image: binwiederhier/ntfy
+    profiles: ["ntfy"]
+    container_name: ntfy
+    command: serve
+    restart: unless-stopped
+    environment:
+      NTFY_BASE_URL: http://localhost:8081
+    ports:
+      - "8081:80"
+    volumes:
+      - ./data/ntfy:/var/cache/ntfy

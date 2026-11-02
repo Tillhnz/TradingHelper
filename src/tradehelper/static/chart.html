@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__SYMBOL__ · TradeHelper</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --fg:#e6e8eb; --muted:#8b93a1; --up:#26a69a; --down:#ef5350; --line:#262b36; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0 12px 0 0; }
+  input, select, button { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+  label { color:var(--muted); display:flex; gap:4px; align-items:center; }
+  #main { height:55vh; } .pane { height:18vh; border-top:1px solid var(--line); }
+  #info { padding:12px 16px; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .card b { display:block; font-size:16px; } .card span { color:var(--muted); font-size:12px; }
+  #signals { padding:0 16px 24px; } #signals li { margin:4px 0; }
+  .pos { color:var(--up); } .neg { color:var(--down); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">__SYMBOL__</h1>
+  <input id="sym" value="__SYMBOL__" size="10" aria-label="Symbol">
+  <select id="period"><option>3mo</option><option>6mo</option><option selected>1y</option><option>2y</option><option>5y</option></select>
+  <select id="interval"><option>1d</option><option>1wk</option><option>1h</option></select>
+  <label><input type="checkbox" id="showSma" checked>SMA 20/50/200</label>
+  <label><input type="checkbox" id="showBb">Bollinger</label>
+  <button id="go">Laden</button>
+</header>
+<div id="main"></div>
+<div id="rsi" class="pane"></div>
+<div id="macd" class="pane"></div>
+<div id="info"></div>
+<ul id="signals"></ul>
+<script>
+const qs = new URLSearchParams(location.search);
+const key = qs.get("key") || "";
+const headers = key ? { "X-API-Key": key } : {};
+const opts = { layout:{ background:{color:"#0f1115"}, textColor:"#8b93a1" },
+  grid:{ vertLines:{color:"#1c2029"}, horzLines:{color:"#1c2029"} }, timeScale:{ borderColor:"#262b36" },
+  rightPriceScale:{ borderColor:"#262b36" }, autoSize:true };
+let charts = [];
+
+function line(chart, data, field, color, width=1) {
+  const s = chart.addLineSeries({ color, lineWidth:width, priceLineVisible:false, lastValueVisible:false });
+  s.setData(data.filter(r => r[field] != null).map(r => ({ time:r.time, value:r[field] })));
+  return s;
+}
+
+async function load() {
+  const sym = document.getElementById("sym").value.trim().toUpperCase();
+  const period = document.getElementById("period").value, interval = document.getElementById("interval").value;
+  history.replaceState(null, "", `/chart/${encodeURIComponent(sym)}${location.search}`);
+  document.getElementById("title").textContent = sym;
+  charts.forEach(c => c.remove()); charts = [];
+  const res = await fetch(`/history/${encodeURIComponent(sym)}?period=${period}&interval=${interval}`, { headers });
+  if (!res.ok) { document.getElementById("info").textContent = (await res.json()).detail; return; }
+  const rows = (await res.json()).rows;
+
+  const main = LightweightCharts.createChart(document.getElementById("main"), opts);
+  const candles = main.addCandlestickSeries({ upColor:"#26a69a", downColor:"#ef5350", borderVisible:false,
+    wickUpColor:"#26a69a", wickDownColor:"#ef5350" });
+  candles.setData(rows.map(r => ({ time:r.time, open:r.open, high:r.high, low:r.low, close:r.close })));
+  const vol = main.addHistogramSeries({ priceScaleId:"vol", priceFormat:{type:"volume"} });
+  main.priceScale("vol").applyOptions({ scaleMargins:{ top:0.8, bottom:0 } });
+  vol.setData(rows.map(r => ({ time:r.time, value:r.volume, color: r.close >= r.open ? "#26a69a55" : "#ef535055" })));
+  if (document.getElementById("showSma").checked) {
+    line(main, rows, "sma20", "#f5c542"); line(main, rows, "sma50", "#42a5f5"); line(main, rows, "sma200", "#ab47bc", 2);
+  }
+  if (document.getElementById("showBb").checked) {
+    line(main, rows, "bb_upper", "#78909c"); line(main, rows, "bb_mid", "#546e7a"); line(main, rows, "bb_lower", "#78909c");
+  }
+
+  const rsiC = LightweightCharts.createChart(document.getElementById("rsi"), opts);
+  const r = line(rsiC, rows, "rsi", "#ffb74d", 2);
+  [70, 30].forEach(p => r.createPriceLine({ price:p, color:"#555", lineStyle:2, axisLabelVisible:true }));
+
+  const macdC = LightweightCharts.createChart(document.getElementById("macd"), opts);
+  const h = macdC.addHistogramSeries({ priceLineVisible:false });
+  h.setData(rows.filter(x => x.hist != null).map(x => ({ time:x.time, value:x.hist, color: x.hist >= 0 ? "#26a69a" : "#ef5350" })));
+  line(macdC, rows, "macd", "#42a5f5"); line(macdC, rows, "signal", "#ff7043");
+
+  charts = [main, rsiC, macdC];
+  charts.forEach(c => c.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (range) charts.forEach(o => o !== c && o.timeScale().setVisibleLogicalRange(range));
+  }));
+  main.timeScale().fitContent();
+  loadAnalysis(sym, period, interval);
+}
+
+async function loadAnalysis(sym, period, interval) {
+  const res = await fetch(`/analysis/${encodeURIComponent(sym)}?period=${period}&interval=${interval}`, { headers });
+  if (!res.ok) return;
+  const a = await res.json(), m = a.metrics, rec = a.recommendation;
+  const fmt = v => v == null ? "–" : Number(v).toLocaleString("de-DE", { maximumFractionDigits:2 });
+  const cards = [
+    ["Schlusskurs", fmt(a.last_close)], ["1T", fmt(a.change_pct_1d) + " %"], ["RSI 14", fmt(m.rsi)],
+    ["MACD Hist", fmt(m.hist)], ["ADX", fmt(m.adx)], ["ATR %", fmt(m.atr_pct)],
+    ["Unterstützung", fmt(a.support)], ["Widerstand", fmt(a.resistance)],
+    ["Einschätzung", rec.action], ["Score", fmt(rec.combined)],
+  ];
+  document.getElementById("info").innerHTML = cards.map(([k, v]) => `<div class="card"><span>${k}</span><b>${v}</b></div>`).join("");
+  document.getElementById("signals").innerHTML = a.signals.map(s =>
+    `<li class="${s.score > 0 ? "pos" : s.score < 0 ? "neg" : ""}">${s.name}: ${s.text}</li>`).join("") +
+    "<li style='color:#8b93a1'>Regelbasierte Einschätzung – keine Anlageberatung.</li>";
+}
+
+document.getElementById("go").onclick = load;
+document.getElementById("sym").addEventListener("keydown", e => e.key === "Enter" && load());
+load();
+</script>
+</body>
+</html>

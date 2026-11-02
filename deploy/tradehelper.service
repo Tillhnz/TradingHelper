@@ -1,0 +1,16 @@
+[Unit]
+Description=TradeHelper (API, Morgenreport, Alarme)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tradehelper
+WorkingDirectory=/opt/tradehelper
+EnvironmentFile=/opt/tradehelper/.env
+ExecStart=/opt/tradehelper/.venv/bin/tradehelper serve
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
