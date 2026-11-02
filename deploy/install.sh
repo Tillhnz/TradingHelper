@@ -12,7 +12,7 @@ DIR=/opt/tradehelper
 apt-get update
 apt-get install -y --no-install-recommends git python3 python3-venv python3-pip ca-certificates
 
-id tradehelper &>/dev/null || useradd -r -m -d "$DIR" -s /usr/sbin/nologin tradehelper
+id tradehelper &>/dev/null || useradd -r -M -d "$DIR" -s /usr/sbin/nologin tradehelper
 
 # Repo gehört nach dem ersten Lauf dem Service-User; ohne safe.directory verweigert git als root
 git config --global --add safe.directory "$DIR"
