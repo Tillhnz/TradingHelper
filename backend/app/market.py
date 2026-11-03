@@ -136,8 +136,11 @@ def _delay(ticker, symbol: str) -> tuple[int | None, str | None]:
     try:
         inf = ticker.info or {}
         delay = inf.get("exchangeDataDelayedBy")
+        source = inf.get("quoteSourceName")
+        if source and "real time" in source.lower():
+            return 0, source  # Yahoo meldet bei Nasdaq-Werten teils 15 Min., liefert aber Echtzeit
         if delay is not None:
-            return int(delay), inf.get("quoteSourceName")
+            return int(delay), source
     except Exception:  # noqa: BLE001 – info ist optional und manchmal langsam oder gesperrt
         pass
     s = symbol.upper()
