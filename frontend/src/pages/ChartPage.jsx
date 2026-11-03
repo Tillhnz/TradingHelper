@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import PriceChart from "../components/PriceChart.jsx";
 import { ActionBadge, ErrorText, Loading, Stat } from "../components/ui.jsx";
 import { Levels } from "./Home.jsx";
+import EntryPlan from "../components/EntryPlan.jsx";
 import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
 
 // Yahoo liefert Intraday-Daten nur für begrenzte Zeiträume
@@ -200,6 +201,7 @@ export default function ChartPage() {
               <Stat label="Widerstand" value={p(analysis.resistance)} />
             </div>
           </section>
+          <EntryPlan symbol={symbol} plan={analysis.entry} currency={analysis.currency} nativeCurrency={analysis.native_currency} />
           <section className="panel span-all">
             <h2>Nachrichten</h2>
             {analysis.news.length ? (

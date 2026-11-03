@@ -110,6 +110,9 @@ export default function Home() {
               {e.reasons.map((r) => <li key={r}>{r}</li>)}
             </ul>
             <Levels rec={e} currency={e.currency} />
+            {e.entry && e.action !== "Kaufen prüfen" && (
+              <p className="entry-line small"><Link to={`/chart/${encodeURIComponent(e.symbol)}`}>Einstieg</Link>: {e.entry.summary}</p>
+            )}
             {e.news[0] && (
               <a className="headline small" href={e.news[0].url} target="_blank" rel="noreferrer noopener">
                 {e.news[0].headline}

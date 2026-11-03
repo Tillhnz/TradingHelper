@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import __version__, alerts, analysis, indicators, market, news, notify, scheduler, settings_store
+from . import __version__, alerts, analysis, entry, indicators, market, news, notify, scheduler, settings_store
 from . import updater_client
 from .config import settings
 from .report import build_report, send_report
@@ -228,7 +228,9 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
         raise HTTPException(422, str(exc)) from exc
     items = news.fetch_news(symbol, settings.finnhub_api_key, settings.news_lookback_days) if with_news else []
     rec = analysis.recommend(a, news.aggregate_sentiment(items))
-    return {**a.to_dict(), "recommendation": rec.__dict__, "news": [n.to_dict() for n in items], **_meta(symbol, target)}
+    meta = _meta(symbol, target)
+    return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
+            "news": [n.to_dict() for n in items], **meta}
 
 
 @app.get("/api/news/{symbol}", dependencies=auth)
@@ -263,18 +265,18 @@ def watchlist_overview(st: Storage = Depends(get_storage)):
             info = _info(sym)
             st.update_meta(sym, info.get("name"), info.get("exchange"), info.get("currency"))
             w.update(name=info.get("name"), exchange=info.get("exchange"), currency=info.get("currency"))
-        entry = {"symbol": sym, "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
-                 "native_currency": w.get("currency"), "currency": market.shown_currency(w.get("currency"), target)}
+        row = {"symbol": sym, "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
+               "native_currency": w.get("currency"), "currency": market.shown_currency(w.get("currency"), target)}
         try:
             df = market.get_history(sym, profile.period, "1d", currency=target)
             a = analysis.analyze(sym, df, profile)
             rec = analysis.recommend(a, None)
             spark = [round(float(x), 4) for x in df["close"].tail(30)]
-            entry.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
-                         rsi=a.metrics.get("rsi"), spark=spark)
+            row.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
+                       rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"])
         except Exception as exc:  # noqa: BLE001
-            entry["error"] = str(exc)
-        out.append(entry)
+            row["error"] = str(exc)
+        out.append(row)
     return out
 
 

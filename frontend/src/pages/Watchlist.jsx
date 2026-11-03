@@ -107,7 +107,10 @@ export default function Watchlist() {
                         <td className="num">{money(r.price, r.currency)}</td>
                         <td className={`num ${tone(r.change_pct)}`}>{pct(r.change_pct)}</td>
                         <td className="num hide-sm">{num(r.rsi, 0)}</td>
-                        <td><ActionBadge action={r.action} /></td>
+                        <td>
+                          <ActionBadge action={r.action} />
+                          {r.entry && r.action !== "Kaufen prüfen" && <div className="muted small cell-entry">{r.entry}</div>}
+                        </td>
                       </>
                     )}
                     <td className="row-actions">

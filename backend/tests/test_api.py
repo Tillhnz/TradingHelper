@@ -74,6 +74,7 @@ def test_history_and_analysis(client):
     a = client.get("/api/analysis/AAPL", headers=h).json()
     assert a["recommendation"]["action"] and a["metrics"]["rsi"] is not None
     assert a["currency"] == "EUR" and a["native_currency"] == "USD"
+    assert a["entry"]["summary"] and isinstance(a["entry"]["setups"], list)
     assert client.get("/api/history/AAPL?currency=native", headers=h).json()["currency"] == "USD"
     assert client.get("/api/history/AAPL?currency=XYZ", headers=h).status_code == 422
 

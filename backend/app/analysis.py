@@ -175,6 +175,7 @@ def analyze(symbol: str, df: pd.DataFrame, profile: Profile | None = None) -> An
     metrics["perf_12m"] = _perf(d["close"], 252)
     high_52w = d["high"].tail(252).max()
     metrics["from_high_pct"] = _f((close / high_52w - 1) * 100) if high_52w else None
+    metrics["high_52w"] = _f(high_52w)
 
     a = Analysis(symbol.upper(), round(close, 4), _f((close / prev - 1) * 100), metrics, profile=p)
     a.support, a.resistance = support_resistance(d, p.h["sr_lookback"])
@@ -311,6 +312,22 @@ class Recommendation:
     notes: list[str] = field(default_factory=list)
 
 
+def position_size(p: Profile, entry: float, stop: float | None) -> dict | None:
+    """Stückzahl, sodass ein Stopp höchstens das Depotrisiko des Profils kostet, begrenzt auf die Höchstposition."""
+    if p.portfolio_size <= 0 or stop is None or entry - stop <= 0:
+        return None
+    R = p.r
+    risk_abs = entry - stop
+    shares = math.floor(p.portfolio_size * R["risk_per_trade"] / 100 / risk_abs)
+    cap = p.portfolio_size * R["max_position"] / 100
+    if shares * entry > cap:
+        shares = math.floor(cap / entry)
+    if shares <= 0:
+        return None
+    return {"shares": shares, "value": round(shares * entry, 2), "risk": round(shares * risk_abs, 2),
+            "risk_pct": R["risk_per_trade"], "max_pct": R["max_position"]}
+
+
 BUY, HOLD, SELL = "Kaufen prüfen", "Halten / beobachten", "Reduzieren prüfen"
 EMOJI = {BUY: "🟢", HOLD: "🟡", SELL: "🔴"}
 
@@ -361,18 +378,7 @@ def recommend(a: Analysis, sentiment: float | None, profile: Profile | None = No
     else:
         action = HOLD
 
-    position = None
-    if action == BUY and p.portfolio_size > 0 and risk_abs and risk_abs > 0:
-        budget_risk = p.portfolio_size * R["risk_per_trade"] / 100
-        shares = math.floor(budget_risk / risk_abs)
-        cap = p.portfolio_size * R["max_position"] / 100
-        if shares * close > cap:
-            shares = math.floor(cap / close)
-        if shares > 0:
-            position = {
-                "shares": shares, "value": round(shares * close, 2),
-                "risk": round(shares * risk_abs, 2), "risk_pct": R["risk_per_trade"], "max_pct": R["max_position"],
-            }
+    position = position_size(p, close, stop) if action == BUY else None
 
     top = sorted(a.signals, key=lambda s: abs(s.score * s.weight), reverse=True)[:3]
     reasons = [s.text for s in top] + notes

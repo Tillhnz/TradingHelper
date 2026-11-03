@@ -100,6 +100,19 @@ Die **Anlagestrategie** (Einstellungen) steuert alles:
 | Ausgewogen | +0,35 | −0,35 | unter SMA200 nur mit Bestätigung | ≥ 1,5 | Abschlag ab 6 %/Tag | 1 % Risiko, max. 10 % |
 | Offensiv | +0,25 | −0,45 | keiner | ≥ 1 | – | 2 % Risiko, max. 20 % |
 
+### Einstiegsplan
+
+Zu jedem Wert zeigt der Chart einen Einstiegsplan, passend zur Strategie (kurz auch in Heute, Watchlist und Morgenreport):
+
+| Einstieg | Wann | Kursmarke | Alarm per Klick |
+|---|---|---|---|
+| Sofort | Einschätzung „Kaufen prüfen“ | aktueller Kurs | – |
+| Rücksetzer | intakter Aufwärtstrend | Zone ±0,5 ATR um EMA 21 (kurz), SMA 50/Unterstützung (mittel); langfristig Teilkäufe an SMA 50 und SMA 200 | Kurs fällt in die Zone |
+| Ausbruch | Widerstand höchstens 12 % über Kurs (nicht konservativ im Abwärtstrend) | Widerstand + 0,2 ATR | Kurs steigt darüber |
+| Rebound | nur offensiv (oder ausgewogen + kurzfristig), RSI < 35 bzw. am unteren Bollinger-Band | unteres Band, Stopp 1 ATR | RSI steigt über 30 |
+
+Jeder Einstieg hat Stopp, Ziel, Chance/Risiko (geprüft gegen das Mindest-CRV des Profils) und optional eine Positionsgröße. Dazu kommen **Signale, auf die man warten sollte**: Schlusskurs über der 200-Tage-Linie, Golden Cross (langfristig), MACD dreht nach oben, EMA 9 über EMA 21 (kurzfristig), Abkühlung bei RSI über 70 – ebenfalls mit Alarm per Klick. Logik: `backend/app/entry.py`.
+
 Jeder Indikator liefert ein Signal zwischen −2 und +2, gewichtet nach Horizont und auf −1…+1 normiert, dann mit der News-Stimmung gemischt. Mit hinterlegter Depotgröße schlägt TradeHelper eine Positionsgröße vor (Stückzahl so, dass ein Stopp höchstens das Depotrisiko kostet). Die Logik steht in `backend/app/analysis.py`.
 
 ## Entwicklung

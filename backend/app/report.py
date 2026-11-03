@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import analysis, market, news, notify
+from . import analysis, entry, market, news, notify
 from .config import Settings
 from .storage import Storage
 
@@ -24,6 +24,7 @@ class ReportEntry:
     currency: str | None = None
     name: str | None = None
     exchange: str | None = None
+    plan: dict | None = None
 
 
 @dataclass
@@ -56,6 +57,8 @@ class Report:
             if r.position:
                 lines.append(f"  • Positionsgröße: {r.position['shares']} Stück ≈ {r.position['value']:.0f}{ccy}, "
                              f"Risiko {r.position['risk']:.0f}{ccy} ({r.position['risk_pct']} % des Depots)")
+            if e.plan and r.action != analysis.BUY:
+                lines.append(f"  • {e.plan['summary']}")
             if e.headlines:
                 lines.append(f"  • News: {e.headlines[0].headline[:110]}")
             lines.append("")
@@ -84,6 +87,7 @@ class Report:
                     "currency": e.currency,
                     "name": e.name,
                     "exchange": e.exchange,
+                    "entry": e.plan,
                 }
                 for e in self.entries
             ],
@@ -113,8 +117,9 @@ def build_report(storage: Storage, settings: Settings) -> Report:
             native = w.get("currency")
             if native is None and w.get("exchange") is None:
                 native = market.guess_listing(sym)[1]
-            entries.append(ReportEntry(rec, a, items[:3], market.shown_currency(native, target),
-                                       w.get("name"), w.get("exchange")))
+            shown = market.shown_currency(native, target)
+            entries.append(ReportEntry(rec, a, items[:3], shown, w.get("name"), w.get("exchange"),
+                                       entry.plan(a, rec, currency=shown)))
         except Exception as exc:  # noqa: BLE001
             log.warning("Report für %s fehlgeschlagen: %s", sym, exc)
             errors[sym] = str(exc)
