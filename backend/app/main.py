@@ -135,11 +135,38 @@ def change_password(data: PasswordChange, user: dict = Depends(current_user), st
 
 # ---------- Kurse und Analyse ----------
 
-def _history(symbol: str, period: str, interval: str):
+def _target(currency: str | None) -> str | None:
+    """Gewünschte Anzeigewährung: Parameter, sonst Einstellung. None = Handelswährung."""
+    c = currency or settings.display_currency or "native"
+    if c == "native":
+        return None
+    if c not in market.CURRENCIES:
+        raise HTTPException(422, f"Währung muss native oder eine von {', '.join(market.CURRENCIES)} sein")
+    return c
+
+
+def _info(symbol: str) -> dict:
     try:
-        return market.get_history(symbol, period, interval)
+        return market.symbol_info(symbol)
+    except market.MarketDataError:
+        exchange, currency = market.guess_listing(symbol)
+        return {"symbol": symbol.upper(), "name": None, "exchange": exchange, "currency": currency, "type": None}
+
+
+def _history(symbol: str, period: str, interval: str, target: str | None = None):
+    try:
+        return market.get_history(symbol, period, interval, currency=target)
     except market.MarketDataError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+def _meta(symbol: str, target: str | None) -> dict:
+    info = _info(symbol)
+    return {
+        "name": info.get("name"), "exchange": info.get("exchange"), "native_currency": info.get("currency"),
+        "currency": market.shown_currency(info.get("currency"), target),
+        "display_currency": settings.display_currency,
+    }
 
 
 def _num(v):
@@ -158,9 +185,18 @@ def quote(symbol: str):
         raise HTTPException(404, str(exc)) from exc
 
 
+@app.get("/api/search", dependencies=auth)
+def search(q: str):
+    try:
+        return market.search(q)
+    except market.MarketDataError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
 @app.get("/api/history/{symbol}", dependencies=auth)
-def history(symbol: str, period: str = "1y", interval: str = "1d"):
-    df = indicators.add_all(_history(symbol, period, interval))
+def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str | None = None):
+    target = _target(currency)
+    df = indicators.add_all(_history(symbol, period, interval, target))
     times = [int(ts.timestamp()) for ts in df.index]
     cols = list(df.columns)
     rows = []
@@ -168,19 +204,21 @@ def history(symbol: str, period: str = "1y", interval: str = "1d"):
         row = {"time": int(t)}
         row.update({c: _num(v) for c, v in zip(cols, values, strict=True)})
         rows.append(row)
-    return {"symbol": symbol.upper(), "period": period, "interval": interval, "rows": rows}
+    return {"symbol": symbol.upper(), "period": period, "interval": interval, "rows": rows, **_meta(symbol, target)}
 
 
 @app.get("/api/analysis/{symbol}", dependencies=auth)
-def analyze(symbol: str, period: str = "1y", interval: str = "1d", with_news: bool = True):
-    df = _history(symbol, period, interval)
+def analyze(symbol: str, period: str = "1y", interval: str = "1d", with_news: bool = True,
+            currency: str | None = None):
+    target = _target(currency)
+    df = _history(symbol, period, interval, target)
     try:
         a = analysis.analyze(symbol, df)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     items = news.fetch_news(symbol, settings.finnhub_api_key, settings.news_lookback_days) if with_news else []
     rec = analysis.recommend(a, news.aggregate_sentiment(items), settings.news_weight / 100)
-    return {**a.to_dict(), "recommendation": rec.__dict__, "news": [n.to_dict() for n in items]}
+    return {**a.to_dict(), "recommendation": rec.__dict__, "news": [n.to_dict() for n in items], **_meta(symbol, target)}
 
 
 @app.get("/api/news/{symbol}", dependencies=auth)
@@ -206,12 +244,18 @@ def watchlist(st: Storage = Depends(get_storage)):
 @app.get("/api/watchlist/overview", dependencies=auth)
 def watchlist_overview(st: Storage = Depends(get_storage)):
     """Kurs, Tagesänderung und technische Einschätzung je Wert (ohne News, damit es schnell bleibt)."""
+    target = _target(None)
     out = []
     for w in st.watchlist():
         sym = w["symbol"]
-        entry = {"symbol": sym, "note": w["note"]}
+        if w.get("currency") is None and w.get("exchange") is None:  # Einträge aus älteren Versionen nachtragen
+            info = _info(sym)
+            st.update_meta(sym, info.get("name"), info.get("exchange"), info.get("currency"))
+            w.update(name=info.get("name"), exchange=info.get("exchange"), currency=info.get("currency"))
+        entry = {"symbol": sym, "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
+                 "native_currency": w.get("currency"), "currency": market.shown_currency(w.get("currency"), target)}
         try:
-            df = market.get_history(sym, settings.history_period, "1d")
+            df = market.get_history(sym, settings.history_period, "1d", currency=target)
             a = analysis.analyze(sym, df)
             rec = analysis.recommend(a, None)
             spark = [round(float(x), 4) for x in df["close"].tail(30)]
@@ -227,11 +271,11 @@ def watchlist_overview(st: Storage = Depends(get_storage)):
 def watchlist_add(item: WatchlistIn, st: Storage = Depends(get_storage)):
     sym = item.symbol.strip().upper()
     try:
-        market.get_history(sym, "5d", "1d")
+        info = market.symbol_info(sym)
     except market.MarketDataError as exc:
-        raise HTTPException(404, f"{sym}: keine Kursdaten gefunden. Yahoo-Schreibweise verwenden, z. B. SAP.DE.") from exc
-    st.add_symbol(sym, item.note)
-    return {"added": sym}
+        raise HTTPException(404, f"{sym}: keine Kursdaten gefunden. Wert am besten über die Suche auswählen.") from exc
+    st.add_symbol(sym, item.note, info.get("name"), info.get("exchange"), info.get("currency"))
+    return {"added": sym, **info}
 
 
 @app.patch("/api/watchlist/{symbol}", dependencies=auth)
@@ -256,6 +300,7 @@ class AlertIn(BaseModel):
     params: dict = Field(default_factory=dict)
     interval: str = "1d"
     once: bool = False
+    currency: str = ""  # leer = Handelswährung
 
 
 class AlertPatch(BaseModel):
@@ -267,24 +312,31 @@ INTERVALS = ["5m", "15m", "30m", "1h", "1d", "1wk"]
 
 @app.get("/api/alerts/kinds", dependencies=auth)
 def alert_kinds():
-    return {"intervals": INTERVALS,
+    return {"intervals": INTERVALS, "currencies": market.CURRENCIES, "display_currency": settings.display_currency,
             "kinds": [{"name": k.name, "description": k.description, "params": k.params} for k in alerts.KINDS.values()]}
 
 
 @app.get("/api/alerts", dependencies=auth)
 def alert_list(st: Storage = Depends(get_storage)):
-    return [a.to_dict() for a in st.alerts()]
+    out = []
+    for a in st.alerts():
+        d = a.to_dict()
+        d["native_currency"] = _info(a.symbol).get("currency") if not a.currency else None
+        out.append(d)
+    return out
 
 
 @app.post("/api/alerts", dependencies=auth, status_code=201)
 def alert_add(item: AlertIn, st: Storage = Depends(get_storage)):
     if item.interval not in INTERVALS:
         raise HTTPException(422, f"Intervall muss eines von {', '.join(INTERVALS)} sein")
+    if item.currency and item.currency not in market.CURRENCIES:
+        raise HTTPException(422, f"Währung muss leer oder eine von {', '.join(market.CURRENCIES)} sein")
     try:
         params = alerts.build_params(item.kind, item.params)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    aid = st.add_alert(item.symbol.strip(), item.kind, params, item.interval, item.once)
+    aid = st.add_alert(item.symbol.strip(), item.kind, params, item.interval, item.once, item.currency)
     return st.get_alert(aid).to_dict()
 
 

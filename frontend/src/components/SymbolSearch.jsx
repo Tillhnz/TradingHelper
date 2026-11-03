@@ -1,0 +1,84 @@
+import { useEffect, useRef, useState } from "react";
+import { api } from "../api.js";
+
+/**
+ * Suche nach Name, Symbol oder ISIN. Zeigt jeden Börsenplatz einzeln mit Währung, damit man z. B.
+ * Apple an der Nasdaq (USD) oder an Xetra (EUR) auswählen kann.
+ */
+export default function SymbolSearch({ onPick, actionLabel = "Hinzufügen", busySymbol = null, exclude = [] }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const seq = useRef(0);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setResults(null); setError(""); return undefined; }
+    const id = setTimeout(async () => {
+      const mine = ++seq.current;
+      setLoading(true);
+      try {
+        const r = await api.get(`/search?q=${encodeURIComponent(term)}`);
+        if (mine === seq.current) { setResults(r); setError(""); }
+      } catch (e) {
+        if (mine === seq.current) setError(e.message);
+      } finally {
+        if (mine === seq.current) setLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  const direct = q.trim().toUpperCase();
+  const showDirect = direct.length >= 1 && /^[A-Z0-9.^=\-]+$/.test(direct) && !(results || []).some((r) => r.symbol === direct);
+
+  function submit(e) {
+    e.preventDefault();
+    if (results?.length === 1) onPick(results[0]);
+    else if (showDirect) onPick({ symbol: direct });
+  }
+
+  return (
+    <div className="search">
+      <form onSubmit={submit}>
+        <label>
+          Wert suchen <span className="hint">Name, Symbol oder ISIN, z. B. „Apple“, „SAP“, „DE0007164600“</span>
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen …" autoComplete="off" />
+        </label>
+      </form>
+      {loading && <p className="muted small">Suche …</p>}
+      {error && <p className="error small">{error}</p>}
+      {results && (
+        <ul className="search-results">
+          {results.map((r) => {
+            const added = exclude.includes(r.symbol);
+            return (
+              <li key={r.symbol}>
+                <div className="sr-main">
+                  <strong className="sym">{r.symbol}</strong>
+                  <span className="sr-name">{r.name}</span>
+                </div>
+                <div className="sr-meta">
+                  <span className="chip">{r.exchange || "?"}</span>
+                  {r.currency && <span className="chip ccy">{r.currency}</span>}
+                  <span className="muted small hide-sm">{r.type}</span>
+                </div>
+                <button className="btn small" disabled={added || busySymbol === r.symbol} onClick={() => onPick(r)}>
+                  {added ? "Vorhanden" : busySymbol === r.symbol ? "…" : actionLabel}
+                </button>
+              </li>
+            );
+          })}
+          {!results.length && <li className="muted">Nichts gefunden.</li>}
+          {showDirect && (
+            <li className="sr-direct">
+              <span className="muted small">Symbol direkt verwenden:</span> <strong className="sym">{direct}</strong>
+              <button className="btn small" disabled={exclude.includes(direct) || busySymbol === direct} onClick={() => onPick({ symbol: direct })}>{actionLabel}</button>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}

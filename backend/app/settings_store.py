@@ -30,6 +30,7 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "alert_end_hour": ("int:0:23", "schedule", False),
     "alert_weekends": ("bool", "schedule", False),
     "alert_cooldown_minutes": ("int:0:10080", "schedule", False),
+    "display_currency": ("choice:native,EUR,USD,CHF,GBP", "general", False),
     "timezone": ("tz", "general", False),
     "history_period": ("choice:6mo,1y,2y,5y", "general", False),
 }

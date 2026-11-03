@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
+import SymbolSearch from "../components/SymbolSearch.jsx";
 import { ActionBadge, Empty, ErrorText, Loading, Sparkline } from "../components/ui.jsx";
-import { num, pct, price, tone } from "../fmt.js";
-
-const EXAMPLES = ["AAPL", "MSFT", "NVDA", "SAP.DE", "^GDAXI", "BTC-USD", "IWDA.AS"];
+import { money, num, pct, tone } from "../fmt.js";
 
 export default function Watchlist() {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState("");
-  const [symbol, setSymbol] = useState("");
-  const [note, setNote] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -24,20 +22,18 @@ export default function Watchlist() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function add(e) {
-    e.preventDefault();
-    if (!symbol.trim()) return;
-    setAdding(true);
+  async function add(r) {
+    setBusy(r.symbol);
     setError("");
+    setMsg("");
     try {
-      await api.post("/watchlist", { symbol: symbol.trim(), note });
-      setSymbol("");
-      setNote("");
+      const info = await api.post("/watchlist", { symbol: r.symbol });
+      setMsg(`${info.added}${info.exchange ? ` (${info.exchange}${info.currency ? `, ${info.currency}` : ""})` : ""} hinzugefügt.`);
       await load();
     } catch (err) {
       setError(err.message);
     } finally {
-      setAdding(false);
+      setBusy(null);
     }
   }
 
@@ -51,6 +47,9 @@ export default function Watchlist() {
     }
   }
 
+  const ccy = rows?.find((r) => r.currency)?.currency;
+  const mixed = rows?.some((r) => r.native_currency && r.native_currency !== r.currency);
+
   return (
     <>
       <div className="page-head">
@@ -60,63 +59,67 @@ export default function Watchlist() {
         </div>
       </div>
 
-      <form className="inline-form" onSubmit={add}>
-        <label className="grow">
-          Symbol <span className="hint">Yahoo-Schreibweise</span>
-          <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="z. B. SAP.DE" list="symbol-examples" required />
-          <datalist id="symbol-examples">{EXAMPLES.map((x) => <option key={x} value={x} />)}</datalist>
-        </label>
-        <label className="grow">
-          Notiz <span className="hint">optional</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
-        </label>
-        <button className="btn primary" disabled={adding}>{adding ? "Prüfe …" : "Hinzufügen"}</button>
-      </form>
-      <p className="muted small">
-        Deutsche Börsen mit Endung (<code>SAP.DE</code> Xetra), Indizes mit ^ (<code>^GDAXI</code>), Krypto mit Währung (<code>BTC-EUR</code>), Devisen wie <code>EURUSD=X</code>.
-      </p>
+      <section className="panel">
+        <SymbolSearch onPick={add} busySymbol={busy} exclude={(rows || []).map((r) => r.symbol)} />
+        <p className="muted small">
+          Derselbe Wert ist oft an mehreren Börsen gelistet. Für Kurse in Euro einen deutschen Platz wählen (Xetra, Frankfurt, Stuttgart …),
+          oder unter Einstellungen die Anzeigewährung festlegen.
+        </p>
+      </section>
+      {msg && <p className="ok" role="status">{msg}</p>}
       <ErrorText error={error} />
 
       {!rows && !error && <Loading />}
       {rows && !rows.length && (
         <Empty title="Noch leer">
-          <p className="muted">Trag oben dein erstes Symbol ein.</p>
+          <p className="muted">Such oben nach deinem ersten Wert.</p>
         </Empty>
       )}
       {rows && rows.length > 0 && (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Symbol</th><th className="hide-sm">30 Tage</th><th className="num">Kurs</th><th className="num">Tag</th>
-                <th className="num hide-sm">RSI</th><th>Einschätzung</th><th className="hide-sm">Notiz</th><th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.symbol}>
-                  <td><Link to={`/chart/${encodeURIComponent(r.symbol)}`} className="sym">{r.symbol}</Link></td>
-                  {r.error ? (
-                    <td colSpan={6} className="error small">{r.error}</td>
-                  ) : (
-                    <>
-                      <td className="hide-sm"><Sparkline values={r.spark} /></td>
-                      <td className="num">{price(r.price)}</td>
-                      <td className={`num ${tone(r.change_pct)}`}>{pct(r.change_pct)}</td>
-                      <td className="num hide-sm">{num(r.rsi, 0)}</td>
-                      <td><ActionBadge action={r.action} /></td>
-                      <td className="muted small hide-sm">{r.note}</td>
-                    </>
-                  )}
-                  <td className="row-actions">
-                    <Link className="link small" to={`/alerts?symbol=${encodeURIComponent(r.symbol)}`}>Alarm</Link>
-                    <button className="link danger small" onClick={() => remove(r.symbol)}>Entfernen</button>
-                  </td>
+        <>
+          {mixed && ccy && (
+            <p className="muted small">Kurse umgerechnet in {ccy} (Tageskurs). Ändern unter <Link to="/settings">Einstellungen → Anzeigewährung</Link>.</p>
+          )}
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Wert</th><th className="hide-sm">30 Tage</th><th className="num">Kurs</th><th className="num">Tag</th>
+                  <th className="num hide-sm">RSI</th><th>Einschätzung</th><th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.symbol}>
+                    <td>
+                      <Link to={`/chart/${encodeURIComponent(r.symbol)}`} className="sym">{r.symbol}</Link>
+                      <div className="muted small cell-sub">
+                        {r.name && <span>{r.name}</span>}
+                        {r.exchange && <span>{r.exchange}{r.native_currency ? ` · ${r.native_currency}` : ""}</span>}
+                        {r.note && <span>„{r.note}“</span>}
+                      </div>
+                    </td>
+                    {r.error ? (
+                      <td colSpan={5} className="error small">{r.error}</td>
+                    ) : (
+                      <>
+                        <td className="hide-sm"><Sparkline values={r.spark} /></td>
+                        <td className="num">{money(r.price, r.currency)}</td>
+                        <td className={`num ${tone(r.change_pct)}`}>{pct(r.change_pct)}</td>
+                        <td className="num hide-sm">{num(r.rsi, 0)}</td>
+                        <td><ActionBadge action={r.action} /></td>
+                      </>
+                    )}
+                    <td className="row-actions">
+                      <Link className="link small" to={`/alerts?symbol=${encodeURIComponent(r.symbol)}`}>Alarm</Link>
+                      <button className="link danger small" onClick={() => remove(r.symbol)}>Entfernen</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </>
   );

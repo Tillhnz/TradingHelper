@@ -14,6 +14,8 @@ def client(tmp_path, monkeypatch, uptrend):
     settings.secret_key = "test-secret"
     main._fails.clear()
     monkeypatch.setattr(market, "get_history", lambda *a, **k: uptrend)
+    monkeypatch.setattr(market, "symbol_info", lambda s: {
+        "symbol": s.upper(), "name": "Apple Inc.", "exchange": "NasdaqGS", "currency": "USD", "type": "EQUITY"})
     with TestClient(main.app) as c:
         yield c
     settings.reset()
@@ -56,8 +58,9 @@ def test_watchlist_overview_and_report(client):
     assert client.post("/api/watchlist", json={"symbol": "aapl"}, headers=h).status_code == 201
     ov = client.get("/api/watchlist/overview", headers=h).json()
     assert ov[0]["symbol"] == "AAPL" and len(ov[0]["spark"]) == 30 and ov[0]["action"]
+    assert ov[0]["exchange"] == "NasdaqGS" and ov[0]["native_currency"] == "USD" and ov[0]["currency"] == "EUR"
     rep = client.get("/api/report", headers=h).json()
-    assert rep["entries"][0]["symbol"] == "AAPL"
+    assert rep["entries"][0]["symbol"] == "AAPL" and rep["entries"][0]["currency"] == "EUR"
     assert client.post("/api/report/send", headers=h).status_code == 400  # kein Topic
 
 
@@ -67,6 +70,9 @@ def test_history_and_analysis(client):
     assert len(rows) == 260 and rows[-1]["sma200"] is not None and isinstance(rows[-1]["time"], int)
     a = client.get("/api/analysis/AAPL", headers=h).json()
     assert a["recommendation"]["action"] and a["metrics"]["rsi"] is not None
+    assert a["currency"] == "EUR" and a["native_currency"] == "USD"
+    assert client.get("/api/history/AAPL?currency=native", headers=h).json()["currency"] == "USD"
+    assert client.get("/api/history/AAPL?currency=XYZ", headers=h).status_code == 422
 
 
 def test_alerts_crud(client):
@@ -77,6 +83,11 @@ def test_alerts_crud(client):
     assert r.status_code == 201
     aid = r.json()["id"]
     assert client.patch(f"/api/alerts/{aid}", json={"active": False}, headers=h).json()["active"] is False
+    r = client.post("/api/alerts", json={"symbol": "AAPL", "kind": "price_above", "params": {"value": 200},
+                                         "currency": "EUR"}, headers=h)
+    assert r.json()["currency"] == "EUR"
+    assert client.post("/api/alerts", json={"symbol": "AAPL", "kind": "price_above", "params": {"value": 1},
+                                            "currency": "XYZ"}, headers=h).status_code == 422
     assert client.post("/api/alerts", json={"symbol": "AAPL", "kind": "bad"}, headers=h).status_code == 422
     assert client.post("/api/alerts", json={"symbol": "AAPL", "kind": "macd_cross_up", "interval": "3m"},
                        headers=h).status_code == 422
@@ -101,3 +112,10 @@ def test_admin_without_updater(client):
     assert any(c["label"] == "Update-Dienst" and not c["ok"] for c in st["checks"])
     assert client.get("/api/admin/update", headers=h).status_code == 503
     assert client.get("/api/version", headers=h).json()["version"]
+
+
+def test_search(client, monkeypatch):
+    h = _login(client)
+    monkeypatch.setattr(market, "search", lambda q: [{"symbol": "APC.DE", "name": "Apple", "exchange": "XETRA",
+                                                      "type": "Aktie", "currency": "EUR"}])
+    assert client.get("/api/search?q=apple", headers=h).json()[0]["symbol"] == "APC.DE"

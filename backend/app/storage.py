@@ -61,6 +61,7 @@ class Alert:
     interval: str = "1d"
     once: bool = False
     active: bool = True
+    currency: str = ""  # Währung der Alarmwerte; leer = Handelswährung
     last_triggered: str | None = None
     created_at: str = ""
 
@@ -74,6 +75,7 @@ class Alert:
             interval=row["interval"],
             once=bool(row["once"]),
             active=bool(row["active"]),
+            currency=row["currency"] if "currency" in row.keys() else "",
             last_triggered=row["last_triggered"],
             created_at=row["created_at"],
         )
@@ -87,6 +89,20 @@ class Storage:
         self.path = str(path)
         with self._conn() as c:
             c.executescript(SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """Spalten nachrüsten, die ältere Versionen noch nicht hatten."""
+        for table, col, ddl in [
+            ("watchlist", "name", "TEXT"),
+            ("watchlist", "exchange", "TEXT"),
+            ("watchlist", "currency", "TEXT"),
+            ("alerts", "currency", "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+            if col not in cols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -106,24 +122,32 @@ class Storage:
     def watchlist_symbols(self) -> list[str]:
         return [w["symbol"] for w in self.watchlist()]
 
-    def add_symbol(self, symbol: str, note: str = "") -> None:
+    def add_symbol(self, symbol: str, note: str = "", name: str | None = None, exchange: str | None = None,
+                   currency: str | None = None) -> None:
         with self._conn() as c:
             c.execute(
-                "INSERT INTO watchlist(symbol, note, added_at) VALUES (?,?,?) "
-                "ON CONFLICT(symbol) DO UPDATE SET note=excluded.note",
-                (symbol.upper(), note, now_iso()),
+                "INSERT INTO watchlist(symbol, note, added_at, name, exchange, currency) VALUES (?,?,?,?,?,?) "
+                "ON CONFLICT(symbol) DO UPDATE SET note=excluded.note, name=COALESCE(excluded.name, name), "
+                "exchange=COALESCE(excluded.exchange, exchange), currency=COALESCE(excluded.currency, currency)",
+                (symbol.upper(), note, now_iso(), name, exchange, currency),
             )
+
+    def update_meta(self, symbol: str, name: str | None, exchange: str | None, currency: str | None) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE watchlist SET name=?, exchange=?, currency=? WHERE symbol=?",
+                      (name, exchange, currency, symbol.upper()))
 
     def remove_symbol(self, symbol: str) -> bool:
         with self._conn() as c:
             return c.execute("DELETE FROM watchlist WHERE symbol=?", (symbol.upper(),)).rowcount > 0
 
     # --- Alarme ------------------------------------------------------------
-    def add_alert(self, symbol: str, kind: str, params: dict, interval: str = "1d", once: bool = False) -> int:
+    def add_alert(self, symbol: str, kind: str, params: dict, interval: str = "1d", once: bool = False,
+                  currency: str = "") -> int:
         with self._conn() as c:
             cur = c.execute(
-                "INSERT INTO alerts(symbol, kind, params, interval, once, created_at) VALUES (?,?,?,?,?,?)",
-                (symbol.upper(), kind, json.dumps(params), interval, int(once), now_iso()),
+                "INSERT INTO alerts(symbol, kind, params, interval, once, created_at, currency) VALUES (?,?,?,?,?,?,?)",
+                (symbol.upper(), kind, json.dumps(params), interval, int(once), now_iso(), currency or ""),
             )
             return int(cur.lastrowid)
 

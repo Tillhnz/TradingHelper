@@ -194,6 +194,13 @@ def _in_cooldown(alert: Alert, minutes: int) -> bool:
 _PERIOD_FOR = {"1m": "5d", "5m": "1mo", "15m": "1mo", "30m": "1mo", "1h": "3mo", "1d": "2y", "1wk": "5y"}
 
 
+def _native(symbol: str) -> str | None:
+    try:
+        return market.symbol_info(symbol).get("currency")
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def check_all(storage: Storage, settings: Settings, send: bool = True) -> list[dict]:
     """Prüft alle aktiven Alarme. Gibt ausgelöste Alarme zurück."""
     fired: list[dict] = []
@@ -201,10 +208,11 @@ def check_all(storage: Storage, settings: Settings, send: bool = True) -> list[d
     for alert in storage.alerts(active_only=True):
         if _in_cooldown(alert, settings.alert_cooldown_minutes):
             continue
-        key = (alert.symbol, alert.interval)
+        key = (alert.symbol, alert.interval, alert.currency)
         try:
             if key not in frames:
-                frames[key] = market.get_history(alert.symbol, _PERIOD_FOR.get(alert.interval, "1y"), alert.interval)
+                frames[key] = market.get_history(alert.symbol, _PERIOD_FOR.get(alert.interval, "1y"), alert.interval,
+                                                 currency=alert.currency or None)
             msg = evaluate(alert, frames[key])
         except Exception as exc:  # noqa: BLE001
             log.warning("Alarm #%s (%s) nicht prüfbar: %s", alert.id, alert.symbol, exc)
@@ -214,6 +222,8 @@ def check_all(storage: Storage, settings: Settings, send: bool = True) -> list[d
         storage.mark_triggered(alert, msg)
         fired.append({"id": alert.id, "symbol": alert.symbol, "kind": alert.kind, "message": msg})
         if send:
-            notify.send(settings, f"Alarm {alert.symbol}", f"**{alert.symbol}** ({alert.interval}): {msg}",
+            ccy = alert.currency or _native(alert.symbol)
+            label = f"{alert.interval}, {ccy}" if ccy else alert.interval
+            notify.send(settings, f"Alarm {alert.symbol}", f"**{alert.symbol}** ({label}): {msg}",
                         priority="high", tags=["chart_with_upwards_trend"])
     return fired

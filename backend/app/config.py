@@ -44,6 +44,7 @@ class Settings:
     alert_end_hour: int = field(default_factory=lambda: int(_env("alert_end_hour", "22")))
     alert_weekends: bool = field(default_factory=lambda: _bool(_env("alert_weekends", "false")))
     alert_cooldown_minutes: int = field(default_factory=lambda: int(_env("alert_cooldown_minutes", "240")))
+    display_currency: str = field(default_factory=lambda: _env("display_currency", "EUR"))  # oder "native"
     history_period: str = field(default_factory=lambda: _env("history_period", "1y"))
 
     @property

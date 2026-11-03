@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { ActionBadge, Empty, ErrorText, Loading } from "../components/ui.jsx";
-import { dateTime, pct, price, signed, tone } from "../fmt.js";
+import { dateTime, money, pct, signed, tone } from "../fmt.js";
 
 const ORDER = { "Kaufen prüfen": 0, "Reduzieren prüfen": 1, "Halten / beobachten": 2 };
 
@@ -74,8 +74,9 @@ export default function Home() {
               <Link to={`/chart/${encodeURIComponent(e.symbol)}`} className="rec-symbol">{e.symbol}</Link>
               <ActionBadge action={e.action} />
             </header>
+            {(e.name || e.exchange) && <p className="muted small rec-sub">{[e.name, e.exchange].filter(Boolean).join(" · ")}</p>}
             <div className="rec-price">
-              <strong>{price(e.analysis.last_close)}</strong>
+              <strong>{money(e.analysis.last_close, e.currency)}</strong>
               <span className={tone(e.analysis.change_pct_1d)}>{pct(e.analysis.change_pct_1d)}</span>
             </div>
             <div className="score-bar" aria-label={`Score ${signed(e.combined_score)}`}>

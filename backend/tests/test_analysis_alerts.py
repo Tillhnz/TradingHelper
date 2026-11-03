@@ -84,6 +84,7 @@ def test_check_all_cooldown_and_once(tmp_path, monkeypatch):
     st = Storage(tmp_path / "t.db")
     df = make_df([100.0] * 60 + [110.0])
     monkeypatch.setattr(alerts.market, "get_history", lambda *a, **k: df)
+    monkeypatch.setattr(alerts.market, "symbol_info", lambda s: {"currency": "USD"})
     sent = []
     monkeypatch.setattr(alerts.notify, "send", lambda *a, **k: sent.append(a) or True)
     s = Settings(data_dir=tmp_path, alert_cooldown_minutes=60)

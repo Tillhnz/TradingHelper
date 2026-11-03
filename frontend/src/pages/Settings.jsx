@@ -43,7 +43,9 @@ const GROUPS = [
   {
     id: "general",
     title: "Allgemein",
+    intro: "Anzeigewährung: Kurse von Werten in anderer Währung (z. B. Apple an der Nasdaq in USD) werden mit dem Tageskurs umgerechnet. Charts, Indikatoren und Report rechnen dann komplett in dieser Währung. „Handelswährung“ zeigt jeden Wert in der Währung seines Börsenplatzes.",
     fields: {
+      display_currency: { label: "Anzeigewährung", type: "select", options: ["EUR", "USD", "CHF", "GBP", "native"], labels: { native: "Handelswährung des Börsenplatzes", EUR: "Euro (€)", USD: "US-Dollar ($)", CHF: "Schweizer Franken", GBP: "Britisches Pfund" } },
       timezone: { label: "Zeitzone", hint: "z. B. Europe/Berlin" },
       history_period: { label: "Zeitraum für die Analyse", type: "select", options: ["6mo", "1y", "2y", "5y"], labels: { "6mo": "6 Monate", "1y": "1 Jahr", "2y": "2 Jahre", "5y": "5 Jahre" } },
     },

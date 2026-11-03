@@ -12,6 +12,20 @@ export function price(v) {
   return num(v, Math.abs(v) >= 1000 ? 2 : Math.abs(v) >= 1 ? 2 : 4);
 }
 
+const SYMBOL = { EUR: "€", USD: "$", GBP: "£", CHF: "CHF", JPY: "¥" };
+
+/** Preis mit Währung, z. B. „187,40 €“, „187,40 $“, „1.234 GBp“. Ohne Währung (Index) nur die Zahl. */
+export function money(v, ccy) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "–";
+  const n = price(v);
+  if (!ccy) return n;
+  return `${n} ${SYMBOL[ccy] || ccy}`;
+}
+
+export const CURRENCY_LABEL = {
+  native: "Handelswährung", EUR: "Euro (€)", USD: "US-Dollar ($)", CHF: "Franken (CHF)", GBP: "Pfund (£)",
+};
+
 export function pct(v, digits = 2) {
   if (v === null || v === undefined || Number.isNaN(v)) return "–";
   return `${v > 0 ? "+" : ""}${nf(digits).format(v)} %`;

@@ -21,6 +21,9 @@ class ReportEntry:
     rec: analysis.Recommendation
     analysis: analysis.Analysis
     headlines: list[news.NewsItem] = field(default_factory=list)
+    currency: str | None = None
+    name: str | None = None
+    exchange: str | None = None
 
 
 @dataclass
@@ -35,7 +38,8 @@ class Report:
         for e in sorted(self.entries, key=lambda e: (order[e.rec.action], -abs(e.rec.combined))):
             a, r = e.analysis, e.rec
             chg = f"{a.change_pct_1d:+.2f} %" if a.change_pct_1d is not None else "–"
-            lines.append(f"{r.emoji} **{r.symbol}** {a.last_close:.2f} ({chg}) → **{r.action}** "
+            ccy = f" {e.currency}" if e.currency else ""
+            lines.append(f"{r.emoji} **{r.symbol}** {a.last_close:.2f}{ccy} ({chg}) → **{r.action}** "
                          f"(Score {r.combined:+.2f})")
             for reason in r.reasons:
                 lines.append(f"  • {reason}")
@@ -64,6 +68,9 @@ class Report:
                     "reasons": e.rec.reasons,
                     "analysis": e.analysis.to_dict(),
                     "news": [n.to_dict() for n in e.headlines],
+                    "currency": e.currency,
+                    "name": e.name,
+                    "exchange": e.exchange,
                 }
                 for e in self.entries
             ],
@@ -72,17 +79,27 @@ class Report:
         }
 
 
-def build_report(storage: Storage, settings: Settings, symbols: list[str] | None = None) -> Report:
-    symbols = symbols or storage.watchlist_symbols()
+def target_currency(settings: Settings) -> str | None:
+    c = settings.display_currency
+    return None if not c or c == "native" else c
+
+
+def build_report(storage: Storage, settings: Settings) -> Report:
+    target = target_currency(settings)
     entries: list[ReportEntry] = []
     errors: dict[str, str] = {}
-    for sym in symbols:
+    for w in storage.watchlist():
+        sym = w["symbol"]
         try:
-            df = market.get_history(sym, settings.history_period, "1d")
+            df = market.get_history(sym, settings.history_period, "1d", currency=target)
             a = analysis.analyze(sym, df)
             items = news.fetch_news(sym, settings.finnhub_api_key, settings.news_lookback_days)
             rec = analysis.recommend(a, news.aggregate_sentiment(items), settings.news_weight / 100)
-            entries.append(ReportEntry(rec, a, items[:3]))
+            native = w.get("currency")
+            if native is None and w.get("exchange") is None:
+                native = market.guess_listing(sym)[1]
+            entries.append(ReportEntry(rec, a, items[:3], market.shown_currency(native, target),
+                                       w.get("name"), w.get("exchange")))
         except Exception as exc:  # noqa: BLE001
             log.warning("Report für %s fehlgeschlagen: %s", sym, exc)
             errors[sym] = str(exc)

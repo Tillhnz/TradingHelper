@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Empty, ErrorText, Loading } from "../components/ui.jsx";
-import { dateTime } from "../fmt.js";
+import { CURRENCY_LABEL, dateTime } from "../fmt.js";
 
 const PARAM_LABEL = {
   value: "Wert", period: "Periode", fast: "Schneller MA", slow: "Langsamer MA", type: "Art",
@@ -21,13 +21,14 @@ export default function Alerts() {
   const [log, setLog] = useState([]);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
-  const [form, setForm] = useState({ symbol: search.get("symbol") || "", kind: "rsi_below", interval: "1d", once: false, params: {} });
+  const [form, setForm] = useState({ symbol: search.get("symbol") || "", kind: "rsi_below", interval: "1d", once: false, params: {}, currency: null });
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const [k, a, l] = await Promise.all([api.get("/alerts/kinds"), api.get("/alerts"), api.get("/alerts/log?limit=30")]);
       setMeta(k);
+      setForm((f) => (f.currency === null ? { ...f, currency: k.display_currency === "native" ? "" : k.display_currency } : f));
       setList(a);
       setLog(l);
     } catch (e) {
@@ -38,6 +39,8 @@ export default function Alerts() {
   useEffect(() => { load(); }, [load]);
 
   const kind = useMemo(() => meta?.kinds.find((k) => k.name === form.kind), [meta, form.kind]);
+  // Nur Kurs-Bedingungen haben Werte in einer Währung (RSI, MACD usw. sind währungsunabhängig genug)
+  const priceKind = ["price_above", "price_below", "cross_up", "cross_down"].includes(form.kind);
   const kindDesc = useMemo(() => Object.fromEntries((meta?.kinds || []).map((k) => [k.name, k.description])), [meta]);
 
   function setParam(key, value) {
@@ -51,7 +54,7 @@ export default function Alerts() {
     setMsg("");
     const params = Object.fromEntries(Object.entries(form.params).filter(([k, v]) => v !== "" && v !== undefined && kind.params[k] !== undefined));
     try {
-      await api.post("/alerts", { symbol: form.symbol, kind: form.kind, interval: form.interval, once: form.once, params });
+      await api.post("/alerts", { symbol: form.symbol, kind: form.kind, interval: form.interval, once: form.once, params, currency: priceKind ? form.currency || "" : "" });
       setForm((f) => ({ ...f, params: {} }));
       setMsg("Alarm angelegt.");
       await load();
@@ -135,6 +138,15 @@ export default function Alerts() {
                 )}
               </label>
             ))}
+            {priceKind && (
+              <label>
+                Währung des Werts
+                <select value={form.currency ?? ""} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
+                  <option value="">{CURRENCY_LABEL.native} des Symbols</option>
+                  {meta.currencies.map((c) => <option key={c} value={c}>{CURRENCY_LABEL[c] || c}</option>)}
+                </select>
+              </label>
+            )}
             <label>
               Kerzen
               <select value={form.interval} onChange={(e) => setForm({ ...form, interval: e.target.value })}>
@@ -167,7 +179,7 @@ export default function Alerts() {
                   <td className="sym">{a.symbol}</td>
                   <td>
                     {kindDesc[a.kind] || a.kind}
-                    {Object.keys(a.params).length > 0 && <span className="muted small"> · {describeParams(a.params)}</span>}
+                    {Object.keys(a.params).length > 0 && <span className="muted small"> · {describeParams(a.params)}{["price_above", "price_below", "cross_up", "cross_down"].includes(a.kind) && (a.currency || a.native_currency) ? ` ${a.currency || a.native_currency}` : ""}</span>}
                     {a.once && <span className="muted small"> · einmalig</span>}
                   </td>
                   <td className="hide-sm">{INTERVAL_LABEL[a.interval] || a.interval}</td>

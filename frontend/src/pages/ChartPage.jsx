@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import PriceChart from "../components/PriceChart.jsx";
 import { ActionBadge, ErrorText, Loading, Stat } from "../components/ui.jsx";
-import { dateTime, num, pct, price, signed, tone } from "../fmt.js";
+import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
 
 // Yahoo liefert Intraday-Daten nur für begrenzte Zeiträume
 const PERIODS = {
@@ -24,6 +24,8 @@ export default function ChartPage() {
   const [period, setPeriod] = useState("1y");
   const [showSma, setShowSma] = useState(true);
   const [showBb, setShowBb] = useState(false);
+  const [ccy, setCcy] = useState(null); // null = Einstellung
+  const [meta, setMeta] = useState(null);
   const [rows, setRows] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [watch, setWatch] = useState([]);
@@ -50,15 +52,15 @@ export default function ChartPage() {
     setRows(null);
     setAnalysis(null);
     setError("");
-    const q = `period=${period}&interval=${interval}`;
+    const q = `period=${period}&interval=${interval}${ccy ? `&currency=${ccy}` : ""}`;
     api.get(`/history/${encodeURIComponent(symbol)}?${q}`)
-      .then((r) => { if (!stop) setRows(r.rows); })
+      .then((r) => { if (!stop) { setRows(r.rows); setMeta(r); } })
       .catch((e) => { if (!stop) setError(e.message); });
     api.get(`/analysis/${encodeURIComponent(symbol)}?${q}`)
       .then((a) => { if (!stop) setAnalysis(a); })
       .catch(() => {});
     return () => { stop = true; };
-  }, [symbol, period, interval]);
+  }, [symbol, period, interval, ccy]);
 
   const levels = useMemo(() => (analysis ? [
     { price: analysis.support, color: "#6fd3c3", title: "Unterstützung" },
@@ -86,6 +88,9 @@ export default function ChartPage() {
   }
 
   const m = analysis?.metrics || {};
+  const cur = meta?.currency;
+  const p = (v) => money(v, cur);
+  const ccyValue = ccy || meta?.display_currency || "native";
   const rec = analysis?.recommendation;
 
   return (
@@ -95,9 +100,15 @@ export default function ChartPage() {
           <h1>{symbol || "Chart"}</h1>
           {analysis && (
             <span className="chart-quote">
-              <strong>{price(analysis.last_close)}</strong>
+              <strong>{p(analysis.last_close)}</strong>
               <span className={tone(analysis.change_pct_1d)}>{pct(analysis.change_pct_1d)}</span>
             </span>
+          )}
+          {meta && (meta.name || meta.exchange) && (
+            <p className="muted chart-sub">
+              {[meta.name, meta.exchange && `${meta.exchange}${meta.native_currency ? ` (${meta.native_currency})` : ""}`].filter(Boolean).join(" · ")}
+              {meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}
+            </p>
           )}
         </div>
         <form className="symbol-form" onSubmit={go}>
@@ -116,6 +127,13 @@ export default function ChartPage() {
         <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Zeitraum">
           {PERIODS[interval].map((p) => <option key={p} value={p}>{LABEL[p]}</option>)}
         </select>
+        {meta?.native_currency && (
+          <select value={ccyValue} onChange={(e) => setCcy(e.target.value)} aria-label="Währung">
+            {["native", "EUR", "USD", "CHF", "GBP"].map((c) => (
+              <option key={c} value={c}>{c === "native" ? `${CURRENCY_LABEL.native} (${meta.native_currency})` : CURRENCY_LABEL[c]}</option>
+            ))}
+          </select>
+        )}
         <label className="check"><input type="checkbox" checked={showSma} onChange={(e) => setShowSma(e.target.checked)} /> SMA 20/50/200</label>
         <label className="check"><input type="checkbox" checked={showBb} onChange={(e) => setShowBb(e.target.checked)} /> Bollinger</label>
         <span className="toolbar-gap" />
@@ -168,12 +186,12 @@ export default function ChartPage() {
               <Stat label="Stoch %K" value={num(m.stoch_k, 1)} />
               <Stat label="Bollinger %B" value={num(m.bb_pctb, 2)} />
               <Stat label="ATR" value={`${num(m.atr_pct, 2)} %`} />
-              <Stat label="SMA 50" value={price(m.sma50)} />
-              <Stat label="SMA 200" value={price(m.sma200)} />
+              <Stat label="SMA 50" value={p(m.sma50)} />
+              <Stat label="SMA 200" value={p(m.sma200)} />
               <Stat label="1 Monat" value={pct(m.perf_1m, 1)} className={tone(m.perf_1m)} />
               <Stat label="3 Monate" value={pct(m.perf_3m, 1)} className={tone(m.perf_3m)} />
-              <Stat label="Unterstützung" value={price(analysis.support)} />
-              <Stat label="Widerstand" value={price(analysis.resistance)} />
+              <Stat label="Unterstützung" value={p(analysis.support)} />
+              <Stat label="Widerstand" value={p(analysis.resistance)} />
             </div>
           </section>
           <section className="panel span-all">
