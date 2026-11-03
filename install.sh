@@ -100,6 +100,7 @@ setup_env() {
     set_env SECRET_KEY "$(random_hex 32)"
     ok ".env mit zufälligem Schlüssel angelegt."
   fi
+  set_env PROJECT_DIR "$APP_DIR"
   mkdir -p "$APP_DIR/data" "$APP_DIR/backups"
   as_root chown "$DATA_UID:$DATA_UID" "$APP_DIR/data"
 }

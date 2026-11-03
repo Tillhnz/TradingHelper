@@ -46,6 +46,8 @@ jobs:
           bash -n install.sh
           bash -n proxmox/tradehelper-lxc.sh
           SECRET_KEY=x docker compose config -q
+          # Datenordner muss als absoluter Pfad aufgelöst werden, auch wenn Compose woanders läuft (Update-Dienst)
+          SECRET_KEY=x PROJECT_DIR=/srv/th docker compose -f docker-compose.yml --project-directory /tmp config | grep -q "source: /srv/th/data"
       - name: nginx-Konfiguration prüfen
         run: |
           docker run --rm --add-host backend:127.0.0.1 \
@@ -54,11 +56,18 @@ jobs:
             nginx:1.27-alpine nginx -t
       - name: Kompletter Stack startet
         run: |
-          echo "SECRET_KEY=ci-secret" > .env
+          printf 'SECRET_KEY=ci-secret\nPROJECT_DIR=%s\n' "$PWD" > .env
           mkdir -p data && sudo chown 10001:10001 data
           docker compose up -d --build
           for i in $(seq 1 60); do curl -fsS localhost:8080/api/health && break; sleep 3; done
           curl -fsS localhost:8080/api/auth/status
           curl -fsS localhost:8080/ | grep -q TradeHelper
+          curl -fsS -X POST localhost:8080/api/auth/setup -H 'Content-Type: application/json' -d '{"username":"ci","password":"geheim123"}'
+          test -f data/tradehelper.db
+      - name: Neuanlegen durch den Update-Dienst behält Daten und Verbindung
+        run: |
+          docker compose exec -T updater sh -c 'docker compose -p "$(docker inspect -f "{{ index .Config.Labels \"com.docker.compose.project\" }}" "$HOSTNAME")" --project-directory /project up -d --force-recreate backend'
+          for i in $(seq 1 40); do curl -fsS localhost:8080/api/health && break; sleep 3; done
+          curl -fsS localhost:8080/api/auth/status | grep -q '"setup_required":false'
           docker compose logs --tail 50
           docker compose down

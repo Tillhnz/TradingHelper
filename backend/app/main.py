@@ -33,7 +33,11 @@ def get_storage() -> Storage:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    st = get_storage()
+    try:
+        st = get_storage()
+    except Exception:
+        log.exception("Datenbank %s lässt sich nicht öffnen. Ist der Ordner beschreibbar (Benutzer 10001)?", settings.db_path)
+        raise
     settings_store.apply_overrides(st, settings)
     if settings.scheduler_enabled:
         scheduler.start(st, settings)
@@ -90,7 +94,11 @@ class PasswordChange(BaseModel):
 
 
 @app.get("/api/health")
-def health():
+def health(st: Storage = Depends(get_storage)):
+    try:
+        st.user_count()  # prüft, dass die Datenbank wirklich nutzbar ist (sonst würde ein Update nicht zurückrollen)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"Datenbank nicht nutzbar: {exc}") from exc
     return {"status": "ok", "version": __version__}
 
 

@@ -33,8 +33,26 @@ lock = threading.Lock()
 job = {"state": "idle", "log": "", "started": None, "error": None, "before": None}
 
 
+_host_dir = None
+
+
+def host_dir():
+    """Pfad des Projektordners auf dem Server (Quelle des Mounts /project). Docker Compose braucht ihn, damit
+    Ordner wie ./data beim Neuanlegen der Container auf den echten Ordner zeigen und nicht auf /project/data."""
+    global _host_dir
+    if _host_dir is None:
+        p = subprocess.run(
+            ["docker", "inspect", "-f", '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}',
+             os.environ.get("HOSTNAME", "")], capture_output=True, text=True, timeout=20)
+        _host_dir = p.stdout.strip() or os.environ.get("PROJECT_DIR", "")
+    return _host_dir
+
+
 def run(cmd, timeout=1800, log=False):
-    p = subprocess.run(cmd, cwd=PROJECT, capture_output=True, text=True, timeout=timeout)
+    env = dict(os.environ)
+    if cmd[:1] == ["docker"] and host_dir():
+        env["PROJECT_DIR"] = host_dir()
+    p = subprocess.run(cmd, cwd=PROJECT, capture_output=True, text=True, timeout=timeout, env=env)
     out = (p.stdout or "") + (p.stderr or "")
     if log:
         job["log"] = (job["log"] + f"$ {' '.join(cmd)}\n{out}\n")[-20000:]
@@ -137,6 +155,8 @@ def status(check):
 
 def do_update():
     try:
+        if not host_dir():
+            raise RuntimeError("Der Projektordner auf dem Server wurde nicht gefunden. Bitte einmal im Terminal: ./install.sh update")
         base = compose_base()
         _, before = run(["git", "rev-parse", "HEAD"], 20)
         job["before"] = before

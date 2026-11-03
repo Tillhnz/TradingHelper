@@ -9,7 +9,8 @@ services:
       TH_TIMEZONE: ${TIMEZONE:-Europe/Berlin}
       TZ: ${TIMEZONE:-Europe/Berlin}
     volumes:
-      - ./data:/data
+      # Absoluter Pfad, damit der Ordner auch stimmt, wenn der Update-Dienst den Container neu anlegt
+      - ${PROJECT_DIR:-.}/data:/data
 
   # Führt Updates aus der Administration aus. Kein veröffentlichter Port, nur das Backend erreicht ihn (mit Token).
   # Der Zugriff auf den Docker-Socket entspricht Root-Rechten auf dem Server. Wer das nicht möchte, entfernt
@@ -19,6 +20,7 @@ services:
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY}
+      PROJECT_DIR: ${PROJECT_DIR:-}
       TZ: ${TIMEZONE:-Europe/Berlin}
     volumes:
       - .:/project
