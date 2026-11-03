@@ -15,11 +15,14 @@ export function RiskBar({ entry, stop, target, current, currency }) {
   if (!entry) return null;
   const lo = Math.min(...[stop, entry, current].filter(Boolean)) * 0.995;
   const hi = Math.max(...[target, entry, current, entry * 1.02].filter(Boolean)) * 1.005;
-  const x = (v) => `${((v - lo) / (hi - lo)) * 100}%`;
+  const pos = (v) => ((v - lo) / (hi - lo)) * 100;
+  const x = (v) => `${pos(v)}%`;
+  // Beschriftung am Rand nach innen schieben, damit sie nicht aus dem Balken ragt
+  const shift = (v) => (pos(v) > 80 ? "translateX(-100%)" : pos(v) < 20 ? "none" : "translateX(-50%)");
   return (
     <div className="riskbar" aria-hidden="true">
       <div className="riskbar-top small">
-        <span style={{ left: x(entry) }} className="amber">Kauf {money(entry, currency)}</span>
+        <span style={{ left: x(entry), transform: shift(entry) }} className="amber">Kauf {money(entry, currency)}</span>
       </div>
       <div className="riskbar-track">
         {stop && <div className="riskbar-loss" style={{ left: x(stop), width: `calc(${x(entry)} - ${x(stop)})` }} />}
