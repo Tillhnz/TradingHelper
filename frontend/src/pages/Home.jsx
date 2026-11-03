@@ -116,7 +116,7 @@ export default function Home() {
                 {e.holding.advice && <span className={`advice-inline ${e.holding.advice.level}`}>{e.holding.advice.text}</span>}
               </Link>
             )}
-            <Levels rec={e} currency={e.currency} />
+            {!e.holding?.shares && <Levels rec={e} currency={e.currency} />}
             {!e.holding?.shares && e.entry && e.action !== "Kaufen prüfen" && (
               <p className="entry-line small"><Link to={`/chart/${encodeURIComponent(e.symbol)}`}>Einstieg</Link>: {e.entry.summary}</p>
             )}
