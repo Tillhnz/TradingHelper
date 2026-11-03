@@ -88,3 +88,25 @@ def test_position_size_helper():
     p = Profile(portfolio_size=20_000)
     assert analysis.position_size(p, 100.0, 95.0)["shares"] == 20  # 200 € Risiko / 5 € = 40, Deckel 10 % = 20
     assert analysis.position_size(p, 100.0, None) is None
+
+
+def test_summarize_lots_and_advice(fake_market):
+    p = Profile()
+    lots = [portfolio.evaluate(_pos("AAA", fake_market, 100.0, qty=10, stop=95.0), p),
+            portfolio.evaluate(_pos("AAA", fake_market + timedelta(days=20), 110.0, qty=10), p),
+            portfolio.evaluate(_pos("AAA", fake_market, 100.0, qty=5, sell_price=120.0,
+                                    sell_date=date.today().isoformat()), p)]
+    s = portfolio.summarize(lots)
+    assert s["shares"] == 20 and s["lots"] == 2 and s["closed_lots"] == 1
+    assert s["avg_price"] == 105.0 and s["value"] == 2600.0 and s["pl"] == 500.0
+    assert s["realized"] == 100.0 and s["stop"] == 95.0 and s["currency"] == "EUR"
+    assert s["advice"]["text"].startswith("Halten")
+
+
+def test_advice_priorities():
+    stop_hit = [{"stop": 90, "hints": [{"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"}]}]
+    assert portfolio.advice(stop_hit, analysis.BUY)["text"].startswith("Stopp erreicht")
+    assert portfolio.advice([{"stop": 90, "hints": []}], analysis.SELL)["level"] == "bad"
+    assert portfolio.advice([{"stop": 90, "hints": []}], analysis.BUY)["text"] == "Halten – Nachkauf möglich"
+    assert "Stopp hinterlegen" in portfolio.advice([{"stop": None, "hints": []}], analysis.HOLD)["text"]
+    assert portfolio.summarize([]) is None

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { ActionBadge, Empty, ErrorText, Loading } from "../components/ui.jsx";
-import { dateTime, money, pct, signed, tone } from "../fmt.js";
+import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
 
 export function Levels({ rec, currency }) {
   if (!rec.stop && !rec.target) return null;
@@ -109,8 +109,15 @@ export default function Home() {
             <ul className="reasons">
               {e.reasons.map((r) => <li key={r}>{r}</li>)}
             </ul>
+            {e.holding?.shares > 0 && (
+              <Link to={`/chart/${encodeURIComponent(e.symbol)}`} className="home-holding">
+                <span>💼 Im Depot: {num(e.holding.shares, e.holding.shares % 1 ? 3 : 0)} Stück</span>
+                {e.holding.pl != null && <strong className={tone(e.holding.pl)}>{signedMoney(e.holding.pl, e.holding.currency)} ({pct(e.holding.pl_pct, 1)})</strong>}
+                {e.holding.advice && <span className={`advice-inline ${e.holding.advice.level}`}>{e.holding.advice.text}</span>}
+              </Link>
+            )}
             <Levels rec={e} currency={e.currency} />
-            {e.entry && e.action !== "Kaufen prüfen" && (
+            {!e.holding?.shares && e.entry && e.action !== "Kaufen prüfen" && (
               <p className="entry-line small"><Link to={`/chart/${encodeURIComponent(e.symbol)}`}>Einstieg</Link>: {e.entry.summary}</p>
             )}
             {e.news[0] && (

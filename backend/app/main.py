@@ -274,6 +274,21 @@ def get_news(symbol: str):
 
 # ---------- Watchlist ----------
 
+def _sync_watchlist(st: Storage) -> None:
+    """Werte mit offenen Käufen gehören immer in die Watchlist (und damit in den Morgenreport)."""
+    have = set(st.watchlist_symbols())
+    for sym in {p["symbol"] for p in st.positions(open_only=True)} - have:
+        info = _info(sym)
+        st.add_symbol(sym, "", info.get("name"), info.get("exchange"), info.get("currency"))
+
+
+def _holdings_by_symbol(st: Storage) -> dict[str, dict]:
+    profile = analysis.profile_from(settings)
+    groups: dict[str, list] = {}
+    for p in st.positions():
+        groups.setdefault(p["symbol"], []).append(portfolio.evaluate(p, profile))
+    return {sym: portfolio.summarize(items) for sym, items in groups.items()}
+
 class WatchlistIn(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     note: str = Field(default="", max_length=200)
@@ -287,6 +302,8 @@ def watchlist(st: Storage = Depends(get_storage)):
 @app.get("/api/watchlist/overview", dependencies=auth)
 def watchlist_overview(st: Storage = Depends(get_storage)):
     """Kurs, Tagesänderung und technische Einschätzung je Wert (ohne News, damit es schnell bleibt)."""
+    _sync_watchlist(st)
+    holdings = _holdings_by_symbol(st)
     target = _target(None)
     profile = analysis.profile_from(settings)
     out = []
@@ -307,6 +324,8 @@ def watchlist_overview(st: Storage = Depends(get_storage)):
                        rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"])
         except Exception as exc:  # noqa: BLE001
             row["error"] = str(exc)
+        h = holdings.get(sym)
+        row["holding"] = h if h and h.get("shares") else None
         out.append(row)
     return out
 
@@ -331,6 +350,8 @@ def watchlist_note(symbol: str, item: WatchlistIn, st: Storage = Depends(get_sto
 
 @app.delete("/api/watchlist/{symbol}", dependencies=auth)
 def watchlist_remove(symbol: str, st: Storage = Depends(get_storage)):
+    if st.positions(symbol, open_only=True):
+        raise HTTPException(409, f"{symbol.upper()} ist im Depot und bleibt deshalb in der Watchlist.")
     if not st.remove_symbol(symbol):
         raise HTTPException(404, f"{symbol} ist nicht in der Watchlist")
     return {"removed": symbol.upper()}
@@ -476,6 +497,14 @@ def positions_list(st: Storage = Depends(get_storage)):
     return {"items": items, "totals": totals}
 
 
+@app.get("/api/holdings/{symbol}", dependencies=auth)
+def holding(symbol: str, st: Storage = Depends(get_storage)):
+    """Alles, was du von einem Wert besitzt oder besessen hast: Käufe mit Auswertung und Zusammenfassung."""
+    profile = analysis.profile_from(settings)
+    items = [portfolio.evaluate(p, profile) for p in st.positions(symbol)]
+    return {"symbol": symbol.upper(), "items": items, "summary": portfolio.summarize(items)}
+
+
 @app.get("/api/positions/history", dependencies=auth)
 def positions_history(st: Storage = Depends(get_storage)):
     return portfolio.history(st.positions(), _total_currency())
@@ -491,6 +520,7 @@ def position_add(item: PositionIn, st: Storage = Depends(get_storage)):
     if data["stop"] and data["stop"] >= data["buy_price"]:
         raise HTTPException(422, "Der Stopp muss unter dem Kaufkurs liegen")
     pid = st.add_position(data)
+    _sync_watchlist(st)
     created = []
     if create_alerts:
         if data["stop"]:
@@ -533,6 +563,7 @@ def position_remove(pos_id: int, st: Storage = Depends(get_storage)):
 
 @app.get("/api/report", dependencies=auth)
 def report(st: Storage = Depends(get_storage)):
+    _sync_watchlist(st)
     return build_report(st, settings).to_dict()
 
 

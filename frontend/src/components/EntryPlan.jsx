@@ -7,7 +7,7 @@ const KIND_LABEL = { now: "Sofort", pullback: "Rücksetzer", breakout: "Ausbruch
 const PRICE_KINDS = ["price_above", "price_below", "cross_up", "cross_down"];
 
 /** Einstiegsplan: Kursmarken mit Zone, Stopp, Ziel und Warte-Signale, jeweils mit Alarm per Klick. */
-export default function EntryPlan({ symbol, plan, currency, nativeCurrency }) {
+export default function EntryPlan({ symbol, plan, currency, nativeCurrency, held = false }) {
   const [done, setDone] = useState({});
   const [error, setError] = useState("");
   if (!plan) return null;
@@ -34,7 +34,8 @@ export default function EntryPlan({ symbol, plan, currency, nativeCurrency }) {
 
   return (
     <section className="panel span-all">
-      <h2>Einstiegsplan</h2>
+      <h2>{held ? "Nachkauf-Plan" : "Einstiegsplan"}</h2>
+      {held && <p className="muted small">Du hast den Wert schon im Depot. Diese Marken eignen sich zum Aufstocken.</p>}
       <p className="entry-summary">{plan.summary}</p>
       {plan.setups.length > 0 && (
         <div className="setups">

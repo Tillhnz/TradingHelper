@@ -386,3 +386,23 @@ body.modal-open { overflow: hidden; }
   .modal { padding: 1rem; }
   .nav a { padding: 0.35rem 0.2rem; font-size: 0.68rem; }
 }
+
+/* ---------- Bestand ---------- */
+
+.holding { border-top: 3px solid var(--amber); }
+.holding.gain { border-top-color: var(--celeste); }
+.holding.loss { border-top-color: var(--signal); }
+.holding-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.5rem; margin-bottom: 1rem; }
+.holding-pl { display: flex; align-items: baseline; gap: 0.75rem; }
+.holding-pl strong { font-size: 1.8rem; font-family: var(--font-display); }
+.advice { margin: 0; padding: 0.35rem 0.8rem; border-radius: 999px; background: var(--ink-2); border: 1px solid var(--line); font-weight: 500; }
+.advice.bad, .advice-inline.bad, .hint-inline.bad { color: var(--signal); }
+.advice.good, .advice-inline.good { color: var(--celeste); }
+.advice.info, .advice-inline.info, .hint-inline.info { color: var(--amber); }
+.lots { margin-top: 0.5rem; background: var(--ink-2); }
+.hint-inline .link { margin-left: 0.4rem; }
+.held-badge { display: inline-block; margin-top: 0.35rem; font-size: 0.8rem; padding: 0.1rem 0.55rem; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); text-decoration: none; color: var(--chalk); }
+.held-badge.pos { border-color: rgba(111, 211, 195, 0.45); }
+.held-badge.neg { border-color: rgba(255, 107, 107, 0.45); }
+.home-holding { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; background: var(--ink-2); border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 8px; padding: 0.45rem 0.7rem; text-decoration: none; color: var(--chalk); font-size: 0.92rem; }
+.home-holding .advice-inline { flex-basis: 100%; font-size: 0.85rem; }

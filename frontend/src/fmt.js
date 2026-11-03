@@ -53,3 +53,5 @@ export const ACTION_TONE = {
   "Halten / beobachten": "hold",
   "Reduzieren prüfen": "sell",
 };
+
+export const signedMoney = (v, c) => (v == null ? "–" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${money(Math.abs(v), c)}`);

@@ -35,6 +35,7 @@ for (const [path, name, wait] of [["/", "home", 9000], ["/watchlist", "watchlist
 await page.goto(`${base}/chart/AAPL`);
 await page.waitForTimeout(8000);
 await page.screenshot({ path: "shots/chart-top.png" });
+await page.screenshot({ path: "shots/chart-holding.png", fullPage: true });
 await page.getByRole("button", { name: "Kauf erfassen" }).first().click();
 await page.waitForTimeout(2500);
 await page.getByLabel("Stückzahl").fill("10");

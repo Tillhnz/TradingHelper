@@ -6,6 +6,7 @@ import { ActionBadge, ErrorText, Loading, Stat } from "../components/ui.jsx";
 import { Levels } from "./Home.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
 import BuyDialog from "../components/BuyDialog.jsx";
+import HoldingPanel from "../components/HoldingPanel.jsx";
 import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
 
 // Yahoo liefert Intraday-Daten nur für begrenzte Zeiträume
@@ -48,6 +49,14 @@ export default function ChartPage() {
   const [showPos, setShowPos] = useState(true);
   const [buying, setBuying] = useState(false);
   const [tick, setTick] = useState(0);
+  const [holding, setHolding] = useState(null);
+
+  const loadHolding = useCallback(() => {
+    if (!symbol) return;
+    api.get(`/holdings/${encodeURIComponent(symbol)}`).then(setHolding).catch(() => setHolding(null));
+  }, [symbol]);
+  useEffect(() => { setHolding(null); loadHolding(); }, [loadHolding, tick]);
+  const refreshAll = useCallback(() => { setTick((t) => t + 1); }, []);
 
   useEffect(() => {
     api.get("/watchlist").then((w) => {
@@ -145,6 +154,7 @@ export default function ChartPage() {
   const prevRow = rows?.[rows.length - 2];
   const livePrice = interval === "1d" && last ? last.close : analysis?.last_close;
   const liveChange = interval === "1d" && last && prevRow ? (last.close / prevRow.close - 1) * 100 : analysis?.change_pct_1d;
+  const held = holding?.summary?.shares > 0;
   const bestSetup = analysis?.entry?.setups?.find((x) => x.ok && x.status === "now") || analysis?.entry?.setups?.find((x) => x.ok);
 
   return (
@@ -195,10 +205,12 @@ export default function ChartPage() {
         <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => setShowPlan(e.target.checked)} /> Einstiegsplan</label>
         {meta?.positions?.length > 0 && <label className="check"><input type="checkbox" checked={showPos} onChange={(e) => setShowPos(e.target.checked)} /> Meine Käufe</label>}
         <span className="toolbar-gap" />
-        {symbol && <button className="btn small primary" onClick={() => setBuying(true)}>Kauf erfassen</button>}
+        {symbol && <button className="btn small primary" onClick={() => setBuying(true)}>{held ? "Nachkauf erfassen" : "Kauf erfassen"}</button>}
         {symbol && !watch.includes(symbol) && <button className="btn small" onClick={addToWatchlist}>Zur Watchlist</button>}
         {symbol && <Link className="btn small" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>Alarm anlegen</Link>}
       </div>
+
+      <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} />
 
       <ErrorText error={error} />
       {!rows && !error && <Loading text="Lade Kurse …" />}
@@ -221,7 +233,7 @@ export default function ChartPage() {
         <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}
           defaults={{ price: livePrice ? Math.round(livePrice * 100) / 100 : "", stop: bestSetup?.stop ?? rec?.stop ?? "",
             target: bestSetup?.target ?? rec?.target ?? "", quantity: bestSetup?.position?.shares ?? rec?.position?.shares ?? "" }}
-          onClose={() => setBuying(false)} onSaved={() => setTick((t) => t + 1)} />
+          onClose={() => setBuying(false)} onSaved={refreshAll} />
       )}
 
       {analysis && (
@@ -265,7 +277,7 @@ export default function ChartPage() {
               <Stat label="Widerstand" value={p(analysis.resistance)} />
             </div>
           </section>
-          <EntryPlan symbol={symbol} plan={analysis.entry} currency={analysis.currency} nativeCurrency={analysis.native_currency} />
+          <EntryPlan symbol={symbol} plan={analysis.entry} currency={analysis.currency} nativeCurrency={analysis.native_currency} held={held} />
           <section className="panel span-all">
             <h2>Nachrichten</h2>
             {analysis.news.length ? (

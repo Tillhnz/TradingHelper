@@ -139,3 +139,58 @@ def history(positions: list[dict], total_ccy: str | None) -> dict:
         total = total + aligned.fillna(0.0)  # vor dem Kauf zählt die Position nicht
     points = [{"time": int(t.timestamp()), "value": round(float(v), 2)} for t, v in total.items() if not math.isnan(v)]
     return {"currency": total_ccy, "points": points, "errors": errors}
+
+
+def summarize(items: list[dict], action: str | None = None) -> dict | None:
+    """Bestand eines Werts aus allen Käufen: Stückzahl, Durchschnittskurs, G/V, realisiert und ein Rat für Halter.
+
+    items: Ergebnisse von evaluate() für dasselbe Symbol.
+    """
+    if not items:
+        return None
+    open_ = [p for p in items if not p["closed"]]
+    closed = [p for p in items if p["closed"]]
+    ccys = {p["display_currency"] for p in items}
+    ccy = next(iter(ccys)) if len(ccys) == 1 else None
+    out: dict = {"currency": ccy, "mixed_currency": len(ccys) > 1, "lots": len(open_), "closed_lots": len(closed),
+                 "realized": round(sum(p["pl"] or 0 for p in closed), 2) if ccy else None}
+    if not open_:
+        out.update(shares=0, advice=None)
+        return out
+    shares = sum(p["quantity"] for p in open_)
+    invested = sum(p["invested"] for p in open_)
+    priced = [p for p in open_ if p.get("value") is not None]
+    value = sum(p["value"] for p in priced) if len(priced) == len(open_) else None
+    out.update(
+        shares=shares, invested=round(invested, 2), avg_price=round(invested / shares, 4) if shares else None,
+        price=open_[-1].get("price"), value=round(value, 2) if value is not None else None,
+        pl=round(value - invested, 2) if value is not None else None,
+        pl_pct=round((value / invested - 1) * 100, 2) if value is not None and invested else None,
+        stop=min((p["stop"] for p in open_ if p.get("stop")), default=None),
+        target=max((p["target"] for p in open_ if p.get("target")), default=None),
+        since=min(p["buy_date"] for p in open_),
+    )
+    if not ccy:
+        for k in ("invested", "avg_price", "value", "pl"):
+            out[k] = None
+    out["advice"] = advice(open_, action or open_[-1].get("action"))
+    return out
+
+
+def advice(open_: list[dict], action: str | None) -> dict:
+    """Ein klarer Satz für den Halter, abgeleitet aus Einschätzung und den Hinweisen der Käufe."""
+    texts = [h["text"] for p in open_ for h in p.get("hints", [])]
+    if any(t.startswith("Stopp erreicht") for t in texts):
+        return {"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"}
+    if action == analysis.SELL:
+        return {"level": "bad", "text": "Signale negativ – Bestand reduzieren oder Stopp eng setzen"}
+    if any(t.startswith("Ziel erreicht") for t in texts):
+        return {"level": "good", "text": "Ziel erreicht – Gewinne sichern oder Stopp nachziehen"}
+    trail = next((h for p in open_ for h in p.get("hints", []) if h.get("suggested_stop")), None)
+    if action == analysis.BUY:
+        return {"level": "good", "text": "Halten – Nachkauf möglich" + (f"; {trail['text']}" if trail else "")}
+    if trail:
+        return {"level": "info", "text": f"Halten – {trail['text']}"}
+    if not all(p.get("stop") for p in open_):
+        return {"level": "info", "text": "Halten – Stopp hinterlegen, um Verluste zu begrenzen"}
+    return {"level": "info", "text": "Halten"}

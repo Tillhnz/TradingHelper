@@ -2,14 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import SymbolSearch from "../components/SymbolSearch.jsx";
+import BuyDialog from "../components/BuyDialog.jsx";
 import { ActionBadge, Empty, ErrorText, Loading, Sparkline } from "../components/ui.jsx";
-import { money, num, pct, tone } from "../fmt.js";
+import { money, num, pct, signedMoney, tone } from "../fmt.js";
 
 export default function Watchlist() {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState("");
+  const [buying, setBuying] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,6 +100,12 @@ export default function Watchlist() {
                         {r.exchange && <span>{r.exchange}{r.native_currency ? ` · ${r.native_currency}` : ""}</span>}
                         {r.note && <span>„{r.note}“</span>}
                       </div>
+                      {r.holding && (
+                        <Link to={`/chart/${encodeURIComponent(r.symbol)}`} className={`held-badge ${tone(r.holding.pl)}`}>
+                          💼 {num(r.holding.shares, r.holding.shares % 1 ? 3 : 0)} Stück
+                          {r.holding.pl != null && <> · {signedMoney(r.holding.pl, r.holding.currency)} ({pct(r.holding.pl_pct, 1)})</>}
+                        </Link>
+                      )}
                     </td>
                     {r.error ? (
                       <td colSpan={5} className="error small">{r.error}</td>
@@ -109,13 +117,16 @@ export default function Watchlist() {
                         <td className="num hide-sm">{num(r.rsi, 0)}</td>
                         <td>
                           <ActionBadge action={r.action} />
-                          {r.entry && r.action !== "Kaufen prüfen" && <div className="muted small cell-entry">{r.entry}</div>}
+                          {r.holding?.advice ? (
+                            <div className={`small cell-entry advice-inline ${r.holding.advice.level}`}>{r.holding.advice.text}</div>
+                          ) : r.entry && r.action !== "Kaufen prüfen" && <div className="muted small cell-entry">{r.entry}</div>}
                         </td>
                       </>
                     )}
                     <td className="row-actions">
+                      <button className="link small" onClick={() => setBuying(r.symbol)}>{r.holding ? "Nachkauf" : "Kauf"}</button>
                       <Link className="link small" to={`/alerts?symbol=${encodeURIComponent(r.symbol)}`}>Alarm</Link>
-                      <button className="link danger small" onClick={() => remove(r.symbol)}>Entfernen</button>
+                      {!r.holding && <button className="link danger small" onClick={() => remove(r.symbol)}>Entfernen</button>}
                     </td>
                   </tr>
                 ))}
@@ -124,6 +135,7 @@ export default function Watchlist() {
           </div>
         </>
       )}
+      {buying && <BuyDialog symbol={buying} onClose={() => setBuying(null)} onSaved={load} />}
     </>
   );
 }

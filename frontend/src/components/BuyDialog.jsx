@@ -56,6 +56,9 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
 
   useEffect(() => {
     api.get("/settings").then((r) => setDepot(Number(r.fields.portfolio_size?.value || 0))).catch(() => {});
+    // Aus Watchlist oder Depot geöffnet: Kurs, Währung und Plan selbst laden
+    if (fixedSymbol && !info.native_currency && !info.price) pick({ symbol: fixedSymbol });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function pick(r) {

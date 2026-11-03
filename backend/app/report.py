@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import analysis, entry, market, news, notify
+from . import analysis, entry, market, news, notify, portfolio
 from .config import Settings
 from .storage import Storage
 
@@ -25,6 +25,7 @@ class ReportEntry:
     name: str | None = None
     exchange: str | None = None
     plan: dict | None = None
+    holding: dict | None = None
 
 
 @dataclass
@@ -57,7 +58,12 @@ class Report:
             if r.position:
                 lines.append(f"  • Positionsgröße: {r.position['shares']} Stück ≈ {r.position['value']:.0f}{ccy}, "
                              f"Risiko {r.position['risk']:.0f}{ccy} ({r.position['risk_pct']} % des Depots)")
-            if e.plan and r.action != analysis.BUY:
+            h = e.holding
+            if h and h.get("shares"):
+                hc = f" {h['currency']}" if h.get("currency") else ""
+                pl = f", {h['pl']:+.2f}{hc} ({h['pl_pct']:+.1f} %)" if h.get("pl") is not None else ""
+                lines.append(f"  • 💼 Im Depot: {h['shares']:g} Stück{pl} → {h['advice']['text']}")
+            elif e.plan and r.action != analysis.BUY:
                 lines.append(f"  • {e.plan['summary']}")
             if e.headlines:
                 lines.append(f"  • News: {e.headlines[0].headline[:110]}")
@@ -88,6 +94,7 @@ class Report:
                     "name": e.name,
                     "exchange": e.exchange,
                     "entry": e.plan,
+                    "holding": e.holding,
                 }
                 for e in self.entries
             ],
@@ -105,6 +112,9 @@ def target_currency(settings: Settings) -> str | None:
 def build_report(storage: Storage, settings: Settings) -> Report:
     target = target_currency(settings)
     profile = analysis.profile_from(settings)
+    lots: dict[str, list] = {}
+    for p in storage.positions():
+        lots.setdefault(p["symbol"], []).append(p)
     entries: list[ReportEntry] = []
     errors: dict[str, str] = {}
     for w in storage.watchlist():
@@ -118,8 +128,11 @@ def build_report(storage: Storage, settings: Settings) -> Report:
             if native is None and w.get("exchange") is None:
                 native = market.guess_listing(sym)[1]
             shown = market.shown_currency(native, target)
+            holding = None
+            if lots.get(sym):
+                holding = portfolio.summarize([portfolio.evaluate(p, profile) for p in lots[sym]], rec.action)
             entries.append(ReportEntry(rec, a, items[:3], shown, w.get("name"), w.get("exchange"),
-                                       entry.plan(a, rec, currency=shown)))
+                                       entry.plan(a, rec, currency=shown), holding))
         except Exception as exc:  # noqa: BLE001
             log.warning("Report für %s fehlgeschlagen: %s", sym, exc)
             errors[sym] = str(exc)

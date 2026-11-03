@@ -155,3 +155,19 @@ def test_positions_crud_and_chart(client, monkeypatch):
     assert client.patch(f"/api/positions/{pid}", json={"reopen": True}, headers=h).json()["sell_date"] is None
     assert client.get("/api/positions/history", headers=h).status_code == 200
     assert client.delete(f"/api/positions/{pid}", headers=h).status_code == 200
+
+
+def test_holding_joins_watchlist(client):
+    h = _login(client)
+    assert client.post("/api/positions", json={"symbol": "MSFT", "quantity": 3, "buy_price": 100,
+                                               "buy_date": "2025-06-02", "stop": 90}, headers=h).status_code == 201
+    assert "MSFT" in [w["symbol"] for w in client.get("/api/watchlist", headers=h).json()]
+    ov = client.get("/api/watchlist/overview", headers=h).json()
+    row = next(r for r in ov if r["symbol"] == "MSFT")
+    assert row["holding"]["shares"] == 3 and row["holding"]["advice"]["text"]
+    assert client.delete("/api/watchlist/MSFT", headers=h).status_code == 409
+    hold = client.get("/api/holdings/MSFT", headers=h).json()
+    assert hold["summary"]["shares"] == 3 and len(hold["items"]) == 1
+    rep = client.get("/api/report", headers=h).json()
+    assert next(e for e in rep["entries"] if e["symbol"] == "MSFT")["holding"]["shares"] == 3
+    assert client.get("/api/holdings/NONE", headers=h).json()["summary"] is None
