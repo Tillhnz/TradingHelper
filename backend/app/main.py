@@ -165,6 +165,8 @@ def _info(symbol: str) -> dict:
 
 
 def _history(symbol: str, period: str, interval: str, target: str | None = None):
+    if interval in market.INTRADAY and not market.supports_intraday(symbol):
+        raise HTTPException(422, "Für gettex gibt es nur Tages- und Wochenkerzen.")
     try:
         return market.get_history(symbol, period, interval, currency=target)
     except market.MarketDataError as exc:
@@ -175,6 +177,7 @@ def _meta(symbol: str, target: str | None) -> dict:
     info = _info(symbol)
     t = market.last_trade_time(symbol)
     return {
+        "ticker": info.get("ticker"), "isin": info.get("isin"), "intraday": market.supports_intraday(symbol),
         "name": info.get("name"), "exchange": info.get("exchange"), "native_currency": info.get("currency"),
         "currency": market.shown_currency(info.get("currency"), target),
         "display_currency": settings.display_currency,
@@ -279,7 +282,7 @@ def _sync_watchlist(st: Storage) -> None:
     have = set(st.watchlist_symbols())
     for sym in {p["symbol"] for p in st.positions(open_only=True)} - have:
         info = _info(sym)
-        st.add_symbol(sym, "", info.get("name"), info.get("exchange"), info.get("currency"))
+        st.add_symbol(sym, "", info.get("name"), info.get("exchange"), info.get("currency"), info.get("ticker"))
 
 
 def _holdings_by_symbol(st: Storage) -> dict[str, dict]:
@@ -313,7 +316,7 @@ def watchlist_overview(st: Storage = Depends(get_storage)):
             info = _info(sym)
             st.update_meta(sym, info.get("name"), info.get("exchange"), info.get("currency"))
             w.update(name=info.get("name"), exchange=info.get("exchange"), currency=info.get("currency"))
-        row = {"symbol": sym, "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
+        row = {"symbol": sym, "ticker": w.get("ticker"), "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
                "native_currency": w.get("currency"), "currency": market.shown_currency(w.get("currency"), target)}
         try:
             df = market.get_history(sym, profile.period, "1d", currency=target)
@@ -337,7 +340,7 @@ def watchlist_add(item: WatchlistIn, st: Storage = Depends(get_storage)):
         info = market.symbol_info(sym)
     except market.MarketDataError as exc:
         raise HTTPException(404, f"{sym}: keine Kursdaten gefunden. Wert am besten über die Suche auswählen.") from exc
-    st.add_symbol(sym, item.note, info.get("name"), info.get("exchange"), info.get("currency"))
+    st.add_symbol(sym, item.note, info.get("name"), info.get("exchange"), info.get("currency"), info.get("ticker"))
     return {"added": sym, **info}
 
 
@@ -395,6 +398,8 @@ def alert_list(st: Storage = Depends(get_storage)):
 def alert_add(item: AlertIn, st: Storage = Depends(get_storage)):
     if item.interval not in INTERVALS:
         raise HTTPException(422, f"Intervall muss eines von {', '.join(INTERVALS)} sein")
+    if item.interval in market.INTRADAY and not market.supports_intraday(item.symbol):
+        raise HTTPException(422, "Für gettex-Werte gibt es Alarme nur auf Tages- oder Wochenkerzen.")
     if item.currency and item.currency not in market.CURRENCIES:
         raise HTTPException(422, f"Währung muss leer oder eine von {', '.join(market.CURRENCIES)} sein")
     try:

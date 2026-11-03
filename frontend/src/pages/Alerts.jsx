@@ -150,7 +150,7 @@ export default function Alerts() {
             <label>
               Kerzen
               <select value={form.interval} onChange={(e) => setForm({ ...form, interval: e.target.value })}>
-                {meta.intervals.map((iv) => <option key={iv} value={iv}>{INTERVAL_LABEL[iv] || iv}</option>)}
+                {meta.intervals.filter((iv) => !form.symbol.endsWith(".GTX") || ["1d", "1wk"].includes(iv)).map((iv) => <option key={iv} value={iv}>{INTERVAL_LABEL[iv] || iv}</option>)}
               </select>
             </label>
             <label className="check">

@@ -1,9 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, LineStyle } from "lightweight-charts";
+import { LockButton } from "./PriceChart.jsx";
 
-/** Gewinn/Verlust über die Zeit: Fläche über null grün, darunter rot. */
+/** Gewinn/Verlust über die Zeit: Fläche über null grün, darunter rot. Gesperrt, bis man entsperrt. */
 export default function PnlChart({ points, height = 260 }) {
   const ref = useRef(null);
+  const chartRef = useRef(null);
+  const [locked, setLocked] = useState(true);
+
+  useEffect(() => {
+    chartRef.current?.applyOptions({ handleScroll: !locked, handleScale: !locked });
+  }, [locked]);
+
   useEffect(() => {
     if (!points?.length) return undefined;
     const chart = createChart(ref.current, {
@@ -12,7 +20,10 @@ export default function PnlChart({ points, height = 260 }) {
       grid: { vertLines: { color: "#1b2a3a" }, horzLines: { color: "#1b2a3a" } },
       rightPriceScale: { borderColor: "#263749" },
       timeScale: { borderColor: "#263749" },
+      handleScroll: false,
+      handleScale: false,
     });
+    chartRef.current = chart;
     const s = chart.addBaselineSeries({
       baseValue: { type: "price", price: 0 },
       topLineColor: "#6fd3c3", topFillColor1: "rgba(111, 211, 195, 0.35)", topFillColor2: "rgba(111, 211, 195, 0.04)",
@@ -22,7 +33,13 @@ export default function PnlChart({ points, height = 260 }) {
     s.setData(points);
     s.createPriceLine({ price: 0, color: "#5d7389", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false });
     chart.timeScale().fitContent();
-    return () => chart.remove();
+    return () => { chart.remove(); chartRef.current = null; };
   }, [points]);
-  return <div ref={ref} style={{ height }} />;
+
+  return (
+    <div className={`chart-stack ${locked ? "is-locked" : "is-unlocked"}`}>
+      <LockButton locked={locked} onToggle={() => setLocked((l) => !l)} />
+      <div ref={ref} style={{ height }} />
+    </div>
+  );
 }

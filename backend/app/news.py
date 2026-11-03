@@ -56,9 +56,35 @@ def finnhub_symbol(symbol: str) -> str:
     return symbol.split(".")[0].replace("-", ".") if not symbol.startswith("^") else symbol
 
 
+_LOOKUP: dict[str, str | None] = {}
+
+
+def _lookup_isin(isin: str, api_key: str) -> str | None:
+    """Finnhub-Ticker zu einer ISIN (für gettex-Werte, die über die ISIN geführt werden)."""
+    if isin in _LOOKUP:
+        return _LOOKUP[isin]
+    sym = None
+    try:
+        r = requests.get(f"{FINNHUB_URL}/search", params={"q": isin, "token": api_key}, timeout=15)
+        r.raise_for_status()
+        res = [x for x in r.json().get("result", []) if x.get("symbol")]
+        plain = [x for x in res if "." not in x["symbol"]]  # US-Ticker bevorzugen, dort gibt es die meisten News
+        pick = (plain or res or [None])[0]
+        sym = pick["symbol"] if pick else None
+    except (requests.RequestException, ValueError):
+        return None
+    _LOOKUP[isin] = sym
+    return sym
+
+
 def fetch_news(symbol: str, api_key: str, lookback_days: int = 3, limit: int = 10) -> list[NewsItem]:
     if not api_key:
         return []
+    if symbol.upper().endswith(".GTX"):
+        resolved = _lookup_isin(symbol.upper()[:-4], api_key)
+        if not resolved:
+            return []
+        symbol = resolved
     to = date.today()
     frm = to - timedelta(days=lookback_days)
     try:

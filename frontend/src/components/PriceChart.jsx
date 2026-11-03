@@ -1,21 +1,28 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, CrosshairMode, LineStyle } from "lightweight-charts";
 
 const COLORS = {
-  bg: "#0e1620", text: "#8d9eb0", grid: "#1b2a3a", line: "#263749",
+  bg: "#111b26", text: "#8d9eb0", grid: "#1a2735", line: "#263749",
   up: "#6fd3c3", down: "#ff6b6b", amber: "#f2b84b",
   sma20: "#f2b84b", sma50: "#7aa7ff", sma200: "#c792ea",
   bb: "#5d7389", rsi: "#f2b84b", macd: "#7aa7ff", signal: "#ff9f6b",
 };
 
-const baseOptions = {
+const interaction = (locked) => ({
+  handleScroll: !locked,
+  handleScale: !locked,
+  kineticScroll: { touch: !locked, mouse: false },
+});
+
+const baseOptions = (locked) => ({
   autoSize: true,
   layout: { background: { color: COLORS.bg }, textColor: COLORS.text, fontFamily: "Barlow, system-ui, sans-serif" },
   grid: { vertLines: { color: COLORS.grid }, horzLines: { color: COLORS.grid } },
   rightPriceScale: { borderColor: COLORS.line },
   timeScale: { borderColor: COLORS.line, timeVisible: true, secondsVisible: false },
   crosshair: { mode: CrosshairMode.Normal },
-};
+  ...interaction(locked),
+});
 
 function line(chart, rows, field, color, width = 1) {
   const s = chart.addLineSeries({ color, lineWidth: width, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
@@ -31,40 +38,72 @@ function snap(rows, t) {
 
 const dayStart = (iso) => Math.floor(new Date(`${iso}T00:00:00Z`).getTime() / 1000);
 
+/** Sperre gegen versehentliches Verschieben beim Scrollen der Seite (v. a. am Handy). */
+export function LockButton({ locked, onToggle }) {
+  return (
+    <button type="button" className={`chart-lock ${locked ? "" : "open"}`} onClick={onToggle}
+      aria-pressed={!locked} title={locked ? "Chart entsperren, um zu verschieben und zu zoomen" : "Chart wieder sperren"}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        {locked ? <path d="M7 11 V8 A5 5 0 0 1 17 8 V11 M5 11 H19 V21 H5 Z" /> : <path d="M7 11 V8 A5 5 0 0 1 16.5 6 M5 11 H19 V21 H5 Z" />}
+      </svg>
+      {locked ? "Zum Verschieben entsperren" : "Sperren"}
+    </button>
+  );
+}
+
 /**
- * Kerzenchart mit Volumen, Durchschnitten, Bollinger und darunter RSI und MACD.
- * Overlays: Signal-Marker (events), Linien des Einstiegsplans (planLines) und eigene Positionen mit grüner
- * Gewinn- und roter Verlustzone ab dem Kaufkurs.
+ * Kurschart. Einfach: Fläche des Schlusskurses. Profi: Kerzen mit Volumen, Durchschnitten, Bollinger, darunter RSI
+ * und MACD. Overlays: Signal-Marker, Linien des Einstiegsplans und eigene Käufe mit Gewinn-/Verlustzone.
+ * Standardmäßig gesperrt, damit Wischen die Seite scrollt und nicht den Chart verschiebt.
  */
-export default function PriceChart({ rows, showSma = true, showBb = false, events = [], planLines = [], positions = [], onVisibleRange }) {
+export default function PriceChart({ rows, simple = false, showSma = true, showBb = false, events = [], planLines = [], positions = [] }) {
   const mainRef = useRef(null);
   const rsiRef = useRef(null);
   const macdRef = useRef(null);
   const rangeRef = useRef(null);
+  const chartsRef = useRef([]);
+  const [locked, setLocked] = useState(true);
+  const lockedRef = useRef(true);
+
+  useEffect(() => {
+    lockedRef.current = locked;
+    chartsRef.current.forEach((c) => c.applyOptions(interaction(locked)));
+  }, [locked]);
 
   useEffect(() => {
     if (!rows?.length) return undefined;
-
-    const main = createChart(mainRef.current, baseOptions);
-    const candles = main.addCandlestickSeries({
-      upColor: COLORS.up, downColor: COLORS.down, borderVisible: false, wickUpColor: COLORS.up, wickDownColor: COLORS.down,
-    });
-    candles.setData(rows.map((r) => ({ time: r.time, open: r.open, high: r.high, low: r.low, close: r.close })));
-    const vol = main.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, priceLineVisible: false, lastValueVisible: false });
-    main.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    vol.setData(rows.map((r) => ({ time: r.time, value: r.volume ?? 0, color: r.close >= r.open ? "#6fd3c344" : "#ff6b6b44" })));
-    if (showSma) {
-      line(main, rows, "sma20", COLORS.sma20);
-      line(main, rows, "sma50", COLORS.sma50);
-      line(main, rows, "sma200", COLORS.sma200, 2);
+    const opts = baseOptions(lockedRef.current);
+    const main = createChart(mainRef.current, opts);
+    let priceSeries;
+    if (simple) {
+      const up = rows[rows.length - 1].close >= rows[0].close;
+      priceSeries = main.addAreaSeries({
+        lineColor: up ? COLORS.up : COLORS.down, lineWidth: 2,
+        topColor: up ? "rgba(111, 211, 195, 0.28)" : "rgba(255, 107, 107, 0.25)", bottomColor: "rgba(17, 27, 38, 0)",
+        priceLineVisible: true, priceLineColor: "#5d7389",
+      });
+      priceSeries.setData(rows.map((r) => ({ time: r.time, value: r.close })));
+    } else {
+      priceSeries = main.addCandlestickSeries({
+        upColor: COLORS.up, downColor: COLORS.down, borderVisible: false, wickUpColor: COLORS.up, wickDownColor: COLORS.down,
+      });
+      priceSeries.setData(rows.map((r) => ({ time: r.time, open: r.open, high: r.high, low: r.low, close: r.close })));
+      const vol = main.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, priceLineVisible: false, lastValueVisible: false });
+      main.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+      vol.setData(rows.map((r) => ({ time: r.time, value: r.volume ?? 0, color: r.close >= r.open ? "#6fd3c344" : "#ff6b6b44" })));
+      if (showSma) {
+        line(main, rows, "sma20", COLORS.sma20);
+        line(main, rows, "sma50", COLORS.sma50);
+        line(main, rows, "sma200", COLORS.sma200, 2);
+      }
+      if (showBb) {
+        line(main, rows, "bb_upper", COLORS.bb);
+        line(main, rows, "bb_mid", COLORS.bb);
+        line(main, rows, "bb_lower", COLORS.bb);
+      }
     }
-    if (showBb) {
-      line(main, rows, "bb_upper", COLORS.bb);
-      line(main, rows, "bb_mid", COLORS.bb);
-      line(main, rows, "bb_lower", COLORS.bb);
-    }
 
-    // Eigene Positionen: Fläche zwischen Kurs und Kaufkurs, grün darüber, rot darunter
+    // Eigene Käufe: Fläche zwischen Kurs und Kaufkurs, grün darüber, rot darunter
     const markers = [];
     positions.forEach((p) => {
       const from = dayStart(p.buy_date);
@@ -91,8 +130,8 @@ export default function PriceChart({ rows, showSma = true, showBb = false, event
       }
     });
 
-    // Vergangene Entscheidungspunkte; Beschriftung nur an den jüngsten, damit der Chart lesbar bleibt
-    const labelFrom = events.length - 8;
+    // Vergangene Entscheidungspunkte; Beschriftung nur im Profi-Modus und nur an den jüngsten
+    const labelFrom = simple ? Infinity : events.length - 8;
     events.forEach((e, i) => {
       const t = snap(rows, e.time);
       if (t === null || t - e.time > 7 * 86400) return;
@@ -102,50 +141,58 @@ export default function PriceChart({ rows, showSma = true, showBb = false, event
         : { time: t, position: "aboveBar", color: COLORS.down, shape: "arrowDown", text });
     });
     markers.sort((a, b) => a.time - b.time);
-    candles.setMarkers(markers);
+    priceSeries.setMarkers(markers);
 
-    // Einstiegsplan: Kursmarken als waagerechte Linien
     planLines.filter((l) => l.price).forEach((l) => {
-      candles.createPriceLine({ price: l.price, color: l.color, lineWidth: l.width || 1, lineStyle: l.style ?? LineStyle.Dashed, axisLabelVisible: true, title: l.title });
+      priceSeries.createPriceLine({ price: l.price, color: l.color, lineWidth: l.width || 1, lineStyle: l.style ?? LineStyle.Dashed, axisLabelVisible: true, title: l.title });
     });
 
-    const rsiChart = createChart(rsiRef.current, baseOptions);
-    const rsi = line(rsiChart, rows, "rsi", COLORS.rsi, 2);
-    [70, 30].forEach((p) => rsi.createPriceLine({ price: p, color: "#5d7389", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false }));
+    const charts = [main];
+    if (!simple) {
+      const rsiChart = createChart(rsiRef.current, opts);
+      const rsi = line(rsiChart, rows, "rsi", COLORS.rsi, 2);
+      [70, 30].forEach((p) => rsi.createPriceLine({ price: p, color: "#5d7389", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false }));
+      const macdChart = createChart(macdRef.current, opts);
+      const hist = macdChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
+      hist.setData(rows.filter((r) => r.hist !== null).map((r) => ({ time: r.time, value: r.hist, color: r.hist >= 0 ? COLORS.up : COLORS.down })));
+      line(macdChart, rows, "macd", COLORS.macd);
+      line(macdChart, rows, "signal", COLORS.signal);
+      charts.push(rsiChart, macdChart);
+    }
+    chartsRef.current = charts;
 
-    const macdChart = createChart(macdRef.current, baseOptions);
-    const hist = macdChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
-    hist.setData(rows.filter((r) => r.hist !== null).map((r) => ({ time: r.time, value: r.hist, color: r.hist >= 0 ? COLORS.up : COLORS.down })));
-    line(macdChart, rows, "macd", COLORS.macd);
-    line(macdChart, rows, "signal", COLORS.signal);
-
-    const charts = [main, rsiChart, macdChart];
     let syncing = false;
     charts.forEach((c) => c.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (!range || syncing) return;
       syncing = true;
       charts.forEach((o) => { if (o !== c) o.timeScale().setVisibleLogicalRange(range); });
       syncing = false;
-      if (c === main) { rangeRef.current = range; onVisibleRange?.(range); }
+      if (c === main) rangeRef.current = range;
     }));
-    // Beim automatischen Nachladen den Ausschnitt behalten, sonst die letzten ~160 Kerzen zeigen
     if (rangeRef.current) {
       main.timeScale().setVisibleLogicalRange(rangeRef.current);
+    } else if (simple) {
+      main.timeScale().fitContent();
     } else {
       const visible = Math.min(rows.length, 160);
       main.timeScale().setVisibleLogicalRange({ from: rows.length - visible, to: rows.length + 3 });
     }
 
-    return () => charts.forEach((c) => c.remove());
-  }, [rows, showSma, showBb, events, planLines, positions, onVisibleRange]);
+    return () => { charts.forEach((c) => c.remove()); chartsRef.current = []; };
+  }, [rows, simple, showSma, showBb, events, planLines, positions]);
 
   return (
-    <div className="chart-stack">
-      <div className="chart-main" ref={mainRef} />
-      <div className="chart-pane-label">RSI 14</div>
-      <div className="chart-pane" ref={rsiRef} />
-      <div className="chart-pane-label">MACD 12/26/9</div>
-      <div className="chart-pane" ref={macdRef} />
+    <div className={`chart-stack ${locked ? "is-locked" : "is-unlocked"}`}>
+      <LockButton locked={locked} onToggle={() => setLocked((l) => !l)} />
+      <div className={`chart-main ${simple ? "simple" : ""}`} ref={mainRef} />
+      {!simple && (
+        <>
+          <div className="chart-pane-label">RSI 14</div>
+          <div className="chart-pane" ref={rsiRef} />
+          <div className="chart-pane-label">MACD 12/26/9</div>
+          <div className="chart-pane" ref={macdRef} />
+        </>
+      )}
     </div>
   );
 }

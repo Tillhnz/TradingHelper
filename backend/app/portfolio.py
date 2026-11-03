@@ -42,6 +42,11 @@ def evaluate(pos: dict, profile: analysis.Profile) -> dict:
     """Aktueller Stand einer Position mit Hinweisen."""
     out = dict(pos)
     ccy = position_currency(pos)
+    try:
+        inf = market.symbol_info(pos["symbol"])
+        out["ticker"], out["name"] = inf.get("ticker"), inf.get("name")
+    except market.MarketDataError:
+        out["ticker"], out["name"] = None, None
     out["display_currency"] = ccy
     invested = cost(pos)
     out["invested"] = round(invested, 2)

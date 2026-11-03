@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, setToken } from "../api.js";
 import { ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime } from "../fmt.js";
+import { ModeSwitch } from "../components/Shell.jsx";
 
 const GROUPS = [
   {
@@ -228,6 +229,17 @@ export default function Settings() {
           <p className="muted">Alles wird sofort übernommen, ein Neustart ist nicht nötig.</p>
         </div>
       </div>
+
+      <section className="panel">
+        <h2>Ansicht</h2>
+        <div className="mode-row">
+          <ModeSwitch />
+          <p className="muted small">
+            <strong>Einfach</strong> zeigt eine klare Kurslinie, die Einschätzung in Alltagssprache und die wichtigsten Marken.
+            <strong> Profi</strong> zeigt zusätzlich Kerzen, Indikatoren (RSI, MACD, Durchschnitte) und alle Einzelsignale.
+          </p>
+        </div>
+      </section>
 
       {Object.keys(nextRuns).length > 0 && (
         <p className="note">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { displayTicker } from "../texts.js";
 
 /**
  * Suche nach Name, Symbol oder ISIN. Zeigt jeden Börsenplatz einzeln mit Währung, damit man z. B.
@@ -43,7 +44,7 @@ export default function SymbolSearch({ onPick, actionLabel = "Hinzufügen", busy
     <div className="search">
       <form onSubmit={submit}>
         <label>
-          Wert suchen <span className="hint">Name, Symbol oder ISIN, z. B. „Apple“, „SAP“, „DE0007164600“</span>
+          Wert hinzufügen <span className="hint">Name, Kürzel oder ISIN, z. B. „Apple“, „SAP“, „MSCI World“</span>
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen …" autoComplete="off" />
         </label>
       </form>
@@ -51,16 +52,17 @@ export default function SymbolSearch({ onPick, actionLabel = "Hinzufügen", busy
       {error && <p className="error small">{error}</p>}
       {results && (
         <ul className="search-results">
-          {results.map((r) => {
+          {results.map((r, i) => {
             const added = exclude.includes(r.symbol);
+            const firstOther = r.exchange !== "gettex" && (i === 0 || results[i - 1].exchange === "gettex");
             return (
-              <li key={r.symbol}>
+              <li key={r.symbol} className={firstOther && i > 0 ? "sr-sep" : ""}>
                 <div className="sr-main">
-                  <strong className="sym">{r.symbol}</strong>
-                  <span className="sr-name">{r.name}</span>
+                  <strong className="sr-title">{r.name}</strong>
+                  <span className="sr-name">{displayTicker(r)}{r.isin && r.ticker ? ` · ${r.isin}` : ""}</span>
                 </div>
                 <div className="sr-meta">
-                  <span className="chip">{r.exchange || "?"}</span>
+                  <span className={`chip ${r.exchange === "gettex" ? "ok" : ""}`}>{r.exchange || "?"}{r.exchange === "gettex" ? " · Standard" : ""}</span>
                   {r.currency && <span className="chip ccy">{r.currency}</span>}
                   <span className="muted small hide-sm">{r.type}</span>
                 </div>

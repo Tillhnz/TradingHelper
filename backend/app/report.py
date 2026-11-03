@@ -26,6 +26,7 @@ class ReportEntry:
     exchange: str | None = None
     plan: dict | None = None
     holding: dict | None = None
+    ticker: str | None = None
 
 
 @dataclass
@@ -42,7 +43,8 @@ class Report:
             a, r = e.analysis, e.rec
             chg = f"{a.change_pct_1d:+.2f} %" if a.change_pct_1d is not None else "–"
             ccy = f" {e.currency}" if e.currency else ""
-            lines.append(f"{r.emoji} **{r.symbol}** {a.last_close:.2f}{ccy} ({chg}) → **{r.action}** "
+            label = e.name or e.ticker or r.symbol
+            lines.append(f"{r.emoji} **{label}** {a.last_close:.2f}{ccy} ({chg}) → **{r.action}** "
                          f"(Score {r.combined:+.2f})")
             for reason in r.reasons:
                 lines.append(f"  • {reason}")
@@ -95,6 +97,7 @@ class Report:
                     "exchange": e.exchange,
                     "entry": e.plan,
                     "holding": e.holding,
+                    "ticker": e.ticker,
                 }
                 for e in self.entries
             ],
@@ -132,7 +135,7 @@ def build_report(storage: Storage, settings: Settings) -> Report:
             if lots.get(sym):
                 holding = portfolio.summarize([portfolio.evaluate(p, profile) for p in lots[sym]], rec.action)
             entries.append(ReportEntry(rec, a, items[:3], shown, w.get("name"), w.get("exchange"),
-                                       entry.plan(a, rec, currency=shown), holding))
+                                       entry.plan(a, rec, currency=shown), holding, w.get("ticker")))
         except Exception as exc:  # noqa: BLE001
             log.warning("Report für %s fehlgeschlagen: %s", sym, exc)
             errors[sym] = str(exc)
