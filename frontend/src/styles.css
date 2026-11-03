@@ -625,8 +625,8 @@ h1 { font-size: 2.4rem; }
 .stock-side { grid-area: side; min-width: 0; }
 .stock-main { grid-area: main; min-width: 0; }
 
-@media (min-width: 1180px) {
-  .stock-layout { grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 420px); grid-template-areas: "main side"; align-items: start; }
+@media (min-width: 980px) {
+  .stock-layout { grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 420px); grid-template-areas: "main side"; align-items: start; }
   .stock-side { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
   .stock-side .verdict { grid-template-columns: 1fr; }
   .stock-side .verdict-reasons { align-self: start; }
@@ -678,4 +678,9 @@ h1 { font-size: 2.4rem; }
   .btn.small { padding: 0.5rem 0.85rem; }
   .link.small { padding: 0.3rem 0; }
   .term-q { width: 1.4rem; height: 1.4rem; }
+}
+
+.steps { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+@media (min-width: 980px) and (max-width: 1100px) {
+  .stock-head { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "id quote" "actions actions"; }
 }
