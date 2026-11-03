@@ -8,11 +8,19 @@ const COLORS = {
   bb: "#5d7389", rsi: "#f2b84b", macd: "#7aa7ff", signal: "#ff9f6b",
 };
 
-const interaction = (locked) => ({
-  handleScroll: !locked,
-  handleScale: !locked,
-  kineticScroll: { touch: !locked, mouse: false },
-});
+// Maus/Touchpad (Laptop) oder Finger (Handy)? Am Laptop darf man im gesperrten Chart ziehen und an den Achsen
+// zoomen, nur das Mausrad scrollt weiter die Seite. Am Handy ist gesperrt wirklich gesperrt.
+export const finePointer = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)").matches;
+
+const interaction = (locked) => {
+  if (!locked) return { handleScroll: true, handleScale: true, kineticScroll: { touch: true, mouse: false } };
+  const fine = finePointer();
+  return {
+    handleScroll: { mouseWheel: false, pressedMouseMove: fine, horzTouchDrag: false, vertTouchDrag: false },
+    handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: fine, axisDoubleClickReset: fine },
+    kineticScroll: { touch: false, mouse: false },
+  };
+};
 
 const baseOptions = (locked) => ({
   autoSize: true,
@@ -41,13 +49,15 @@ const shortDate = (iso) => { const [y, m, d] = iso.split("-"); return `${d}.${m}
 
 /** Sperre gegen versehentliches Verschieben beim Scrollen der Seite (v. a. am Handy). */
 export function LockButton({ locked, onToggle }) {
+  const fine = finePointer();
+  const lockedText = fine ? "Mausrad-Zoom einschalten" : "Zum Verschieben entsperren";
   return (
     <button type="button" className={`chart-lock ${locked ? "" : "open"}`} onClick={onToggle}
-      aria-pressed={!locked} title={locked ? "Chart entsperren, um zu verschieben und zu zoomen" : "Chart wieder sperren"}>
+      aria-pressed={!locked} title={locked ? (fine ? "Ziehen und Achsen-Zoom gehen auch so; hiermit zoomt zusätzlich das Mausrad" : "Chart entsperren, um zu verschieben und zu zoomen") : "Chart wieder sperren"}>
       <svg viewBox="0 0 24 24" aria-hidden="true">
         {locked ? <path d="M7 11 V8 A5 5 0 0 1 17 8 V11 M5 11 H19 V21 H5 Z" /> : <path d="M7 11 V8 A5 5 0 0 1 16.5 6 M5 11 H19 V21 H5 Z" />}
       </svg>
-      {locked ? "Zum Verschieben entsperren" : "Sperren"}
+      {locked ? lockedText : fine ? "Mausrad-Zoom aus" : "Sperren"}
     </button>
   );
 }

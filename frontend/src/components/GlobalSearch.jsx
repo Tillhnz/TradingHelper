@@ -31,6 +31,19 @@ export default function GlobalSearch() {
     return () => clearTimeout(id);
   }, [q]);
 
+  // Tastenkürzel am Laptop: „/“ springt in die Suche
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (e.key === "/" && !["input", "textarea", "select"].includes(tag) && !e.target.isContentEditable) {
+        e.preventDefault();
+        box.current?.querySelector("input")?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     const close = (e) => { if (!box.current?.contains(e.target)) setOpen(false); };
     document.addEventListener("pointerdown", close);
@@ -53,7 +66,7 @@ export default function GlobalSearch() {
       <input type="search" value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => res && setOpen(true)}
         placeholder="Aktie oder ETF suchen …" aria-label="Aktie oder ETF suchen"
         onKeyDown={(e) => { if (e.key === "Enter" && (gtx[0] || other[0])) go((gtx[0] || other[0]).symbol); if (e.key === "Escape") setOpen(false); }} />
-      {loading && <span className="spinner gsearch-spin" aria-hidden="true" />}
+      {loading ? <span className="spinner gsearch-spin" aria-hidden="true" /> : !q && <kbd className="gsearch-kbd" aria-hidden="true">/</kbd>}
       {open && res && (
         <div className="gsearch-pop" role="listbox">
           {!res.length && <p className="muted small">Nichts gefunden. Name, Kürzel oder ISIN versuchen.</p>}

@@ -189,6 +189,8 @@ export default function ChartPage() {
       </div>
       {msg && <p className="ok" role="status">{msg}</p>}
 
+      <div className="stock-layout">
+      <aside className="stock-side">
       {rec && (
         <section className={`verdict ${ui?.tone || ""}`}>
           <div className="verdict-main">
@@ -207,7 +209,9 @@ export default function ChartPage() {
       )}
 
       <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} />
+      </aside>
 
+      <div className="stock-main">
       <section className="panel chart-panel">
         <div className="toolbar">
           {pro ? (
@@ -308,6 +312,8 @@ export default function ChartPage() {
           </section>
         </>
       )}
+      </div>
+      </div>
 
       {buying && (
         <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}

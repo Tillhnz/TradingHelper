@@ -55,7 +55,7 @@ export default function Shell({ user, onLogout, children }) {
         </NavLink>
         <nav aria-label="Hauptmenü" className="nav">
           {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end}>
+            <NavLink key={n.to} to={n.to} end={n.end} title={n.label}>
               <svg viewBox="0 0 24 24" className="nav-icon" aria-hidden="true" focusable="false"><path d={n.icon} /></svg>
               <span className="nav-label">{n.label}</span>
               {n.short && <span className="nav-short" aria-hidden="true">{n.short}</span>}
@@ -81,7 +81,7 @@ export default function Shell({ user, onLogout, children }) {
             <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 17 L9 11 L13 15 L21 7 M15 7 H21 V13" /></svg></span>
           </NavLink>
           <GlobalSearch />
-          <div className="topbar-right mobile-only">
+          <div className="topbar-right compact-only">
             <ModeSwitch />
             {ver?.update_available && <NavLink className="update-hint" to="/admin">Update</NavLink>}
           </div>
@@ -89,7 +89,7 @@ export default function Shell({ user, onLogout, children }) {
         <div className="page" key={pathname}>{children}</div>
         <footer className="disclaimer muted small">
           Regelbasierte, automatisch erzeugte Einschätzungen – keine Anlageberatung.
-          <span className="mobile-only"> · <NavLink to="/admin">Administration</NavLink> · <button className="link small" onClick={onLogout}>Abmelden</button></span>
+          <span className="compact-only"> · <NavLink to="/admin">Administration</NavLink> · <button className="link small" onClick={onLogout}>Abmelden</button></span>
         </footer>
       </main>
     </div>

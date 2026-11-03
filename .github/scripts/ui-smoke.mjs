@@ -85,5 +85,26 @@ await mobile.goto(`${base}/watchlist`);
 await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-watchlist.png", fullPage: true });
 
+// Laptop (1366×768) und Tablet (1024×768)
+for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
+  const pg = await browser.newPage({ viewport: { width: w, height: h } });
+  pg.on("pageerror", (e) => errors.push(`pageerror ${tag}: ${e.message}`));
+  await pg.goto(`${base}/login`);
+  await pg.evaluate((t) => localStorage.setItem("tradehelper_token", t), token);
+  await pg.goto(`${base}/chart/IE00B4L5Y983.GTX`);
+  await pg.waitForTimeout(9000);
+  await pg.screenshot({ path: `shots/${tag}-stock.png` });
+  const before = await pg.evaluate(() => window.scrollY);
+  const box = await pg.locator(".chart-main").boundingBox();
+  if (box) { await pg.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await pg.mouse.wheel(0, 500); await pg.waitForTimeout(800); }
+  console.log(`${tag} wheel over chart scrolls page`, before, "->", await pg.evaluate(() => window.scrollY));
+  await pg.goto(`${base}/`);
+  await pg.waitForTimeout(10000);
+  await pg.screenshot({ path: `shots/${tag}-home.png` });
+  await pg.keyboard.press("/");
+  console.log(`${tag} slash focuses search`, await pg.evaluate(() => document.activeElement?.getAttribute("aria-label")));
+  await pg.close();
+}
+
 console.log("ERRORS", JSON.stringify(errors, null, 2));
 await browser.close();

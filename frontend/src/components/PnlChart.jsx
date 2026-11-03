@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart, LineStyle } from "lightweight-charts";
-import { LockButton } from "./PriceChart.jsx";
+import { finePointer, LockButton } from "./PriceChart.jsx";
 
 /** Gewinn/Verlust über die Zeit: Fläche über null grün, darunter rot. Gesperrt, bis man entsperrt. */
 export default function PnlChart({ points, height = 260 }) {
@@ -9,7 +9,11 @@ export default function PnlChart({ points, height = 260 }) {
   const [locked, setLocked] = useState(true);
 
   useEffect(() => {
-    chartRef.current?.applyOptions({ handleScroll: !locked, handleScale: !locked });
+    const fine = finePointer();
+    chartRef.current?.applyOptions(locked
+      ? { handleScroll: { mouseWheel: false, pressedMouseMove: fine, horzTouchDrag: false, vertTouchDrag: false },
+        handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: fine } }
+      : { handleScroll: true, handleScale: true });
   }, [locked]);
 
   useEffect(() => {
@@ -20,8 +24,8 @@ export default function PnlChart({ points, height = 260 }) {
       grid: { vertLines: { color: "#1b2a3a" }, horzLines: { color: "#1b2a3a" } },
       rightPriceScale: { borderColor: "#263749" },
       timeScale: { borderColor: "#263749" },
-      handleScroll: false,
-      handleScale: false,
+      handleScroll: { mouseWheel: false, pressedMouseMove: finePointer(), horzTouchDrag: false, vertTouchDrag: false },
+      handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: finePointer() },
     });
     chartRef.current = chart;
     const s = chart.addBaselineSeries({
