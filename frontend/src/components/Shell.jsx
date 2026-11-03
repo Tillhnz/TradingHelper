@@ -6,6 +6,7 @@ const NAV = [
   { to: "/", label: "Heute", end: true, icon: "M4 12 A8 8 0 0 1 20 12 M12 4 V2 M5.6 6.6 L4.2 5.2 M18.4 6.6 L19.8 5.2 M3 17 H21 M6 21 H18" },
   { to: "/watchlist", label: "Watchlist", icon: "M5 4 H19 V21 L12 17 L5 21 Z" },
   { to: "/chart", label: "Chart", icon: "M4 19 H20 M7 15 V9 M12 15 V5 M17 15 V11 M6 9 H8 M11 5 H13 M16 11 H18" },
+  { to: "/depot", label: "Depot", icon: "M3 7 H21 V19 H3 Z M3 11 H21 M8 7 V5 H16 V7 M7 15 H11" },
   { to: "/alerts", label: "Alarme", icon: "M6 17 V11 A6 6 0 0 1 18 11 V17 L20 19 H4 Z M10 21 H14" },
   { to: "/settings", label: "Einstellungen", short: "Setup", icon: "M12 9 A3 3 0 1 0 12.01 9 M12 3 V5 M12 19 V21 M3 12 H5 M19 12 H21 M5.6 5.6 L7 7 M17 17 L18.4 18.4 M18.4 5.6 L17 7 M7 17 L5.6 18.4" },
 ];

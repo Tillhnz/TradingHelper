@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import PriceChart from "../components/PriceChart.jsx";
 import { ActionBadge, ErrorText, Loading, Stat } from "../components/ui.jsx";
 import { Levels } from "./Home.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
+import BuyDialog from "../components/BuyDialog.jsx";
 import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
 
 // Yahoo liefert Intraday-Daten nur für begrenzte Zeiträume
@@ -16,6 +17,16 @@ const PERIODS = {
 };
 const LABEL = { "5d": "5 Tage", "1mo": "1 Monat", "3mo": "3 Monate", "6mo": "6 Monate", "1y": "1 Jahr", "2y": "2 Jahre", "5y": "5 Jahre", "10y": "10 Jahre" };
 const INTERVAL_LABEL = { "1d": "Tag", "1wk": "Woche", "1h": "Stunde", "15m": "15 Min" };
+const REFRESH_MS = 60 * 1000;
+const KIND_COLOR = { pullback: "#6fd3c3", breakout: "#f2b84b", rebound: "#ff9f6b", now: "#6fd3c3" };
+const KIND_TITLE = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound", now: "Einstieg" };
+
+function delayText(meta) {
+  if (!meta) return "";
+  const when = meta.as_of ? new Date(meta.as_of * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
+  const delay = meta.delay_min === 0 ? "Echtzeit" : meta.delay_min ? `ca. ${meta.delay_min} Min. verzögert` : "Verzögerung unbekannt";
+  return [when && `Stand ${when}`, delay, meta.quote_source].filter(Boolean).join(" · ");
+}
 
 export default function ChartPage() {
   const { symbol: param } = useParams();
@@ -32,6 +43,11 @@ export default function ChartPage() {
   const [analysis, setAnalysis] = useState(null);
   const [watch, setWatch] = useState([]);
   const [error, setError] = useState("");
+  const [showEvents, setShowEvents] = useState(true);
+  const [showPlan, setShowPlan] = useState(true);
+  const [showPos, setShowPos] = useState(true);
+  const [buying, setBuying] = useState(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     api.get("/watchlist").then((w) => {
@@ -64,12 +80,41 @@ export default function ChartPage() {
       .then((a) => { if (!stop) setAnalysis(a); })
       .catch(() => {});
     return () => { stop = true; };
+  }, [symbol, period, interval, ccy, tick]);
+
+  // Kurse automatisch nachladen, solange die Seite sichtbar ist (still, ohne Ladeanzeige)
+  useEffect(() => {
+    if (!symbol) return undefined;
+    const q = `period=${period}&interval=${interval}${ccy ? `&currency=${ccy}` : ""}`;
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      api.get(`/history/${encodeURIComponent(symbol)}?${q}`).then((r) => { setRows(r.rows); setMeta(r); }).catch(() => {});
+    }, REFRESH_MS);
+    return () => clearInterval(id);
   }, [symbol, period, interval, ccy]);
 
-  const levels = useMemo(() => (analysis ? [
-    { price: analysis.support, color: "#6fd3c3", title: "Unterstützung" },
-    { price: analysis.resistance, color: "#ff6b6b", title: "Widerstand" },
-  ] : []), [analysis]);
+  const planLines = useMemo(() => {
+    if (!analysis) return [];
+    const lines = [
+      { price: analysis.support, color: "rgba(111, 211, 195, 0.45)", title: "Unterstützung", style: 2 },
+      { price: analysis.resistance, color: "rgba(255, 107, 107, 0.45)", title: "Widerstand", style: 2 },
+    ];
+    if (!showPlan || !analysis.entry) return lines;
+    const ok = analysis.entry.setups.filter((x) => x.ok);
+    ok.forEach((x) => {
+      if (x.kind !== "now") lines.push({ price: x.entry, color: KIND_COLOR[x.kind], title: KIND_TITLE[x.kind], width: 2, style: 0 });
+    });
+    const best = ok.find((x) => x.status === "now") || [...ok].sort((a, b) => Math.abs(a.distance_pct) - Math.abs(b.distance_pct))[0];
+    if (best) {
+      lines.push({ price: best.stop, color: "#ff6b6b", title: "Stopp (Plan)", style: 3 });
+      if (best.target) lines.push({ price: best.target, color: "#6fd3c3", title: "Ziel (Plan)", style: 3 });
+    }
+    return lines;
+  }, [analysis, showPlan]);
+
+  const events = useMemo(() => (showEvents && meta?.events ? meta.events : []), [meta, showEvents]);
+  const positions = useMemo(() => (showPos && meta?.positions ? meta.positions : []), [meta, showPos]);
+  const keepRange = useCallback(() => {}, []);
 
   function go(e) {
     e.preventDefault();
@@ -96,16 +141,21 @@ export default function ChartPage() {
   const p = (v) => money(v, cur);
   const ccyValue = ccy || meta?.display_currency || "native";
   const rec = analysis?.recommendation;
+  const last = rows?.[rows.length - 1];
+  const prevRow = rows?.[rows.length - 2];
+  const livePrice = interval === "1d" && last ? last.close : analysis?.last_close;
+  const liveChange = interval === "1d" && last && prevRow ? (last.close / prevRow.close - 1) * 100 : analysis?.change_pct_1d;
+  const bestSetup = analysis?.entry?.setups?.find((x) => x.ok && x.status === "now") || analysis?.entry?.setups?.find((x) => x.ok);
 
   return (
     <>
       <div className="page-head">
         <div className="chart-title">
           <h1>{symbol || "Chart"}</h1>
-          {analysis && (
+          {livePrice != null && (
             <span className="chart-quote">
-              <strong>{p(analysis.last_close)}</strong>
-              <span className={tone(analysis.change_pct_1d)}>{pct(analysis.change_pct_1d)}</span>
+              <strong>{p(livePrice)}</strong>
+              <span className={tone(liveChange)}>{pct(liveChange)}</span>
             </span>
           )}
           {meta && (meta.name || meta.exchange) && (
@@ -114,6 +164,7 @@ export default function ChartPage() {
               {meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}
             </p>
           )}
+          {meta && <p className={`muted small chart-sub ${meta.delay_min ? "delayed" : ""}`}>{delayText(meta)} · aktualisiert sich jede Minute</p>}
         </div>
         <form className="symbol-form" onSubmit={go}>
           <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Symbol" aria-label="Symbol" list="watch-symbols" />
@@ -140,7 +191,11 @@ export default function ChartPage() {
         )}
         <label className="check"><input type="checkbox" checked={showSma} onChange={(e) => setShowSma(e.target.checked)} /> SMA 20/50/200</label>
         <label className="check"><input type="checkbox" checked={showBb} onChange={(e) => setShowBb(e.target.checked)} /> Bollinger</label>
+        <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
+        <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => setShowPlan(e.target.checked)} /> Einstiegsplan</label>
+        {meta?.positions?.length > 0 && <label className="check"><input type="checkbox" checked={showPos} onChange={(e) => setShowPos(e.target.checked)} /> Meine Käufe</label>}
         <span className="toolbar-gap" />
+        {symbol && <button className="btn small primary" onClick={() => setBuying(true)}>Kauf erfassen</button>}
         {symbol && !watch.includes(symbol) && <button className="btn small" onClick={addToWatchlist}>Zur Watchlist</button>}
         {symbol && <Link className="btn small" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>Alarm anlegen</Link>}
       </div>
@@ -149,15 +204,24 @@ export default function ChartPage() {
       {!rows && !error && <Loading text="Lade Kurse …" />}
       {rows && (
         <div className="panel chart-panel">
-          <PriceChart rows={rows} showSma={showSma} showBb={showBb} levels={levels} />
-          {showSma && (
-            <p className="legend small">
-              <span className="dot" style={{ background: "#f2b84b" }} />SMA 20
+          <PriceChart key={`${symbol}-${interval}-${period}-${ccy}`} rows={rows} showSma={showSma} showBb={showBb}
+            events={events} planLines={planLines} positions={positions} onVisibleRange={keepRange} />
+          <p className="legend small">
+            {showSma && <><span className="dot" style={{ background: "#f2b84b" }} />SMA 20
               <span className="dot" style={{ background: "#7aa7ff" }} />SMA 50
-              <span className="dot" style={{ background: "#c792ea" }} />SMA 200
-            </p>
-          )}
+              <span className="dot" style={{ background: "#c792ea" }} />SMA 200</>}
+            {showEvents && <><span className="arrow pos">▲</span>Kaufsignal <span className="arrow neg">▼</span>Verkaufssignal</>}
+            {showPlan && <><span className="dot" style={{ background: "#6fd3c3" }} />Rücksetzer <span className="dot" style={{ background: "#f2b84b" }} />Ausbruch</>}
+            {positions.length > 0 && <><span className="swatch gain" />Gewinnzone <span className="swatch loss" />Verlustzone ab Kaufkurs</>}
+          </p>
         </div>
+      )}
+
+      {buying && (
+        <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}
+          defaults={{ price: livePrice ? Math.round(livePrice * 100) / 100 : "", stop: bestSetup?.stop ?? rec?.stop ?? "",
+            target: bestSetup?.target ?? rec?.target ?? "", quantity: bestSetup?.position?.shares ?? rec?.position?.shares ?? "" }}
+          onClose={() => setBuying(false)} onSaved={() => setTick((t) => t + 1)} />
       )}
 
       {analysis && (

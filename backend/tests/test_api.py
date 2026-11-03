@@ -123,3 +123,35 @@ def test_search(client, monkeypatch):
     monkeypatch.setattr(market, "search", lambda q: [{"symbol": "APC.DE", "name": "Apple", "exchange": "XETRA",
                                                       "type": "Aktie", "currency": "EUR"}])
     assert client.get("/api/search?q=apple", headers=h).json()[0]["symbol"] == "APC.DE"
+
+
+def test_positions_crud_and_chart(client, monkeypatch):
+    import datetime as dt
+    h = _login(client)
+    monkeypatch.setattr(market, "convert_price", lambda v, frm, to, day=None: None if v is None else v * 0.5)
+    today = dt.date.today()
+    bad = client.post("/api/positions", json={"symbol": "AAPL", "quantity": 1, "buy_price": 100, "buy_date": today.isoformat(),
+                                              "stop": 120}, headers=h)
+    assert bad.status_code == 422
+    future = (today + dt.timedelta(days=3)).isoformat()
+    assert client.post("/api/positions", json={"symbol": "AAPL", "quantity": 1, "buy_price": 100,
+                                                "buy_date": future}, headers=h).status_code == 422
+    r = client.post("/api/positions", json={"symbol": "aapl", "quantity": 5, "buy_price": 150, "buy_date": "2025-06-02",
+                                             "fees": 1, "currency": "EUR", "stop": 140, "target": 200,
+                                             "create_alerts": True}, headers=h)
+    assert r.status_code == 201 and r.json()["symbol"] == "AAPL" and len(r.json()["alerts"]) == 2
+    pid = r.json()["id"]
+    lst = client.get("/api/positions", headers=h).json()
+    assert lst["items"][0]["value"] is not None and lst["totals"]["currency"] == "EUR"
+    hist = client.get("/api/history/AAPL?currency=native", headers=h).json()
+    assert hist["positions"][0]["buy_price"] == 75.0 and hist["positions"][0]["converted"] is True  # EUR → USD (Mock ×0,5)
+    assert isinstance(hist["events"], list) and "delay_min" in hist and hist["as_of"]
+    upd = client.patch(f"/api/positions/{pid}", json={"stop": 160}, headers=h)
+    assert upd.json()["stop"] == 160
+    assert client.patch(f"/api/positions/{pid}", json={"sell_price": 190}, headers=h).status_code == 422
+    sold = client.patch(f"/api/positions/{pid}", json={"sell_price": 190, "sell_date": today.isoformat()}, headers=h)
+    assert sold.json()["sell_price"] == 190
+    assert client.get("/api/positions", headers=h).json()["items"][0]["closed"] is True
+    assert client.patch(f"/api/positions/{pid}", json={"reopen": True}, headers=h).json()["sell_date"] is None
+    assert client.get("/api/positions/history", headers=h).status_code == 200
+    assert client.delete(f"/api/positions/{pid}", headers=h).status_code == 200

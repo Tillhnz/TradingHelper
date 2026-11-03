@@ -7,6 +7,7 @@ import Home from "./pages/Home.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
 import ChartPage from "./pages/ChartPage.jsx";
 import Alerts from "./pages/Alerts.jsx";
+import Depot from "./pages/Depot.jsx";
 import Settings from "./pages/Settings.jsx";
 import Admin from "./pages/Admin.jsx";
 
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/chart" element={<ChartPage />} />
         <Route path="/chart/:symbol" element={<ChartPage />} />
         <Route path="/alerts" element={<Alerts />} />
+        <Route path="/depot" element={<Depot />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/login" element={<Navigate to="/" replace />} />

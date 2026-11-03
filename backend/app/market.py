@@ -40,6 +40,11 @@ SUFFIXES = {
     "NS": ("NSE Indien", "INR"), "BO": ("BSE Indien", "INR"), "SA": ("B3 São Paulo", "BRL"),
     "MX": ("Mexiko", "MXN"), "WA": ("Warschau", "PLN"), "PR": ("Prag", "CZK"),
 }
+# Verzögerung in Minuten laut Yahoo (help.yahoo.com/kb/SLN2310.html), falls Yahoo sie nicht selbst mitliefert
+DELAYS = {"DE": 15, "F": 15, "SG": 15, "MU": 15, "BE": 15, "DU": 15, "HM": 15, "HA": 15, "PA": 15, "AS": 15,
+          "BR": 15, "LS": 15, "MI": 15, "MC": 15, "VI": 15, "L": 20, "SW": 30}
+_META: dict[str, dict] = {}  # letzter Kurszeitpunkt je Symbol
+
 SEARCH_TYPES = {"EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "CURRENCY", "MUTUALFUND", "FUTURE"}
 LONG_PERIODS = {"2y", "5y", "10y", "max"}
 
@@ -121,8 +126,31 @@ def symbol_info(symbol: str) -> dict:
     })
     if info["type"] == "INDEX":
         info["currency"] = None  # Indexpunkte, keine Währung
+    info["delay_min"], info["quote_source"] = _delay(t, s)
     _INFO[s] = info
     return info
+
+
+def _delay(ticker, symbol: str) -> tuple[int | None, str | None]:
+    """Kursverzögerung in Minuten (0 = Echtzeit) und Quelle, bevorzugt direkt von Yahoo."""
+    try:
+        inf = ticker.info or {}
+        delay = inf.get("exchangeDataDelayedBy")
+        if delay is not None:
+            return int(delay), inf.get("quoteSourceName")
+    except Exception:  # noqa: BLE001 – info ist optional und manchmal langsam oder gesperrt
+        pass
+    s = symbol.upper()
+    if s.endswith("=X") or ("-" in s and "." not in s and len(s.rsplit("-", 1)[1]) == 3):
+        return 0, None
+    if "." in s:
+        return DELAYS.get(s.rsplit(".", 1)[1]), None
+    return None, None
+
+
+def last_trade_time(symbol: str) -> int | None:
+    """Zeitpunkt des letzten Kurses (Unix-Sekunden) aus dem letzten Abruf."""
+    return _META.get(symbol.upper(), {}).get("market_time")
 
 
 def search(query: str, limit: int = 15) -> list[dict]:
@@ -168,11 +196,18 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
     if cached and time.time() - cached[0] < _CACHE_TTL:
         return cached[1].copy()
     try:
-        df = _yf().Ticker(symbol).history(period=period, interval=interval, auto_adjust=True)
+        t = _yf().Ticker(symbol)
+        df = t.history(period=period, interval=interval, auto_adjust=True)
     except Exception as exc:  # noqa: BLE001
         raise MarketDataError(f"Kursabruf für {symbol} fehlgeschlagen: {exc}") from exc
     if df is None or df.empty:
         raise MarketDataError(f"Keine Kursdaten für {symbol} (Symbol prüfen, Yahoo-Notation).")
+    try:
+        md = getattr(t, "history_metadata", None) or {}
+        if md.get("regularMarketTime"):
+            _META[symbol.upper()] = {"market_time": int(md["regularMarketTime"])}
+    except Exception:  # noqa: BLE001
+        pass
     df = df.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
     _CACHE[key] = (time.time(), df)
     return df.copy()
@@ -226,6 +261,23 @@ def get_history(symbol: str, period: str = "1y", interval: str = "1d", currency:
         native = symbol_info(symbol).get("currency")
         df = convert_history(df, native, currency, period)
     return df
+
+
+def convert_price(value: float | None, frm: str | None, to: str | None, day=None) -> float | None:
+    """Einzelnen Kurs umrechnen, mit dem Wechselkurs des Tages `day` (sonst dem letzten)."""
+    if value is None or not frm or not to:
+        return value
+    base, factor = base_currency(frm)
+    value = value * factor
+    if base == to:
+        return value
+    rates = fx_rates(base, to, "5y")
+    if day is None:
+        return value * float(rates.iloc[-1])
+    ts = pd.Timestamp(day).normalize()
+    prior = rates[rates.index <= ts]
+    rate = prior.iloc[-1] if len(prior) else rates.iloc[0]
+    return value * float(rate)
 
 
 def shown_currency(native: str | None, target: str | None) -> str | None:

@@ -48,6 +48,8 @@ curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.
 | Einstellungen | ntfy, Finnhub, Zeitplan von Report und Alarmprüfung, Zeitzone – alles ohne Neustart |
 | Administration | Zustand der Dienste, **Update per Knopf** (mit Sicherung vorher und automatischem Zurückrollen), Sicherungen |
 
+| Depot | Käufe erfassen (im Chart vorbelegt mit Kurs, Stopp, Ziel und Stückzahl aus dem Einstiegsplan), Gewinn/Verlust je Position und als Verlauf, Hinweise „Stopp erreicht“, „Ziel erreicht“, „Stopp nachziehen“; im Chart grüne Gewinn- und rote Verlustzone ab Kaufkurs |
+
 Symbole in Yahoo-Schreibweise: `AAPL`, `SAP.DE` (Xetra), `^GDAXI` (DAX), `BTC-EUR`, `EURUSD=X`, `IWDA.AS`.
 
 ## Updates
@@ -125,7 +127,8 @@ cd frontend && npm install && npm run dev  # Oberfläche auf :5173
 
 ## Grenzen
 
-- Kurse über yfinance (inoffizielle Yahoo-Schnittstelle): Ausfälle oder Verzögerungen sind möglich, Intraday-Daten nur für begrenzte Zeiträume.
+- **Keine durchgehenden Echtzeitkurse.** Laut [Yahoo](https://help.yahoo.com/kb/SLN2310.html) sind Nasdaq, Krypto und Devisen in Echtzeit, Xetra, Frankfurt und die übrigen deutschen Börsen sowie Euronext 15 Minuten verzögert, London 20 und SIX 30 Minuten. Der Chart zeigt Stand und Verzögerung je Wert und lädt jede Minute neu; Alarme werden im eingestellten Intervall geprüft. Für Daytrading ist das nicht geeignet.
+- Kurse über yfinance (inoffizielle Yahoo-Schnittstelle): Ausfälle sind möglich, Intraday-Daten nur für begrenzte Zeiträume.
 - Finnhub-News decken vor allem US-Werte ab.
 - Die News-Stimmung ist ein einfaches Wortlisten-Verfahren.
 

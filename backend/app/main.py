@@ -11,7 +11,10 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import __version__, alerts, analysis, entry, indicators, market, news, notify, scheduler, settings_store
+from datetime import date
+
+from . import __version__, alerts, analysis, entry, events, indicators, market, news, notify, portfolio, scheduler
+from . import settings_store
 from . import updater_client
 from .config import settings
 from .report import build_report, send_report
@@ -170,11 +173,33 @@ def _history(symbol: str, period: str, interval: str, target: str | None = None)
 
 def _meta(symbol: str, target: str | None) -> dict:
     info = _info(symbol)
+    t = market.last_trade_time(symbol)
     return {
         "name": info.get("name"), "exchange": info.get("exchange"), "native_currency": info.get("currency"),
         "currency": market.shown_currency(info.get("currency"), target),
         "display_currency": settings.display_currency,
+        "delay_min": info.get("delay_min"), "quote_source": info.get("quote_source"),
+        "as_of": t,
     }
+
+
+def _chart_positions(symbol: str, shown: str | None, st: Storage) -> list[dict]:
+    """Positionen eines Symbols mit Kursen in der Chart-Währung (Kauf/Verkauf zum Tageskurs, Stopp/Ziel aktuell)."""
+    out = []
+    for pos in st.positions(symbol):
+        ccy = portfolio.position_currency(pos)
+        conv = (lambda v, day=None, c=ccy: market.convert_price(v, c, shown, day)) if ccy and shown else (lambda v, day=None: v)
+        try:
+            out.append({
+                "id": pos["id"], "quantity": pos["quantity"], "buy_date": pos["buy_date"], "sell_date": pos["sell_date"],
+                "buy_price": conv(pos["buy_price"], pos["buy_date"]), "stop": conv(pos["stop"]),
+                "target": conv(pos["target"]),
+                "sell_price": conv(pos["sell_price"], pos["sell_date"]) if pos["sell_price"] else None,
+                "converted": bool(ccy and shown and ccy != shown),
+            })
+        except market.MarketDataError:
+            continue
+    return out
 
 
 def _num(v):
@@ -202,9 +227,11 @@ def search(q: str):
 
 
 @app.get("/api/history/{symbol}", dependencies=auth)
-def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str | None = None):
+def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str | None = None,
+            st: Storage = Depends(get_storage)):
     target = _target(currency)
     df = indicators.add_all(_history(symbol, period, interval, target))
+    signal_events = events.signal_events(df, analysis.profile_from(settings))
     times = [int(ts.timestamp()) for ts in df.index]
     cols = list(df.columns)
     rows = []
@@ -212,7 +239,11 @@ def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str
         row = {"time": int(t)}
         row.update({c: _num(v) for c, v in zip(cols, values, strict=True)})
         rows.append(row)
-    return {"symbol": symbol.upper(), "period": period, "interval": interval, "rows": rows, **_meta(symbol, target)}
+    meta = _meta(symbol, target)
+    if not meta["as_of"] and rows:
+        meta["as_of"] = rows[-1]["time"]
+    return {"symbol": symbol.upper(), "period": period, "interval": interval, "rows": rows, "events": signal_events,
+            "positions": _chart_positions(symbol, meta["currency"], st), **meta}
 
 
 @app.get("/api/analysis/{symbol}", dependencies=auth)
@@ -375,6 +406,127 @@ def alert_check(send: bool = True, st: Storage = Depends(get_storage)):
 @app.get("/api/alerts/log", dependencies=auth)
 def alert_log(limit: int = 50, st: Storage = Depends(get_storage)):
     return st.alert_log(min(limit, 500))
+
+
+# ---------- Depot (erfasste Käufe) ----------
+
+class PositionIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=20)
+    quantity: float = Field(gt=0)
+    buy_price: float = Field(gt=0)
+    buy_date: date
+    fees: float = Field(default=0, ge=0)
+    currency: str = ""
+    stop: float | None = Field(default=None, gt=0)
+    target: float | None = Field(default=None, gt=0)
+    note: str = Field(default="", max_length=300)
+    create_alerts: bool = False
+
+
+class PositionPatch(BaseModel):
+    quantity: float | None = Field(default=None, gt=0)
+    buy_price: float | None = Field(default=None, gt=0)
+    buy_date: date | None = None
+    fees: float | None = Field(default=None, ge=0)
+    stop: float | None = Field(default=None, ge=0)  # 0 = Stopp entfernen
+    target: float | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=300)
+    sell_price: float | None = Field(default=None, gt=0)
+    sell_date: date | None = None
+    sell_fees: float | None = Field(default=None, ge=0)
+    reopen: bool = False
+
+
+def _check_position(d: dict) -> None:
+    if d.get("currency") and d["currency"] not in market.CURRENCIES:
+        raise HTTPException(422, f"Währung muss leer oder eine von {', '.join(market.CURRENCIES)} sein")
+    for key in ("buy_date", "sell_date"):
+        if d.get(key) and date.fromisoformat(d[key]) > date.today():
+            raise HTTPException(422, "Datum liegt in der Zukunft")
+    if d.get("stop") and d.get("target") and d["stop"] >= d["target"]:
+        raise HTTPException(422, "Der Stopp muss unter dem Ziel liegen")
+    if d.get("sell_date") and d.get("buy_date") and d["sell_date"] < d["buy_date"]:
+        raise HTTPException(422, "Verkauf liegt vor dem Kauf")
+
+
+def _total_currency() -> str:
+    return settings.display_currency if settings.display_currency in market.CURRENCIES else "EUR"
+
+
+@app.get("/api/positions", dependencies=auth)
+def positions_list(st: Storage = Depends(get_storage)):
+    profile = analysis.profile_from(settings)
+    items = [portfolio.evaluate(p, profile) for p in st.positions()]
+    total_ccy = _total_currency()
+    totals = {"currency": total_ccy, "invested": 0.0, "value": 0.0, "pl": 0.0, "realized": 0.0}
+    for it in items:
+        ccy = it["display_currency"]
+        try:
+            conv = (lambda v, c=ccy: market.convert_price(v, c, total_ccy)) if ccy else (lambda v: v)
+            if it["closed"]:
+                totals["realized"] += conv(it["pl"])
+            elif it.get("value") is not None:
+                totals["invested"] += conv(it["invested"])
+                totals["value"] += conv(it["value"])
+        except market.MarketDataError:
+            continue
+    totals["pl"] = totals["value"] - totals["invested"]
+    totals["pl_pct"] = round(totals["pl"] / totals["invested"] * 100, 2) if totals["invested"] else None
+    totals = {k: round(v, 2) if isinstance(v, float) else v for k, v in totals.items()}
+    return {"items": items, "totals": totals}
+
+
+@app.get("/api/positions/history", dependencies=auth)
+def positions_history(st: Storage = Depends(get_storage)):
+    return portfolio.history(st.positions(), _total_currency())
+
+
+@app.post("/api/positions", dependencies=auth, status_code=201)
+def position_add(item: PositionIn, st: Storage = Depends(get_storage)):
+    data = item.model_dump()
+    create_alerts = data.pop("create_alerts")
+    data["symbol"] = data["symbol"].strip().upper()
+    data["buy_date"] = data["buy_date"].isoformat()
+    _check_position(data)
+    if data["stop"] and data["stop"] >= data["buy_price"]:
+        raise HTTPException(422, "Der Stopp muss unter dem Kaufkurs liegen")
+    pid = st.add_position(data)
+    created = []
+    if create_alerts:
+        if data["stop"]:
+            created.append(st.add_alert(data["symbol"], "price_below", {"value": data["stop"]}, "1d", True, data["currency"]))
+        if data["target"]:
+            created.append(st.add_alert(data["symbol"], "price_above", {"value": data["target"]}, "1d", True,
+                                        data["currency"]))
+    return {**st.get_position(pid), "alerts": created}
+
+
+@app.patch("/api/positions/{pos_id}", dependencies=auth)
+def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(get_storage)):
+    current = st.get_position(pos_id)
+    if not current:
+        raise HTTPException(404, "Position nicht gefunden")
+    data = {k: v for k, v in item.model_dump(exclude_unset=True).items() if k != "reopen"}
+    for key in ("buy_date", "sell_date"):
+        if isinstance(data.get(key), date):
+            data[key] = data[key].isoformat()
+    for key in ("stop", "target"):
+        if data.get(key) == 0:
+            data[key] = None
+    if item.reopen:
+        data.update(sell_price=None, sell_date=None, sell_fees=0)
+    elif ("sell_price" in data) != ("sell_date" in data) and not current["sell_date"]:
+        raise HTTPException(422, "Für einen Verkauf bitte Kurs und Datum angeben")
+    _check_position({**current, **data})
+    st.update_position(pos_id, data)
+    return st.get_position(pos_id)
+
+
+@app.delete("/api/positions/{pos_id}", dependencies=auth)
+def position_remove(pos_id: int, st: Storage = Depends(get_storage)):
+    if not st.remove_position(pos_id):
+        raise HTTPException(404, "Position nicht gefunden")
+    return {"removed": pos_id}
 
 
 # ---------- Morgenreport ----------

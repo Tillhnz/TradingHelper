@@ -38,6 +38,22 @@ CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    buy_price REAL NOT NULL,
+    buy_date TEXT NOT NULL,
+    fees REAL NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT '',
+    stop REAL,
+    target REAL,
+    note TEXT NOT NULL DEFAULT '',
+    sell_price REAL,
+    sell_date TEXT,
+    sell_fees REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alert_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     alert_id INTEGER NOT NULL,
@@ -229,6 +245,47 @@ class Storage:
     def update_note(self, symbol: str, note: str) -> bool:
         with self._conn() as c:
             return c.execute("UPDATE watchlist SET note=? WHERE symbol=?", (note, symbol.upper())).rowcount > 0
+
+    # --- Positionen (erfasste Käufe) -----------------------------------------
+    POSITION_FIELDS = ("symbol", "quantity", "buy_price", "buy_date", "fees", "currency", "stop", "target", "note",
+                       "sell_price", "sell_date", "sell_fees")
+
+    def positions(self, symbol: str | None = None, open_only: bool = False) -> list[dict]:
+        q, args = "SELECT * FROM positions WHERE 1=1", []
+        if symbol:
+            q += " AND symbol=?"
+            args.append(symbol.upper())
+        if open_only:
+            q += " AND sell_date IS NULL"
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(q + " ORDER BY buy_date, id", args)]
+
+    def get_position(self, pos_id: int) -> dict | None:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM positions WHERE id=?", (pos_id,)).fetchone()
+            return dict(row) if row else None
+
+    def add_position(self, data: dict) -> int:
+        cols = [k for k in self.POSITION_FIELDS if k in data]
+        vals = [data[k].upper() if k == "symbol" else data[k] for k in cols]
+        with self._conn() as c:
+            cur = c.execute(
+                f"INSERT INTO positions({', '.join(cols)}, created_at) VALUES ({', '.join('?' * len(cols))}, ?)",
+                (*vals, now_iso()),
+            )
+            return int(cur.lastrowid)
+
+    def update_position(self, pos_id: int, data: dict) -> bool:
+        cols = [k for k in self.POSITION_FIELDS if k in data and k != "symbol"]
+        if not cols:
+            return self.get_position(pos_id) is not None
+        with self._conn() as c:
+            return c.execute(f"UPDATE positions SET {', '.join(f'{k}=?' for k in cols)} WHERE id=?",
+                             (*[data[k] for k in cols], pos_id)).rowcount > 0
+
+    def remove_position(self, pos_id: int) -> bool:
+        with self._conn() as c:
+            return c.execute("DELETE FROM positions WHERE id=?", (pos_id,)).rowcount > 0
 
     def alert_log(self, limit: int = 50) -> list[dict]:
         with self._conn() as c:
