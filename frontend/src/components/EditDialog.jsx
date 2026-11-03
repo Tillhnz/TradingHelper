@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { RiskBar } from "./BuyDialog.jsx";
 import Modal from "./Modal.jsx";
 import { signedMoney, tone } from "../fmt.js";
+import { displayName } from "../texts.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const n = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
@@ -34,7 +35,7 @@ export default function EditDialog({ pos, mode, onClose, onSaved }) {
   const sellPl = mode === "sell" && n(f.sell_price) ? (n(f.sell_price) - pos.buy_price) * pos.quantity - (pos.fees || 0) - (n(f.sell_fees) || 0) : null;
 
   return (
-    <Modal title={`${mode === "sell" ? "Verkauf erfassen" : "Position bearbeiten"} · ${pos.symbol}`} onClose={onClose}>
+    <Modal title={`${mode === "sell" ? "Verkauf erfassen" : "Position bearbeiten"} · ${displayName(pos)}`} onClose={onClose}>
       <form onSubmit={save}>
         <div className="form-grid">
           {mode === "sell" ? (

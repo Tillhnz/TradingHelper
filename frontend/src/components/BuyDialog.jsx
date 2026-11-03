@@ -118,7 +118,7 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
   const ccyOptions = ["", "EUR", "USD", "CHF", "GBP"].filter((c) => c === "" || c !== meta.native_currency);
 
   return (
-    <Modal title={symbol ? `Kauf erfassen · ${symbol}` : "Kauf erfassen"} onClose={onClose} wide>
+    <Modal title={symbol ? `Kauf erfassen · ${meta.name || symbol.replace(/\.GTX$/, "")}` : "Kauf erfassen"} onClose={onClose} wide>
       {!symbol ? (
         <SymbolSearch onPick={pick} actionLabel="Auswählen" />
       ) : (

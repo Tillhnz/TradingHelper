@@ -94,6 +94,18 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   await pg.goto(`${base}/chart/IE00B4L5Y983.GTX`);
   await pg.waitForTimeout(9000);
   await pg.screenshot({ path: `shots/${tag}-stock.png` });
+  await pg.locator(".lot-actions .btn", { hasText: "Verkauf erfassen" }).first().click();
+  await pg.waitForTimeout(1200);
+  await pg.screenshot({ path: `shots/${tag}-sell-dialog.png` });
+  const onTop = await pg.evaluate(() => {
+    const m = document.querySelector(".modal");
+    if (!m) return "kein Dialog";
+    const r = m.getBoundingClientRect();
+    const pts = [[0.25, 0.3], [0.75, 0.3], [0.5, 0.5], [0.25, 0.7], [0.75, 0.7]];
+    return pts.every(([x, y]) => m.contains(document.elementFromPoint(r.left + r.width * x, r.top + r.height * y))) ? "oben" : "verdeckt";
+  });
+  console.log(`${tag} sell dialog layer`, onTop);
+  await pg.keyboard.press("Escape");
   const before = await pg.evaluate(() => window.scrollY);
   const box = await pg.locator(".chart-main").boundingBox();
   if (box) { await pg.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await pg.mouse.wheel(0, 500); await pg.waitForTimeout(800); }
