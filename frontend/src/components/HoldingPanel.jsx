@@ -85,6 +85,8 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
           {s.avg_price && <RiskBar entry={s.avg_price} stop={s.stop} target={s.target} current={s.price} currency={c} />}
           <div className="stats stats-wide">
             <div className="stat"><span className="stat-label">Bestand</span><strong className="stat-value">{qty(s.shares)} Stück</strong></div>
+            <div className="stat"><span className="stat-label">{s.lots > 1 ? "Erster Kauf" : "Gekauft am"}</span><strong className="stat-value">{date(s.since)}</strong>
+              {s.lots > 1 && <span className="small muted">{s.lots} Käufe</span>}</div>
             <div className="stat"><span className="stat-label">Ø Kaufkurs</span><strong className="stat-value">{money(s.avg_price, c)}</strong></div>
             <div className="stat"><span className="stat-label">Aktuell</span><strong className="stat-value">{money(s.price, c)}</strong></div>
             <div className="stat"><span className="stat-label">Eingesetzt</span><strong className="stat-value">{money(s.invested, c)}</strong></div>
@@ -102,8 +104,8 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
         {open.map((p) => (
           <li key={p.id} className="lot">
             <div className="lot-main">
-              <strong>{qty(p.quantity)} Stück à {money(p.buy_price, p.display_currency)}</strong>
-              <span className="muted small">gekauft am {date(p.buy_date)}{p.note ? ` · „${p.note}“` : ""}</span>
+              <strong>{date(p.buy_date)} · {qty(p.quantity)} Stück à {money(p.buy_price, p.display_currency)}</strong>
+              {p.note && <span className="muted small">„{p.note}“</span>}
               <span className="muted small">Stopp {money(p.stop, p.display_currency)} · Ziel {money(p.target, p.display_currency)}</span>
               {p.hints?.filter((h) => h.suggested_stop || h.level === "bad").map((h) => (
                 <span key={h.text} className={`small hint-inline ${h.level}`}>

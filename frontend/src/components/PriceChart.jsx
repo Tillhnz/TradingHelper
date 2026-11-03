@@ -37,6 +37,7 @@ function snap(rows, t) {
 }
 
 const dayStart = (iso) => Math.floor(new Date(`${iso}T00:00:00Z`).getTime() / 1000);
+const shortDate = (iso) => { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y.slice(2)}`; };
 
 /** Sperre gegen versehentliches Verschieben beim Scrollen der Seite (v. a. am Handy). */
 export function LockButton({ locked, onToggle }) {
@@ -142,13 +143,13 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
         lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       area.setData(seg.map((r) => ({ time: r.time, value: r.close })));
-      area.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `Kauf ${p.quantity}×` });
+      area.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `Kauf ${p.quantity}× · ${shortDate(p.buy_date)}` });
       if (!p.sell_date) {
         if (p.stop) area.createPriceLine({ price: p.stop, color: COLORS.down, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "Stopp" });
         if (p.target) area.createPriceLine({ price: p.target, color: COLORS.up, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "Ziel" });
       }
-      markers.push({ time: seg[0].time, position: "belowBar", color: COLORS.amber, shape: "arrowUp", text: "Kauf", size: 2 });
-      if (p.sell_date) markers.push({ time: seg[seg.length - 1].time, position: "aboveBar", color: COLORS.amber, shape: "arrowDown", text: "Verkauf", size: 2 });
+      markers.push({ time: seg[0].time, position: "belowBar", color: COLORS.amber, shape: "arrowUp", text: `Kauf ${shortDate(p.buy_date)}`, size: 2 });
+      if (p.sell_date) markers.push({ time: seg[seg.length - 1].time, position: "aboveBar", color: COLORS.amber, shape: "arrowDown", text: `Verkauf ${shortDate(p.sell_date)}`, size: 2 });
     });
     const hasPositions = markers.length > 0;
 
