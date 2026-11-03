@@ -111,7 +111,9 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
     let future = [];
     if (open.length && rows.length > 1) {
       const step = rows[rows.length - 1].time - rows[rows.length - 2].time;
-      future = Array.from({ length: 12 }, (_, i) => rows[rows.length - 1].time + step * (i + 1));
+      // etwa ein Siebtel der sichtbaren Breite, damit die Zonen klar zu sehen sind
+      const n = Math.max(12, Math.round(Math.min(rows.length, 160) * 0.15));
+      future = Array.from({ length: n }, (_, i) => rows[rows.length - 1].time + step * (i + 1));
       const data = simple ? rows.map((r) => ({ time: r.time, value: r.close })) : rows.map((r) => ({ time: r.time, open: r.open, high: r.high, low: r.low, close: r.close }));
       priceSeries.setData([...data, ...future.map((time) => ({ time }))]);
     }
