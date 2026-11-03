@@ -18,6 +18,9 @@ export function RiskBar({ entry, stop, target, current, currency }) {
   const x = (v) => `${((v - lo) / (hi - lo)) * 100}%`;
   return (
     <div className="riskbar" aria-hidden="true">
+      <div className="riskbar-top small">
+        <span style={{ left: x(entry) }} className="amber">Kauf {money(entry, currency)}</span>
+      </div>
       <div className="riskbar-track">
         {stop && <div className="riskbar-loss" style={{ left: x(stop), width: `calc(${x(entry)} - ${x(stop)})` }} />}
         <div className="riskbar-gain" style={{ left: x(entry), width: target ? `calc(${x(target)} - ${x(entry)})` : `calc(100% - ${x(entry)})` }} />
@@ -25,9 +28,8 @@ export function RiskBar({ entry, stop, target, current, currency }) {
         {current && <div className="riskbar-now" style={{ left: x(current) }} title="aktueller Kurs" />}
       </div>
       <div className="riskbar-labels small">
-        {stop && <span style={{ left: x(stop) }} className="neg">Stopp {money(stop, currency)}</span>}
-        <span style={{ left: x(entry) }}>Kauf {money(entry, currency)}</span>
-        {target && <span style={{ left: x(target) }} className="pos">Ziel {money(target, currency)}</span>}
+        {stop && <span style={{ left: x(stop) }} className="neg edge-left">Stopp {money(stop, currency)}</span>}
+        {target && <span style={{ left: x(target) }} className="pos edge-right">Ziel {money(target, currency)}</span>}
       </div>
     </div>
   );

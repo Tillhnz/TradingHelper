@@ -121,8 +121,8 @@ def plan(a: Analysis, rec: Recommendation, profile: Profile | None = None, curre
             target = hi if hi and hi > entry * 1.02 else entry + 2 * (entry - stop)
         alert = {"kind": "cross_up", "params": {"value": _p(entry)}, "interval": "1d", "once": True,
                  "label": f"Kurs steigt über {fmt(entry, currency)}"}
-        setups.append(_setup(p, "breakout", f"Ausbruch über {fmt(a.resistance, currency)}", entry, (entry, entry + 0.5 * atr), stop,
-                             target, "Erst kaufen, wenn der Widerstand fällt – am besten mit Schlusskurs darüber und "
+        setups.append(_setup(p, "breakout", "Ausbruch über den Widerstand", entry, (entry, entry + 0.5 * atr), stop,
+                             target, f"Widerstand bei {fmt(a.resistance, currency)}. Erst kaufen, wenn er fällt – am besten mit Schlusskurs darüber und "
                              "erhöhtem Volumen. Nicht hinterherlaufen, wenn der Kurs schon weit darüber ist.", alert, close))
 
     # Rebound aus überverkauftem Zustand (Gegentrend)

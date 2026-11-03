@@ -9,7 +9,7 @@ export function num(v, digits = 2) {
 
 export function price(v) {
   if (v === null || v === undefined) return "–";
-  return num(v, Math.abs(v) >= 1000 ? 2 : Math.abs(v) >= 1 ? 2 : 4);
+  return num(v, Math.abs(v) >= 1 || v === 0 ? 2 : 4);
 }
 
 const SYMBOL = { EUR: "€", USD: "$", GBP: "£", CHF: "CHF", JPY: "¥" };

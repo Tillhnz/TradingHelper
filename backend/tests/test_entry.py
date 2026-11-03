@@ -28,7 +28,7 @@ def test_uptrend_medium_offers_pullback_and_breakout():
                            "label": "Kurs fällt in die Zone um 96,00"}
     assert bo["entry"] == 108.4 and bo["alert"]["kind"] == "cross_up" and bo["target"] == 125.0
     assert p["summary"].startswith("Abwarten: Rücksetzer an die SMA 50 bei ca. 96,00 (−4,0 %)".replace("−", "-"))
-    assert "Ausbruch über 108,00 ab 108,40" in p["summary"]
+    assert "Ausbruch über den Widerstand ab 108,40" in p["summary"]
     assert entry.plan(_a(), _rec(), currency="EUR")["summary"].startswith("Abwarten: Rücksetzer an die SMA 50 bei ca. 96,00 €")
     assert entry.fmt(1234.5, "USD") == "1.234,50 $"
 

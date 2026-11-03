@@ -348,8 +348,11 @@ body.modal-open { overflow: hidden; }
 .riskbar-now { position: absolute; top: -6px; width: 0; height: 0; margin-left: -6px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid var(--chalk); }
 .riskbar-labels { position: relative; height: 1.2rem; margin-top: 0.3rem; }
 .riskbar-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; color: var(--mute); }
-.riskbar-labels span:first-child { transform: none; }
-.riskbar-labels span:last-child:not(:first-child) { transform: translateX(-100%); }
+.riskbar-labels .edge-left { transform: none; }
+.riskbar-labels .edge-right { transform: translateX(-100%); }
+.riskbar-top { position: relative; height: 1.2rem; margin-bottom: 0.25rem; }
+.riskbar-top span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.amber { color: var(--amber); }
 .riskbar-labels .neg { color: var(--signal); }
 .riskbar-labels .pos { color: var(--celeste); }
 

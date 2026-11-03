@@ -37,6 +37,8 @@ await page.waitForTimeout(8000);
 await page.screenshot({ path: "shots/chart-top.png" });
 await page.getByRole("button", { name: "Kauf erfassen" }).first().click();
 await page.waitForTimeout(2500);
+await page.getByLabel("Stückzahl").fill("10");
+await page.waitForTimeout(800);
 await page.screenshot({ path: "shots/buy-dialog.png" });
 
 const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });

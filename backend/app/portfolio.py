@@ -12,6 +12,7 @@ from datetime import date
 import pandas as pd
 
 from . import analysis, market
+from .entry import fmt
 
 PERIODS = [(365, "1y"), (730, "2y"), (1825, "5y")]
 
@@ -75,7 +76,7 @@ def evaluate(pos: dict, profile: analysis.Profile) -> dict:
         if price - buy > profile.h["stop_atr"] * atr:
             trail = max(trail, buy)  # mindestens Einstand
         if trail > (stop or 0) * 1.005:
-            hints.append({"level": "info", "text": f"Stopp nachziehen auf ca. {round(trail, 2)}",
+            hints.append({"level": "info", "text": f"Stopp nachziehen auf ca. {fmt(trail, ccy)}",
                           "suggested_stop": round(trail, 2)})
     if rec.action == analysis.SELL:
         hints.append({"level": "bad", "text": "Einschätzung: Reduzieren prüfen"})

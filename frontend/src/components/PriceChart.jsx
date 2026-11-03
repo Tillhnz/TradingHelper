@@ -91,13 +91,15 @@ export default function PriceChart({ rows, showSma = true, showBb = false, event
       }
     });
 
-    // Vergangene Entscheidungspunkte
-    events.forEach((e) => {
+    // Vergangene Entscheidungspunkte; Beschriftung nur an den jüngsten, damit der Chart lesbar bleibt
+    const labelFrom = events.length - 8;
+    events.forEach((e, i) => {
       const t = snap(rows, e.time);
       if (t === null || t - e.time > 7 * 86400) return;
+      const text = i >= labelFrom ? e.label : "";
       markers.push(e.side === "buy"
-        ? { time: t, position: "belowBar", color: COLORS.up, shape: "arrowUp", text: e.label }
-        : { time: t, position: "aboveBar", color: COLORS.down, shape: "arrowDown", text: e.label });
+        ? { time: t, position: "belowBar", color: COLORS.up, shape: "arrowUp", text }
+        : { time: t, position: "aboveBar", color: COLORS.down, shape: "arrowDown", text });
     });
     markers.sort((a, b) => a.time - b.time);
     candles.setMarkers(markers);
