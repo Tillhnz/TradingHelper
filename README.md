@@ -86,7 +86,21 @@ Die API ist unter `/api/docs` dokumentiert (Anmeldung über `/api/auth/login`, T
 
 ## Wie die Einschätzung entsteht
 
-Jeder Indikator liefert ein Signal zwischen −2 und +2 (Trend über SMA200, Golden/Death Cross, RSI-Zone, MACD-Kreuzung bzw. -Lage, Bollinger-Übertreibung, Stochastik-Wende, ADX-Trendstärke, Volumenbestätigung). Die Summe wird auf −1…+1 normiert und mit der News-Stimmung gewichtet (Standard 70/30). Ab +0,35 „Kaufen prüfen“, ab −0,35 „Reduzieren prüfen“, dazwischen „Halten / beobachten“. Die Logik steht in `backend/app/analysis.py`.
+Die **Anlagestrategie** (Einstellungen) steuert alles:
+
+| Horizont | Was zählt | News | Stopp | Ziel |
+|---|---|---|---|---|
+| Kurzfristig | RSI, MACD, Stochastik, Bollinger, EMA 9/21, Volumen (×1,5); Trend nur ×0,5 | 40 % | 1,5 × ATR | nächster Widerstand |
+| Mittelfristig | alles gleich gewichtet | 30 % | 2,5 × ATR | nächster Widerstand |
+| Langfristig | Trend ×2, Golden/Death Cross, 6-/12-Monats-Momentum, Rücksetzer im Aufwärtstrend; Oszillatoren kaum | 15 % | 3,5 × ATR | – |
+
+| Risiko | Kaufen ab | Reduzieren ab | Trendfilter | Chance/Risiko | Schwankung | Position |
+|---|---|---|---|---|---|---|
+| Konservativ | +0,45 | −0,25 | nie unter SMA200 | ≥ 2 | Abschlag ab 4 %/Tag | 0,5 % Risiko, max. 5 % |
+| Ausgewogen | +0,35 | −0,35 | unter SMA200 nur mit Bestätigung | ≥ 1,5 | Abschlag ab 6 %/Tag | 1 % Risiko, max. 10 % |
+| Offensiv | +0,25 | −0,45 | keiner | ≥ 1 | – | 2 % Risiko, max. 20 % |
+
+Jeder Indikator liefert ein Signal zwischen −2 und +2, gewichtet nach Horizont und auf −1…+1 normiert, dann mit der News-Stimmung gemischt. Mit hinterlegter Depotgröße schlägt TradeHelper eine Positionsgröße vor (Stückzahl so, dass ein Stopp höchstens das Depotrisiko kostet). Die Logik steht in `backend/app/analysis.py`.
 
 ## Entwicklung
 

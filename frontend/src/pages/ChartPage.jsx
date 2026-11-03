@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import PriceChart from "../components/PriceChart.jsx";
 import { ActionBadge, ErrorText, Loading, Stat } from "../components/ui.jsx";
+import { Levels } from "./Home.jsx";
 import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
 
 // Yahoo liefert Intraday-Daten nur für begrenzte Zeiträume
@@ -56,7 +57,9 @@ export default function ChartPage() {
     api.get(`/history/${encodeURIComponent(symbol)}?${q}`)
       .then((r) => { if (!stop) { setRows(r.rows); setMeta(r); } })
       .catch((e) => { if (!stop) setError(e.message); });
-    api.get(`/analysis/${encodeURIComponent(symbol)}?${q}`)
+    // Tageskerzen: Zeitraum der Anlagestrategie, damit die Einschätzung zum Report passt
+    const qa = interval === "1d" ? `interval=1d${ccy ? `&currency=${ccy}` : ""}` : q;
+    api.get(`/analysis/${encodeURIComponent(symbol)}?${qa}`)
       .then((a) => { if (!stop) setAnalysis(a); })
       .catch(() => {});
     return () => { stop = true; };
@@ -163,16 +166,19 @@ export default function ChartPage() {
               <h2>Einschätzung</h2>
               <ActionBadge action={rec.action} />
             </div>
+            <p className="muted small">Strategie <Link to="/settings">{rec.profile}</Link>{interval !== "1d" && ` · auf ${INTERVAL_LABEL[interval]}-Kerzen`}</p>
             <div className="stats">
               <Stat label="Gesamt" value={signed(rec.combined)} className={tone(rec.combined)} />
               <Stat label="Technik" value={signed(rec.technical)} className={tone(rec.technical)} />
               <Stat label="News" value={rec.sentiment === null ? "–" : signed(rec.sentiment)} className={tone(rec.sentiment)} />
             </div>
+            <Levels rec={rec} currency={cur} />
+            {rec.notes?.length > 0 && <ul className="notes">{rec.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
             <ul className="signals">
               {analysis.signals.map((s) => (
                 <li key={s.name + s.text} className={tone(s.score)}>
                   <span className="sig-score">{s.score > 0 ? `+${s.score}` : s.score}</span>
-                  <span><strong>{s.name}</strong> {s.text}</span>
+                  <span><strong>{s.name}</strong> {s.text}{s.weight !== 1 && <span className="muted small"> · Gewicht {s.weight.toLocaleString("de-DE")}×</span>}</span>
                 </li>
               ))}
             </ul>

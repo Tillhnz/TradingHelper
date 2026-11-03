@@ -31,7 +31,6 @@ class Settings:
     timezone: str = field(default_factory=lambda: _env("timezone", "Europe/Berlin"))
     finnhub_api_key: str = field(default_factory=lambda: _env("finnhub_api_key", ""))
     news_lookback_days: int = field(default_factory=lambda: int(_env("news_lookback_days", "3")))
-    news_weight: int = field(default_factory=lambda: int(_env("news_weight", "30")))  # Prozent
     ntfy_url: str = field(default_factory=lambda: _env("ntfy_url", "https://ntfy.sh"))
     ntfy_topic: str = field(default_factory=lambda: _env("ntfy_topic", ""))
     ntfy_token: str = field(default_factory=lambda: _env("ntfy_token", ""))
@@ -45,7 +44,9 @@ class Settings:
     alert_weekends: bool = field(default_factory=lambda: _bool(_env("alert_weekends", "false")))
     alert_cooldown_minutes: int = field(default_factory=lambda: int(_env("alert_cooldown_minutes", "240")))
     display_currency: str = field(default_factory=lambda: _env("display_currency", "EUR"))  # oder "native"
-    history_period: str = field(default_factory=lambda: _env("history_period", "1y"))
+    invest_horizon: str = field(default_factory=lambda: _env("invest_horizon", "medium"))  # short|medium|long
+    risk_profile: str = field(default_factory=lambda: _env("risk_profile", "balanced"))  # conservative|balanced|aggressive
+    portfolio_size: int = field(default_factory=lambda: int(_env("portfolio_size", "0")))  # 0 = aus
 
     @property
     def db_path(self) -> Path:

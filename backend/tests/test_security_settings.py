@@ -32,9 +32,9 @@ def test_token_expiry(monkeypatch):
 def test_settings_save_and_override(tmp_path):
     st = Storage(tmp_path / "t.db")
     s = Settings(data_dir=tmp_path)
-    changed = settings_store.save(st, s, {"report_time": "6:45", "news_weight": "40", "ntfy_topic": "mein-topic"})
-    assert set(changed) == {"report_time", "news_weight", "ntfy_topic"}
-    assert s.report_time == "06:45" and s.news_weight == 40
+    changed = settings_store.save(st, s, {"report_time": "6:45", "risk_profile": "conservative", "ntfy_topic": "mein-topic"})
+    assert set(changed) == {"report_time", "risk_profile", "ntfy_topic"}
+    assert s.report_time == "06:45" and s.risk_profile == "conservative"
 
     fresh = Settings(data_dir=tmp_path)
     settings_store.apply_overrides(st, fresh)
@@ -54,7 +54,7 @@ def test_settings_secrets_hidden_and_kept(tmp_path):
 
 
 @pytest.mark.parametrize("key,value", [
-    ("report_time", "25:00"), ("news_weight", "150"), ("timezone", "Mars/Olymp"),
+    ("report_time", "25:00"), ("invest_horizon", "ewig"), ("risk_profile", "yolo"), ("portfolio_size", "-5"), ("timezone", "Mars/Olymp"),
     ("ntfy_topic", "mit leerzeichen"), ("ntfy_url", "ftp://x"), ("alert_interval_minutes", "7"), ("unbekannt", 1),
 ])
 def test_settings_validation(tmp_path, key, value):

@@ -31,9 +31,10 @@ class Report:
     created: str
     entries: list[ReportEntry]
     errors: dict[str, str]
+    profile: str = ""
 
     def to_markdown(self) -> str:
-        lines = [f"**TradeHelper Morgenreport – {self.created}**", ""]
+        lines = [f"**TradeHelper Morgenreport – {self.created}**", f"Strategie: {self.profile}", ""]
         order = {"Kaufen prüfen": 0, "Reduzieren prüfen": 1, "Halten / beobachten": 2}
         for e in sorted(self.entries, key=lambda e: (order[e.rec.action], -abs(e.rec.combined))):
             a, r = e.analysis, e.rec
@@ -43,10 +44,18 @@ class Report:
                          f"(Score {r.combined:+.2f})")
             for reason in r.reasons:
                 lines.append(f"  • {reason}")
-            if a.support or a.resistance:
-                sup = f"{a.support:.2f}" if a.support else "–"
-                res = f"{a.resistance:.2f}" if a.resistance else "–"
-                lines.append(f"  • Unterstützung {sup} / Widerstand {res}")
+            levels = []
+            if r.stop:
+                levels.append(f"Stopp {r.stop:.2f}")
+            if r.target:
+                levels.append(f"Ziel {r.target:.2f}")
+            if r.crv:
+                levels.append(f"CRV {r.crv:.1f}")
+            if levels:
+                lines.append("  • " + " · ".join(levels))
+            if r.position:
+                lines.append(f"  • Positionsgröße: {r.position['shares']} Stück ≈ {r.position['value']:.0f}{ccy}, "
+                             f"Risiko {r.position['risk']:.0f}{ccy} ({r.position['risk_pct']} % des Depots)")
             if e.headlines:
                 lines.append(f"  • News: {e.headlines[0].headline[:110]}")
             lines.append("")
@@ -66,6 +75,10 @@ class Report:
                     "technical_score": e.rec.technical,
                     "sentiment": e.rec.sentiment,
                     "reasons": e.rec.reasons,
+                    "stop": e.rec.stop,
+                    "target": e.rec.target,
+                    "crv": e.rec.crv,
+                    "position": e.rec.position,
                     "analysis": e.analysis.to_dict(),
                     "news": [n.to_dict() for n in e.headlines],
                     "currency": e.currency,
@@ -75,6 +88,7 @@ class Report:
                 for e in self.entries
             ],
             "errors": self.errors,
+            "profile": self.profile,
             "disclaimer": DISCLAIMER,
         }
 
@@ -86,15 +100,16 @@ def target_currency(settings: Settings) -> str | None:
 
 def build_report(storage: Storage, settings: Settings) -> Report:
     target = target_currency(settings)
+    profile = analysis.profile_from(settings)
     entries: list[ReportEntry] = []
     errors: dict[str, str] = {}
     for w in storage.watchlist():
         sym = w["symbol"]
         try:
-            df = market.get_history(sym, settings.history_period, "1d", currency=target)
-            a = analysis.analyze(sym, df)
+            df = market.get_history(sym, profile.period, "1d", currency=target)
+            a = analysis.analyze(sym, df, profile)
             items = news.fetch_news(sym, settings.finnhub_api_key, settings.news_lookback_days)
-            rec = analysis.recommend(a, news.aggregate_sentiment(items), settings.news_weight / 100)
+            rec = analysis.recommend(a, news.aggregate_sentiment(items))
             native = w.get("currency")
             if native is None and w.get("exchange") is None:
                 native = market.guess_listing(sym)[1]
@@ -104,7 +119,7 @@ def build_report(storage: Storage, settings: Settings) -> Report:
             log.warning("Report für %s fehlgeschlagen: %s", sym, exc)
             errors[sym] = str(exc)
     created = datetime.now(ZoneInfo(settings.timezone)).strftime("%d.%m.%Y %H:%M")
-    return Report(created, entries, errors)
+    return Report(created, entries, errors, profile.label)
 
 
 def send_report(storage: Storage, settings: Settings) -> Report:

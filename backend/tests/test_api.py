@@ -61,6 +61,9 @@ def test_watchlist_overview_and_report(client):
     assert ov[0]["exchange"] == "NasdaqGS" and ov[0]["native_currency"] == "USD" and ov[0]["currency"] == "EUR"
     rep = client.get("/api/report", headers=h).json()
     assert rep["entries"][0]["symbol"] == "AAPL" and rep["entries"][0]["currency"] == "EUR"
+    assert rep["profile"] == "Mittelfristig · Ausgewogen" and "stop" in rep["entries"][0]
+    client.put("/api/settings", json={"invest_horizon": "long", "risk_profile": "conservative"}, headers=h)
+    assert client.get("/api/report", headers=h).json()["profile"] == "Langfristig · Konservativ"
     assert client.post("/api/report/send", headers=h).status_code == 400  # kein Topic
 
 

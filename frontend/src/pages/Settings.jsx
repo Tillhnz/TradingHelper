@@ -5,6 +5,16 @@ import { dateTime } from "../fmt.js";
 
 const GROUPS = [
   {
+    id: "strategy",
+    title: "Anlagestrategie",
+    intro: "Danach richten sich alle Einschätzungen: welche Signale zählen, wann eine Empfehlung kippt, wo der Stopp liegt.",
+    fields: {
+      invest_horizon: { label: "Anlagehorizont", type: "select", options: ["short", "medium", "long"], labels: { short: "Kurzfristig – Tage bis Wochen", medium: "Mittelfristig – Wochen bis Monate", long: "Langfristig – Jahre" } },
+      risk_profile: { label: "Risikobereitschaft", type: "select", options: ["conservative", "balanced", "aggressive"], labels: { conservative: "Konservativ – Verluste begrenzen", balanced: "Ausgewogen", aggressive: "Offensiv – mehr Schwankung für mehr Chance" } },
+      portfolio_size: { label: "Depotgröße", type: "number", hint: "optional, in Anzeigewährung – für Vorschläge zur Positionsgröße; 0 = aus" },
+    },
+  },
+  {
     id: "notify",
     title: "Benachrichtigungen",
     intro: "Push-Nachrichten kommen über ntfy. App installieren (Android/iOS), Topic abonnieren, hier denselben Namen eintragen. Bei ntfy.sh ist jedes Topic öffentlich lesbar: wähle einen langen, zufälligen Namen.",
@@ -21,7 +31,6 @@ const GROUPS = [
     fields: {
       finnhub_api_key: { label: "Finnhub-Schlüssel" },
       news_lookback_days: { label: "Nachrichten der letzten … Tage", type: "number" },
-      news_weight: { label: "Gewicht der News in der Einschätzung (%)", type: "number", hint: "Rest: technische Indikatoren" },
     },
   },
   {
@@ -47,10 +56,20 @@ const GROUPS = [
     fields: {
       display_currency: { label: "Anzeigewährung", type: "select", options: ["EUR", "USD", "CHF", "GBP", "native"], labels: { native: "Handelswährung des Börsenplatzes", EUR: "Euro (€)", USD: "US-Dollar ($)", CHF: "Schweizer Franken", GBP: "Britisches Pfund" } },
       timezone: { label: "Zeitzone", hint: "z. B. Europe/Berlin" },
-      history_period: { label: "Zeitraum für die Analyse", type: "select", options: ["6mo", "1y", "2y", "5y"], labels: { "6mo": "6 Monate", "1y": "1 Jahr", "2y": "2 Jahre", "5y": "5 Jahre" } },
     },
   },
 ];
+
+const HORIZON_INFO = {
+  short: "Zählt vor allem Momentum: RSI, MACD, Stochastik, Bollinger, EMA 9/21 und Volumen. News fließen zu 40 % ein. Stopp 1,5 × ATR unter Kurs, Ziel am nächsten Widerstand.",
+  medium: "Ausgewogene Mischung aus Trend und Momentum. News zu 30 %. Stopp 2,5 × ATR, Ziel am nächsten Widerstand.",
+  long: "Zählt vor allem den Trend (200-Tage-Linie, Golden/Death Cross) und das 6-/12-Monats-Momentum; Rücksetzer im Aufwärtstrend gelten als Nachkaufchance. Kurzfristige Oszillatoren spielen kaum eine Rolle, News nur zu 15 %. Weiter Stopp (3,5 × ATR), kein festes Kursziel.",
+};
+const RISK_INFO = {
+  conservative: "Kaufen erst ab Score +0,45, Reduzieren schon ab −0,25. Nie kaufen unter der 200-Tage-Linie. Chance/Risiko mindestens 2. Abschlag bei Schwankung über 4 % pro Tag. Positionen: 0,5 % Depotrisiko, höchstens 5 % des Depots.",
+  balanced: "Kaufen ab +0,35, Reduzieren ab −0,35. Unter der 200-Tage-Linie nur mit klarer Bestätigung. Chance/Risiko mindestens 1,5. Positionen: 1 % Depotrisiko, höchstens 10 % des Depots.",
+  aggressive: "Kaufen schon ab +0,25, Reduzieren erst ab −0,45. Auch Käufe gegen den Trend (überverkaufte Rebounds). Chance/Risiko ab 1. Positionen: 2 % Depotrisiko, höchstens 20 % des Depots.",
+};
 
 const JOB_LABEL = { morning_report: "Nächster Morgenreport", alert_check: "Nächste Alarmprüfung" };
 
@@ -227,6 +246,12 @@ export default function Settings() {
                   onChange={(v) => change(key, v)} onClear={() => clearSecret(key)} />
               ))}
             </div>
+            {g.id === "strategy" && (
+              <div className="strategy-info">
+                <p><strong>{values.invest_horizon === "short" ? "Kurzfristig" : values.invest_horizon === "long" ? "Langfristig" : "Mittelfristig"}:</strong> {HORIZON_INFO[values.invest_horizon]}</p>
+                <p><strong>{values.risk_profile === "conservative" ? "Konservativ" : values.risk_profile === "aggressive" ? "Offensiv" : "Ausgewogen"}:</strong> {RISK_INFO[values.risk_profile]}</p>
+              </div>
+            )}
             {g.id === "notify" && (
               <div className="actions">
                 <button type="button" className="btn" onClick={testNotify} disabled={testing}>{testing ? "Sende …" : "Testnachricht senden"}</button>

@@ -15,12 +15,14 @@ from .storage import Storage
 
 # key -> (Typ, Gruppe, Geheimnis?)
 FIELDS: dict[str, tuple[str, str, bool]] = {
+    "invest_horizon": ("choice:short,medium,long", "strategy", False),
+    "risk_profile": ("choice:conservative,balanced,aggressive", "strategy", False),
+    "portfolio_size": ("int:0:1000000000", "strategy", False),
     "ntfy_url": ("url", "notify", False),
     "ntfy_topic": ("topic", "notify", False),
     "ntfy_token": ("str:200", "notify", True),
     "finnhub_api_key": ("str:100", "news", True),
     "news_lookback_days": ("int:1:14", "news", False),
-    "news_weight": ("int:0:100", "news", False),
     "report_enabled": ("bool", "schedule", False),
     "report_time": ("time", "schedule", False),
     "report_weekends": ("bool", "schedule", False),
@@ -32,7 +34,6 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "alert_cooldown_minutes": ("int:0:10080", "schedule", False),
     "display_currency": ("choice:native,EUR,USD,CHF,GBP", "general", False),
     "timezone": ("tz", "general", False),
-    "history_period": ("choice:6mo,1y,2y,5y", "general", False),
 }
 SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone"}
 

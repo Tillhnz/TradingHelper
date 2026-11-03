@@ -4,6 +4,23 @@ import { api } from "../api.js";
 import { ActionBadge, Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime, money, pct, signed, tone } from "../fmt.js";
 
+export function Levels({ rec, currency }) {
+  if (!rec.stop && !rec.target) return null;
+  return (
+    <div className="levels small">
+      {rec.stop && <span><span className="muted">Stopp</span> {money(rec.stop, currency)}</span>}
+      {rec.target && <span><span className="muted">Ziel</span> {money(rec.target, currency)}</span>}
+      {rec.crv && <span><span className="muted">CRV</span> {rec.crv.toLocaleString("de-DE", { maximumFractionDigits: 1 })}</span>}
+      {rec.position && (
+        <span className="levels-pos">
+          <span className="muted">Position</span> {rec.position.shares} Stück ≈ {money(rec.position.value, currency)}
+          <span className="muted"> · Risiko {money(rec.position.risk, currency)} ({rec.position.risk_pct.toLocaleString("de-DE")} %)</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 const ORDER = { "Kaufen prüfen": 0, "Reduzieren prüfen": 1, "Halten / beobachten": 2 };
 
 export default function Home() {
@@ -47,7 +64,10 @@ export default function Home() {
       <div className="page-head">
         <div>
           <h1>Heute</h1>
-          <p className="muted">{report ? `Stand ${report.created}` : "Einschätzung für deine Watchlist"}</p>
+          <p className="muted">
+            {report ? `Stand ${report.created}` : "Einschätzung für deine Watchlist"}
+            {report?.profile && <> · Strategie <Link to="/settings">{report.profile}</Link></>}
+          </p>
         </div>
         <div className="actions">
           <button className="btn" onClick={load} disabled={!report && !error}>Aktualisieren</button>
@@ -89,6 +109,7 @@ export default function Home() {
             <ul className="reasons">
               {e.reasons.map((r) => <li key={r}>{r}</li>)}
             </ul>
+            <Levels rec={e} currency={e.currency} />
             {e.news[0] && (
               <a className="headline small" href={e.news[0].url} target="_blank" rel="noreferrer noopener">
                 {e.news[0].headline}

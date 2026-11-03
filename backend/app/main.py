@@ -216,16 +216,18 @@ def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str
 
 
 @app.get("/api/analysis/{symbol}", dependencies=auth)
-def analyze(symbol: str, period: str = "1y", interval: str = "1d", with_news: bool = True,
+def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_news: bool = True,
             currency: str | None = None):
+    """Ohne period wird der Zeitraum der Anlagestrategie genommen (gleiche Einschätzung wie im Report)."""
     target = _target(currency)
-    df = _history(symbol, period, interval, target)
+    profile = analysis.profile_from(settings)
+    df = _history(symbol, period or profile.period, interval, target)
     try:
-        a = analysis.analyze(symbol, df)
+        a = analysis.analyze(symbol, df, profile)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     items = news.fetch_news(symbol, settings.finnhub_api_key, settings.news_lookback_days) if with_news else []
-    rec = analysis.recommend(a, news.aggregate_sentiment(items), settings.news_weight / 100)
+    rec = analysis.recommend(a, news.aggregate_sentiment(items))
     return {**a.to_dict(), "recommendation": rec.__dict__, "news": [n.to_dict() for n in items], **_meta(symbol, target)}
 
 
@@ -253,6 +255,7 @@ def watchlist(st: Storage = Depends(get_storage)):
 def watchlist_overview(st: Storage = Depends(get_storage)):
     """Kurs, Tagesänderung und technische Einschätzung je Wert (ohne News, damit es schnell bleibt)."""
     target = _target(None)
+    profile = analysis.profile_from(settings)
     out = []
     for w in st.watchlist():
         sym = w["symbol"]
@@ -263,8 +266,8 @@ def watchlist_overview(st: Storage = Depends(get_storage)):
         entry = {"symbol": sym, "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
                  "native_currency": w.get("currency"), "currency": market.shown_currency(w.get("currency"), target)}
         try:
-            df = market.get_history(sym, settings.history_period, "1d", currency=target)
-            a = analysis.analyze(sym, df)
+            df = market.get_history(sym, profile.period, "1d", currency=target)
+            a = analysis.analyze(sym, df, profile)
             rec = analysis.recommend(a, None)
             spark = [round(float(x), 4) for x in df["close"].tail(30)]
             entry.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
