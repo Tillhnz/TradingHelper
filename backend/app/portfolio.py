@@ -198,4 +198,4 @@ def advice(open_: list[dict], action: str | None) -> dict:
         return {"level": "info", "text": f"Halten – {trail['text']}"}
     if not all(p.get("stop") for p in open_):
         return {"level": "info", "text": "Halten – Stopp hinterlegen, um Verluste zu begrenzen"}
-    return {"level": "info", "text": "Halten"}
+    return {"level": "info", "text": "Halten – derzeit kein Handlungsbedarf"}
