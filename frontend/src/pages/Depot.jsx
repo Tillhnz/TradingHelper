@@ -107,6 +107,12 @@ export default function Depot() {
                           </div>
                           <p className="muted small">Kauf {money(p.buy_price, c)} · jetzt {money(p.price, c)} · Wert {money(p.value, c)}</p>
                           <RiskBar entry={p.buy_price} stop={p.stop} target={p.target} current={p.price} currency={c} />
+                          {(p.risk_to_stop != null || p.chance_to_target != null) && (
+                            <p className="small riskline">
+                              {p.risk_to_stop != null && <span className="neg">bis Stopp {p.risk_to_stop < 0 ? "unterschritten" : `−${money(p.risk_to_stop, c)}`}</span>}
+                              {p.chance_to_target != null && <span className="pos">bis Ziel {p.chance_to_target <= 0 ? "erreicht" : `+${money(p.chance_to_target, c)}`}</span>}
+                            </p>
+                          )}
                         </>
                       )}
                       {p.hints?.length > 0 && (

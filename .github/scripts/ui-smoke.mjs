@@ -19,6 +19,9 @@ const q = await api("/quote/AAPL");
 const buyDate = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
 if (q.price) {
   console.log("position", JSON.stringify(await api("/positions", { symbol: "AAPL", quantity: 10, buy_price: Math.round(q.price * 0.93), buy_date: buyDate, stop: Math.round(q.price * 0.85), target: Math.round(q.price * 1.15) })).slice(0, 200));
+  const today = new Date().toISOString().slice(0, 10);
+  const etf = await api("/quote/IE00B4L5Y983.GTX");
+  console.log("position3", JSON.stringify(await api("/positions", { symbol: "IE00B4L5Y983.GTX", quantity: 50, buy_price: etf.price, buy_date: today, stop: Math.round(etf.price * 0.95 * 100) / 100, target: Math.round(etf.price * 1.12 * 100) / 100 })).slice(0, 160));
   console.log("position2", JSON.stringify(await api("/positions", { symbol: "DE0007164600.GTX", quantity: 5, buy_price: 230, buy_date: buyDate, stop: 190 })).slice(0, 200));
 }
 
@@ -60,6 +63,13 @@ await mobile.evaluate((t) => localStorage.setItem("tradehelper_token", t), token
 await mobile.goto(`${base}/depot`);
 await mobile.waitForTimeout(8000);
 await mobile.screenshot({ path: "shots/mobile-depot.png", fullPage: true });
+await mobile.goto(`${base}/chart/IE00B4L5Y983.GTX`);
+await mobile.waitForTimeout(9000);
+await mobile.screenshot({ path: "shots/mobile-etf-today.png", fullPage: true });
+await mobile.getByRole("button", { name: "Profi" }).first().click();
+await mobile.waitForTimeout(5000);
+await mobile.locator(".chart-panel").screenshot({ path: "shots/mobile-etf-pro-chart.png" });
+await mobile.getByRole("button", { name: "Einfach" }).first().click();
 await mobile.goto(`${base}/chart/DE0007164600.GTX`);
 await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-stock.png", fullPage: true });

@@ -71,6 +71,14 @@ def evaluate(pos: dict, profile: analysis.Profile) -> dict:
                day_change_pct=a.change_pct_1d, action=rec.action)
 
     stop, target, buy = pos.get("stop"), pos.get("target"), pos["buy_price"]
+    qty, fees = pos["quantity"], pos.get("fees") or 0
+    # Was passiert bis Stopp bzw. Ziel – ab jetzt gerechnet und als Ergebnis gegenüber dem Einstand
+    if stop:
+        out["risk_to_stop"] = round((price - stop) * qty, 2)
+        out["pl_at_stop"] = round((stop - buy) * qty - fees, 2)
+    if target:
+        out["chance_to_target"] = round((target - price) * qty, 2)
+        out["pl_at_target"] = round((target - buy) * qty - fees, 2)
     if stop and price <= stop:
         hints.append({"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"})
     if target and price >= target:
@@ -175,6 +183,10 @@ def summarize(items: list[dict], action: str | None = None) -> dict | None:
         target=max((p["target"] for p in open_ if p.get("target")), default=None),
         since=min(p["buy_date"] for p in open_),
     )
+    for key in ("risk_to_stop", "pl_at_stop", "chance_to_target", "pl_at_target"):
+        vals = [p[key] for p in open_ if p.get(key) is not None]
+        out[key] = round(sum(vals), 2) if vals and ccy else None
+    out["lots_without_stop"] = sum(1 for p in open_ if not p.get("stop"))
     if not ccy:
         for k in ("invested", "avg_price", "value", "pl"):
             out[k] = None

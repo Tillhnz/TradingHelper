@@ -47,6 +47,7 @@ export default function ChartPage() {
   const [showBb, setShowBb] = useState(false);
   const [showEvents, setShowEvents] = useState(true);
   const [showPlan, setShowPlan] = useState(true);
+  const [planTouched, setPlanTouched] = useState(false);
   const [ccy, setCcy] = useState(null); // null = Einstellung
   const [meta, setMeta] = useState(null);
   const [rows, setRows] = useState(null);
@@ -62,7 +63,10 @@ export default function ChartPage() {
   useEffect(() => {
     setHolding(null);
     setMeta(null);
-    api.get(`/holdings/${encodeURIComponent(symbol)}`).then(setHolding).catch(() => setHolding(null));
+    api.get(`/holdings/${encodeURIComponent(symbol)}`).then((h) => {
+      setHolding(h);
+      if (!planTouched) setShowPlan(!(h?.summary?.shares > 0));
+    }).catch(() => setHolding(null));
     api.get("/watchlist").then((w) => setWatched(w.some((x) => x.symbol === symbol))).catch(() => {});
   }, [symbol, tick]);
 
@@ -229,7 +233,7 @@ export default function ChartPage() {
           )}
           <span className="toolbar-gap" />
           <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
-          <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => setShowPlan(e.target.checked)} /> Einstiegsmarken</label>
+          <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => { setPlanTouched(true); setShowPlan(e.target.checked); }} /> Einstiegsmarken</label>
           {pro && <label className="check"><input type="checkbox" checked={showSma} onChange={(e) => setShowSma(e.target.checked)} /> <Term name="SMA">SMA</Term></label>}
           {pro && <label className="check"><input type="checkbox" checked={showBb} onChange={(e) => setShowBb(e.target.checked)} /> Bollinger</label>}
         </div>
@@ -242,7 +246,7 @@ export default function ChartPage() {
         <p className="legend small">
           {showEvents && <><span className="arrow pos">▲</span>Kaufsignal <span className="arrow neg">▼</span>Verkaufssignal</>}
           {showPlan && <><span className="dot" style={{ background: "#6fd3c3" }} />Rücksetzer-Einstieg <span className="dot" style={{ background: "#f2b84b" }} />Ausbruch</>}
-          {positions.length > 0 && <><span className="swatch gain" />im Gewinn <span className="swatch loss" />im Verlust (ab deinem Kaufkurs)</>}
+          {positions.length > 0 && <><span className="swatch gain" />Chance bis Ziel <span className="swatch loss" />Risiko bis Stopp <span className="dot" style={{ background: "#f2b84b" }} />dein Kaufkurs</>}
           {pro && showSma && <><span className="dot" style={{ background: "#f2b84b" }} />SMA 20 <span className="dot" style={{ background: "#7aa7ff" }} />SMA 50 <span className="dot" style={{ background: "#c792ea" }} />SMA 200</>}
         </p>
       </section>

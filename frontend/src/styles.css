@@ -581,3 +581,29 @@ h1 { font-size: 2.4rem; }
   .card-grid { grid-template-columns: 1fr; }
   .disclaimer { margin-bottom: 1rem; }
 }
+
+/* ---------- Bestand: Chance/Risiko und Käufe ---------- */
+
+.riskchance { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; margin-bottom: 0.25rem; }
+.riskchance .stat { padding: 0.7rem 0.9rem; gap: 0.1rem; }
+.riskchance .stat-value { font-size: 1.3rem; }
+.riskchance .stat.neg { border-color: rgba(255, 107, 107, 0.35); background: linear-gradient(180deg, rgba(255, 107, 107, 0.08), var(--ink-2)); }
+.riskchance .stat.pos { border-color: rgba(111, 211, 195, 0.35); background: linear-gradient(180deg, rgba(111, 211, 195, 0.08), var(--ink-2)); }
+.warn { color: var(--amber); }
+.lots-title { margin-top: 1.25rem; }
+.lots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.lot { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main pl" "actions actions"; gap: 0.6rem 1rem; background: var(--ink-2); border: 1px solid var(--line); border-radius: 12px; padding: 0.8rem 1rem; }
+.lot.closed { opacity: 0.7; }
+.lot-main { grid-area: main; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.lot-pl { grid-area: pl; display: flex; flex-direction: column; align-items: flex-end; }
+.lot-pl strong { font-size: 1.1rem; }
+.lot-actions { grid-area: actions; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.btn.danger { color: var(--signal); border-color: rgba(255, 107, 107, 0.35); background: rgba(255, 107, 107, 0.06); }
+.btn.danger:hover { background: rgba(255, 107, 107, 0.14); border-color: var(--signal); }
+.push-right { margin-left: auto; }
+.riskline { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; margin: -0.6rem 0 0.2rem; }
+@media (max-width: 800px) {
+  .riskchance { grid-template-columns: 1fr 1fr; }
+  .riskchance .stat-value { font-size: 1.1rem; }
+  .lot-actions .btn { flex: 1 1 auto; text-align: center; }
+}

@@ -103,36 +103,57 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
       }
     }
 
-    // Eigene Käufe: Fläche zwischen Kurs und Kaufkurs, grün darüber, rot darunter
+    // Eigene Käufe wie beim Positions-Werkzeug von TradingView: rote Fläche Kauf → Stopp, grüne Fläche Kauf → Ziel,
+    // dazu die Kurslinie ab Kauf grün über bzw. rot unter dem Kaufkurs.
     const markers = [];
+    const open = positions.filter((p) => !p.sell_date);
+    // Leere Zeitpunkte nach rechts, damit die Zonen offener Positionen auch bei einem Kauf von heute sichtbar sind
+    let future = [];
+    if (open.length && rows.length > 1) {
+      const step = rows[rows.length - 1].time - rows[rows.length - 2].time;
+      future = Array.from({ length: 12 }, (_, i) => rows[rows.length - 1].time + step * (i + 1));
+      const data = simple ? rows.map((r) => ({ time: r.time, value: r.close })) : rows.map((r) => ({ time: r.time, open: r.open, high: r.high, low: r.low, close: r.close }));
+      priceSeries.setData([...data, ...future.map((time) => ({ time }))]);
+    }
     positions.forEach((p) => {
-      const from = dayStart(p.buy_date);
-      const to = p.sell_date ? dayStart(p.sell_date) + 86399 : Infinity;
-      const seg = rows.filter((r) => r.time >= from && r.time <= to);
+      // Tageskerzen liegen je nach Börse auf Mitternacht Ortszeit (gettex: 23 Uhr UTC am Vortag), daher ±12 h Spielraum
+      const from = dayStart(p.buy_date) - 12 * 3600;
+      const to = p.sell_date ? dayStart(p.sell_date) + 12 * 3600 : Infinity;
+      let seg = rows.filter((r) => r.time >= from && r.time <= to);
+      if (!seg.length && !p.sell_date && rows.length) seg = rows.slice(-1); // Kauf nach der letzten Kerze
       if (!seg.length || !p.buy_price) return;
+      const band = (level, color) => {
+        const s2 = main.addBaselineSeries({
+          baseValue: { type: "price", price: p.buy_price },
+          topLineColor: "rgba(0,0,0,0)", bottomLineColor: "rgba(0,0,0,0)", lineWidth: 1,
+          topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
+          priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        });
+        s2.setData([...seg.map((r) => r.time), ...future].map((time) => ({ time, value: level })));
+      };
+      if (!p.sell_date && p.stop) band(p.stop, "rgba(255, 107, 107, 0.22)");
+      if (!p.sell_date && p.target) band(p.target, "rgba(111, 211, 195, 0.20)");
       const area = main.addBaselineSeries({
         baseValue: { type: "price", price: p.buy_price },
-        topLineColor: "rgba(111, 211, 195, 0.9)", topFillColor1: "rgba(111, 211, 195, 0.32)", topFillColor2: "rgba(111, 211, 195, 0.04)",
-        bottomLineColor: "rgba(255, 107, 107, 0.9)", bottomFillColor1: "rgba(255, 107, 107, 0.04)", bottomFillColor2: "rgba(255, 107, 107, 0.32)",
-        lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        topLineColor: COLORS.up, topFillColor1: "rgba(111, 211, 195, 0.30)", topFillColor2: "rgba(111, 211, 195, 0.05)",
+        bottomLineColor: COLORS.down, bottomFillColor1: "rgba(255, 107, 107, 0.05)", bottomFillColor2: "rgba(255, 107, 107, 0.30)",
+        lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       area.setData(seg.map((r) => ({ time: r.time, value: r.close })));
       area.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `Kauf ${p.quantity}×` });
       if (!p.sell_date) {
-        if (p.stop) area.createPriceLine({ price: p.stop, color: COLORS.down, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "Stopp" });
-        if (p.target) area.createPriceLine({ price: p.target, color: COLORS.up, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "Ziel" });
+        if (p.stop) area.createPriceLine({ price: p.stop, color: COLORS.down, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "Stopp" });
+        if (p.target) area.createPriceLine({ price: p.target, color: COLORS.up, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "Ziel" });
       }
-      const tb = snap(rows, from);
-      if (tb) markers.push({ time: tb, position: "belowBar", color: COLORS.amber, shape: "arrowUp", text: "Kauf" });
-      if (p.sell_date) {
-        const ts = snap(rows, dayStart(p.sell_date));
-        if (ts) markers.push({ time: ts, position: "aboveBar", color: COLORS.amber, shape: "arrowDown", text: "Verkauf" });
-      }
+      markers.push({ time: seg[0].time, position: "belowBar", color: COLORS.amber, shape: "arrowUp", text: "Kauf", size: 2 });
+      if (p.sell_date) markers.push({ time: seg[seg.length - 1].time, position: "aboveBar", color: COLORS.amber, shape: "arrowDown", text: "Verkauf", size: 2 });
     });
+    const hasPositions = markers.length > 0;
 
-    // Vergangene Entscheidungspunkte; Beschriftung nur im Profi-Modus und nur an den jüngsten
-    const labelFrom = simple ? Infinity : events.length - 8;
-    events.forEach((e, i) => {
+    // Vergangene Entscheidungspunkte: nur die jüngsten, damit der Chart ruhig bleibt; bei eigenen Käufen noch weniger
+    const recent = events.slice(-(hasPositions ? 4 : simple ? 6 : 10));
+    const labelFrom = simple ? Infinity : recent.length - 3;
+    recent.forEach((e, i) => {
       const t = snap(rows, e.time);
       if (t === null || t - e.time > 7 * 86400) return;
       const text = i >= labelFrom ? e.label : "";
@@ -175,7 +196,7 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
       main.timeScale().fitContent();
     } else {
       const visible = Math.min(rows.length, 160);
-      main.timeScale().setVisibleLogicalRange({ from: rows.length - visible, to: rows.length + 3 });
+      main.timeScale().setVisibleLogicalRange({ from: rows.length - visible, to: rows.length + (future.length || 3) });
     }
 
     return () => { charts.forEach((c) => c.remove()); chartsRef.current = []; };

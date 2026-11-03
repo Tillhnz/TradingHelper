@@ -61,6 +61,12 @@ export default function EditDialog({ pos, mode, onClose, onSaved }) {
         <div className="actions">
           <button className="btn primary">Speichern</button>
           <button type="button" className="btn" onClick={onClose}>Abbrechen</button>
+          {mode !== "sell" && (
+            <button type="button" className="btn danger push-right" onClick={async () => {
+              if (!window.confirm("Diesen Kauf wirklich löschen? Das lässt sich nicht rückgängig machen.")) return;
+              try { await api.del(`/positions/${pos.id}`); onSaved(); onClose(); } catch (err) { setError(err.message); }
+            }}>Kauf löschen</button>
+          )}
         </div>
       </form>
     </Modal>
