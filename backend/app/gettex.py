@@ -102,7 +102,8 @@ def info(symbol: str) -> dict:
         "symbol": symbol.upper(), "name": inst.get("name"), "ticker": inst.get("symbol"), "isin": inst.get("isin"),
         "exchange": "gettex", "currency": q.get("isoCurrency") or "EUR",
         "type": SEARCH_TYPES.get(inst.get("entityType"), inst.get("entityType")),
-        "delay_min": 0, "quote_source": "gettex über onvista",
+        "delay_min": 0 if q.get("codeQualityPrice", "RLT") == "RLT" else 15,
+        "quote_source": "gettex über onvista",
         "as_of": _ts(q.get("datetimeLast")),
     }
 
@@ -110,7 +111,8 @@ def info(symbol: str) -> dict:
 def quote(symbol: str) -> dict:
     q = gettex_quote(snapshot(isin_of(symbol)))
     return {"price": q.get("last"), "previous_close": q.get("previousLast"), "open": q.get("open"),
-            "high": q.get("high"), "low": q.get("low"), "volume": q.get("volume"), "time": _ts(q.get("datetimeLast"))}
+            "high": q.get("high"), "low": q.get("low"), "volume": q.get("totalVolume"), "time": _ts(q.get("datetimeLast")),
+            "realtime": q.get("codeQualityPrice") == "RLT"}
 
 
 def _range_for(period: str) -> tuple[str, date]:
@@ -160,7 +162,7 @@ def _with_today(df: pd.DataFrame, q: dict) -> pd.DataFrame:
         return df
     day = pd.Timestamp(t, unit="s", tz="UTC").tz_convert("Europe/Berlin").normalize()
     row = {"open": q.get("open") or last, "high": max(q.get("high") or last, last), "low": min(q.get("low") or last, last),
-           "close": last, "volume": float(q.get("volume") or 0)}
+           "close": last, "volume": float(q.get("totalVolume") or 0)}  # "volume" ist nur das letzte Einzelgeschäft
     out = df.copy()
     if len(out) and day < out.index[-1]:
         return out

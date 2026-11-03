@@ -8,7 +8,8 @@ SNAP = {
     "quoteList": {"list": [
         {"market": {"name": "Xetra", "codeMarket": "_GER", "idNotation": 1}, "isoCurrency": "EUR", "last": 204.4},
         {"market": {"name": "gettex", "codeMarket": "_TRO", "idNotation": 120499220}, "isoCurrency": "EUR",
-         "last": 205.1, "open": 208.6, "high": 209.0, "low": 203.05, "volume": 5000, "previousLast": 208.45,
+         "last": 205.1, "open": 208.6, "high": 209.0, "low": 203.05, "volume": 10, "totalVolume": 5000, "previousLast": 208.45,
+         "codeQualityPrice": "RLT",
          "datetimeLast": "2026-11-03T15:23:57.947+00:00"},
     ]},
 }
@@ -65,7 +66,7 @@ def test_history_adds_today(fake):
     df = gettex.history("DE0007164600.GTX", "1y", "1d")
     assert list(df["close"]) == [201.0, 204.0, 208.45, 205.1]
     assert df.index[-1] == pd.Timestamp("2026-11-03", tz="Europe/Berlin")
-    assert df.iloc[-1]["high"] == 209.0 and df.iloc[-1]["low"] == 203.05
+    assert df.iloc[-1]["high"] == 209.0 and df.iloc[-1]["low"] == 203.05 and df.iloc[-1]["volume"] == 5000
     eod_call = next(c for c in fake if "eod_history" in c[0])
     assert eod_call[1]["idNotation"] == 120499220 and eod_call[0] == "/instruments/STOCK/82849/eod_history"
 

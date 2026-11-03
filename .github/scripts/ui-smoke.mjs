@@ -47,7 +47,7 @@ await page.locator(".gsearch input").fill("Allianz");
 await page.waitForTimeout(4000);
 await page.screenshot({ path: "shots/search.png" });
 await page.screenshot({ path: "shots/chart-holding.png", fullPage: true });
-await page.getByRole("button", { name: "Kauf erfassen" }).first().click();
+await page.locator(".stock-actions-top .btn.primary").click();
 await page.waitForTimeout(2500);
 await page.getByLabel("Stückzahl").fill("10");
 await page.waitForTimeout(800);

@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 TH_DATA_DIR=/data
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 TH_DATA_DIR=/data XDG_CACHE_HOME=/tmp/cache
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
