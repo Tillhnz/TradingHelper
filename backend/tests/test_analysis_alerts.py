@@ -105,3 +105,13 @@ def test_watchlist(tmp_path):
     assert st.watchlist_symbols() == ["AAPL", "SAP.DE"]
     assert st.remove_symbol("AAPL")
     assert not st.remove_symbol("AAPL")
+
+
+def test_alert_message_german_with_currency(tmp_path, monkeypatch):
+    st = Storage(tmp_path / "t.db")
+    df = make_df([1000.0] * 60 + [1234.5])
+    msg = alerts.evaluate(_alert(st, "price_above", value=1200), df, "EUR")
+    assert msg == "Kurs 1.234,50 € über 1.200,00 €"
+    assert alerts.evaluate(_alert(st, "price_above", value=1200), df) == "Kurs 1.234,50 über 1.200,00"
+    monkeypatch.setattr(alerts.market, "symbol_info", lambda s: {"name": "Beiersdorf", "ticker": "BEI"})
+    assert alerts.label("DE0005200000.GTX") == "Beiersdorf"

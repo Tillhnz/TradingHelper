@@ -389,7 +389,9 @@ def alert_list(st: Storage = Depends(get_storage)):
     out = []
     for a in st.alerts():
         d = a.to_dict()
-        d["native_currency"] = _info(a.symbol).get("currency") if not a.currency else None
+        info = _info(a.symbol)
+        d["native_currency"] = info.get("currency") if not a.currency else None
+        d["name"], d["ticker"] = info.get("name"), info.get("ticker")
         out.append(d)
     return out
 
@@ -431,7 +433,11 @@ def alert_check(send: bool = True, st: Storage = Depends(get_storage)):
 
 @app.get("/api/alerts/log", dependencies=auth)
 def alert_log(limit: int = 50, st: Storage = Depends(get_storage)):
-    return st.alert_log(min(limit, 500))
+    rows = st.alert_log(min(limit, 500))
+    for r in rows:
+        info = _info(r["symbol"])
+        r["name"], r["ticker"] = info.get("name"), info.get("ticker")
+    return rows
 
 
 # ---------- Depot (erfasste Käufe) ----------

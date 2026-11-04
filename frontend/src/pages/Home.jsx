@@ -191,7 +191,12 @@ export default function Home() {
         <>
           <h2 className="section-title">Letzte Alarme</h2>
           <ul className="log-list">
-            {log.map((l) => <li key={l.id}><span className="muted small">{dateTime(l.triggered_at)}</span> <strong>{l.symbol}</strong> {l.message}</li>)}
+            {log.map((l) => (
+              <li key={l.id}>
+                <span className="muted small">{dateTime(l.triggered_at)}</span>{" "}
+                <Link to={`/chart/${encodeURIComponent(l.symbol)}`}><strong>{displayName(l)}</strong></Link> {l.message}
+              </li>
+            ))}
           </ul>
         </>
       )}

@@ -25,6 +25,11 @@ if (q.price) {
   console.log("position2", JSON.stringify(await api("/positions", { symbol: "DE0007164600.GTX", quantity: 5, buy_price: 230, buy_date: buyDate, stop: 190 })).slice(0, 200));
 }
 
+// alert-name-check: Alarm auf gettex-Wert auslösen und prüfen, dass Name statt ISIN im Verlauf steht
+console.log("alert add", JSON.stringify(await api("/alerts", { symbol: "DE0007164600.GTX", kind: "price_above", params: { value: 1 }, once: true })).slice(0, 120));
+console.log("alert check", JSON.stringify(await api("/alerts/check?send=false", {})).slice(0, 300));
+console.log("alert log", JSON.stringify((await api("/alerts/log?limit=3"))[0]).slice(0, 300));
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
 const errors = [];
