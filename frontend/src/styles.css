@@ -726,7 +726,7 @@ h1 { font-size: 2.4rem; }
 .progress { height: 8px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin: 0.6rem 0; }
 .progress span { display: block; height: 100%; background: var(--celeste); transition: width 0.4s ease; }
 .verdict-box { border-left: 3px solid var(--amber); background: var(--ink-2); border-radius: 8px; padding: 0.9rem 1rem; margin: 0 0 1rem; }
-.verdict-box.switch { border-left-color: var(--celeste); }
+.verdict-box.v-switch { border-left-color: var(--celeste); }
 .verdict-box p { margin: 0; }
 .verdict-box .actions { margin-top: 0.7rem; }
 .table tr.is-current td { background: rgba(242, 184, 75, 0.07); }

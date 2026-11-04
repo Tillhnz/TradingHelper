@@ -70,7 +70,7 @@ function Backtest({ onApplied }) {
       {bt && !r && !running && <p className="muted">Noch kein Rückblick gerechnet.</p>}
       {r && (
         <>
-          <div className={`verdict-box ${r.verdict}`}>
+          <div className={`verdict-box v-${r.verdict}`}>
             <p>{r.text}</p>
             {r.verdict === "switch" && best && !best.current && (
               <div className="actions"><button className="btn small primary" onClick={() => apply(best)}>„{best.label}“ übernehmen</button></div>
@@ -90,7 +90,7 @@ function Backtest({ onApplied }) {
                   <th className="num hide-sm">größter Einbruch</th>
                   <th className="num hide-sm">Verkäufe</th>
                   <th className="num hide-sm">Treffer</th>
-                  <th />
+                  <th className="hide-sm" />
                 </tr>
               </thead>
               <tbody>
@@ -102,7 +102,7 @@ function Backtest({ onApplied }) {
                     <td className="num hide-sm neg">{pct(v.test.max_drawdown_pct, 1)}</td>
                     <td className="num hide-sm">{v.test.trades}</td>
                     <td className="num hide-sm">{v.test.win_rate == null ? "–" : `${num(v.test.win_rate, 0)} %`}</td>
-                    <td className="row-actions">{!v.current && <button className="link small" onClick={() => apply(v)}>übernehmen</button>}</td>
+                    <td className="row-actions hide-sm">{!v.current && <button className="link small" onClick={() => apply(v)}>übernehmen</button>}</td>
                   </tr>
                 ))}
                 <tr>
@@ -110,7 +110,7 @@ function Backtest({ onApplied }) {
                   <td className={`num ${tone(r.benchmark.learn.return_pct)}`}>{pct(r.benchmark.learn.return_pct, 1)}</td>
                   <td className={`num ${tone(r.benchmark.test.return_pct)}`}>{pct(r.benchmark.test.return_pct, 1)}</td>
                   <td className="num hide-sm neg">{pct(r.benchmark.test.max_drawdown_pct, 1)}</td>
-                  <td className="hide-sm" /><td className="hide-sm" /><td />
+                  <td className="hide-sm" /><td className="hide-sm" /><td className="hide-sm" />
                 </tr>
               </tbody>
             </table>
