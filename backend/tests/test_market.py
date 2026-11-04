@@ -61,10 +61,19 @@ def test_search_parsing(monkeypatch):
         Search = FakeSearch
 
     monkeypatch.setattr(market, "_yf", lambda: FakeYf)
+    monkeypatch.setattr(market.gettex, "search", lambda q, limit=6: [{"symbol": "US0378331005.GTX", "name": "Apple"}])
     res = market.search("apple")
+    assert res[0]["symbol"] == "US0378331005.GTX"
+    res = res[1:]
     assert [r["symbol"] for r in res] == ["AAPL", "APC.DE"]
     assert res[1] == {"symbol": "APC.DE", "name": "Apple Inc.", "exchange": "XETRA", "type": "EQUITY", "currency": "EUR"}
     assert market.search("  ") == []
+
+    def boom(q, limit=6):
+        raise market.gettex.GettexError("offline")
+
+    monkeypatch.setattr(market.gettex, "search", boom)
+    assert [r["symbol"] for r in market.search("apple")] == ["AAPL", "APC.DE"]
 
 
 def test_storage_migrates_old_schema(tmp_path):

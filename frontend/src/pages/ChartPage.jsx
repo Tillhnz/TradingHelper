@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import PriceChart from "../components/PriceChart.jsx";
-import { ActionBadge, ErrorText, Loading, Stat } from "../components/ui.jsx";
-import { Levels } from "./Home.jsx";
-import EntryPlan from "../components/EntryPlan.jsx";
 import BuyDialog from "../components/BuyDialog.jsx";
+import EntryPlan from "../components/EntryPlan.jsx";
 import HoldingPanel from "../components/HoldingPanel.jsx";
+import PriceChart from "../components/PriceChart.jsx";
+import Term from "../components/Term.jsx";
+import { ActionBadge, ErrorText, Levels, Loading, Stat } from "../components/ui.jsx";
 import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
+import { useMode } from "../mode.js";
+import { ACTION_UI, displayTicker } from "../texts.js";
 
-// Yahoo liefert Intraday-Daten nur für begrenzte Zeiträume
-const PERIODS = {
+const RANGES = [
+  { id: "1mo", label: "1 M", period: "1mo", interval: "1d" },
+  { id: "3mo", label: "3 M", period: "3mo", interval: "1d" },
+  { id: "6mo", label: "6 M", period: "6mo", interval: "1d" },
+  { id: "1y", label: "1 J", period: "1y", interval: "1d" },
+  { id: "5y", label: "5 J", period: "5y", interval: "1wk" },
+];
+const PRO_PERIODS = {
   "1d": ["3mo", "6mo", "1y", "2y", "5y"],
   "1wk": ["1y", "2y", "5y", "10y"],
   "1h": ["1mo", "3mo", "6mo"],
@@ -22,279 +30,296 @@ const REFRESH_MS = 60 * 1000;
 const KIND_COLOR = { pullback: "#6fd3c3", breakout: "#f2b84b", rebound: "#ff9f6b", now: "#6fd3c3" };
 const KIND_TITLE = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound", now: "Einstieg" };
 
-function delayText(meta) {
+function freshness(meta) {
   if (!meta) return "";
   const when = meta.as_of ? new Date(meta.as_of * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
-  const delay = meta.delay_min === 0 ? "Echtzeit" : meta.delay_min ? `ca. ${meta.delay_min} Min. verzögert` : "Verzögerung unbekannt";
-  return [when && `Stand ${when}`, delay, meta.quote_source].filter(Boolean).join(" · ");
+  const delay = meta.delay_min === 0 ? "Echtzeit" : meta.delay_min ? `${meta.delay_min} Min. verzögert` : null;
+  return [when && `Stand ${when}`, delay].filter(Boolean).join(" · ");
 }
 
 export default function ChartPage() {
   const { symbol: param } = useParams();
-  const navigate = useNavigate();
-  const [symbol, setSymbol] = useState(param?.toUpperCase() || "");
-  const [input, setInput] = useState(param?.toUpperCase() || "");
-  const [interval, setInterval_] = useState("1d");
-  const [period, setPeriod] = useState("1y");
+  const symbol = (param || "").toUpperCase();
+  const { mode } = useMode();
+  const pro = mode === "pro";
+  const [view, setView] = useState({ period: "1y", interval: "1d" });
   const [showSma, setShowSma] = useState(true);
   const [showBb, setShowBb] = useState(false);
+  const [showEvents, setShowEvents] = useState(true);
+  const [showPlan, setShowPlan] = useState(true);
+  const [planTouched, setPlanTouched] = useState(false);
   const [ccy, setCcy] = useState(null); // null = Einstellung
   const [meta, setMeta] = useState(null);
   const [rows, setRows] = useState(null);
   const [analysis, setAnalysis] = useState(null);
-  const [watch, setWatch] = useState([]);
+  const [watched, setWatched] = useState(null);
   const [error, setError] = useState("");
-  const [showEvents, setShowEvents] = useState(true);
-  const [showPlan, setShowPlan] = useState(true);
-  const [showPos, setShowPos] = useState(true);
+  const [msg, setMsg] = useState("");
   const [buying, setBuying] = useState(false);
   const [tick, setTick] = useState(0);
   const [holding, setHolding] = useState(null);
-
-  const loadHolding = useCallback(() => {
-    if (!symbol) return;
-    api.get(`/holdings/${encodeURIComponent(symbol)}`).then(setHolding).catch(() => setHolding(null));
-  }, [symbol]);
-  useEffect(() => { setHolding(null); loadHolding(); }, [loadHolding, tick]);
-  const refreshAll = useCallback(() => { setTick((t) => t + 1); }, []);
+  const refreshAll = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
-    api.get("/watchlist").then((w) => {
-      setWatch(w.map((x) => x.symbol));
-      if (!param) {
-        const first = w[0]?.symbol || "AAPL";
-        setSymbol(first);
-        setInput(first);
-      }
-    }).catch(() => { if (!param) { setSymbol("AAPL"); setInput("AAPL"); } });
-  }, [param]);
+    setHolding(null);
+    setMeta(null);
+    api.get(`/holdings/${encodeURIComponent(symbol)}`).then((h) => {
+      setHolding(h);
+      if (!planTouched) setShowPlan(!(h?.summary?.shares > 0));
+    }).catch(() => setHolding(null));
+    api.get("/watchlist").then((w) => setWatched(w.some((x) => x.symbol === symbol))).catch(() => {});
+  }, [symbol, tick]);
 
+  const q = `period=${view.period}&interval=${view.interval}${ccy ? `&currency=${ccy}` : ""}`;
   useEffect(() => {
-    if (param) { setSymbol(param.toUpperCase()); setInput(param.toUpperCase()); }
-  }, [param]);
-
-  useEffect(() => {
-    if (!symbol) return undefined;
     let stop = false;
     setRows(null);
-    setAnalysis(null);
     setError("");
-    const q = `period=${period}&interval=${interval}${ccy ? `&currency=${ccy}` : ""}`;
     api.get(`/history/${encodeURIComponent(symbol)}?${q}`)
       .then((r) => { if (!stop) { setRows(r.rows); setMeta(r); } })
       .catch((e) => { if (!stop) setError(e.message); });
-    // Tageskerzen: Zeitraum der Anlagestrategie, damit die Einschätzung zum Report passt
-    const qa = interval === "1d" ? `interval=1d${ccy ? `&currency=${ccy}` : ""}` : q;
-    api.get(`/analysis/${encodeURIComponent(symbol)}?${qa}`)
+    return () => { stop = true; };
+  }, [symbol, q, tick]);
+
+  // Einschätzung immer auf Tagesbasis über den Zeitraum der Strategie, damit sie zur Übersicht passt
+  useEffect(() => {
+    let stop = false;
+    setAnalysis(null);
+    api.get(`/analysis/${encodeURIComponent(symbol)}?interval=1d${ccy ? `&currency=${ccy}` : ""}`)
       .then((a) => { if (!stop) setAnalysis(a); })
       .catch(() => {});
     return () => { stop = true; };
-  }, [symbol, period, interval, ccy, tick]);
+  }, [symbol, ccy, tick]);
 
-  // Kurse automatisch nachladen, solange die Seite sichtbar ist (still, ohne Ladeanzeige)
+  // Kurse jede Minute still nachladen, solange die Seite sichtbar ist
   useEffect(() => {
-    if (!symbol) return undefined;
-    const q = `period=${period}&interval=${interval}${ccy ? `&currency=${ccy}` : ""}`;
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       api.get(`/history/${encodeURIComponent(symbol)}?${q}`).then((r) => { setRows(r.rows); setMeta(r); }).catch(() => {});
     }, REFRESH_MS);
     return () => clearInterval(id);
-  }, [symbol, period, interval, ccy]);
+  }, [symbol, q]);
+
+  useEffect(() => {
+    const name = meta?.name || analysis?.name;
+    if (name) document.title = `${name} · TradeHelper`;
+  }, [meta, analysis]);
 
   const planLines = useMemo(() => {
-    if (!analysis) return [];
-    const lines = [
+    if (!analysis || !showPlan) return [];
+    const lines = pro ? [
       { price: analysis.support, color: "rgba(111, 211, 195, 0.45)", title: "Unterstützung", style: 2 },
       { price: analysis.resistance, color: "rgba(255, 107, 107, 0.45)", title: "Widerstand", style: 2 },
-    ];
-    if (!showPlan || !analysis.entry) return lines;
+    ] : [];
+    if (!analysis.entry) return lines;
     const ok = analysis.entry.setups.filter((x) => x.ok);
-    ok.forEach((x) => {
-      if (x.kind !== "now") lines.push({ price: x.entry, color: KIND_COLOR[x.kind], title: KIND_TITLE[x.kind], width: 2, style: 0 });
-    });
+    ok.forEach((x) => { if (x.kind !== "now") lines.push({ price: x.entry, color: KIND_COLOR[x.kind], title: KIND_TITLE[x.kind], width: 2, style: 0 }); });
     const best = ok.find((x) => x.status === "now") || [...ok].sort((a, b) => Math.abs(a.distance_pct) - Math.abs(b.distance_pct))[0];
-    if (best) {
-      lines.push({ price: best.stop, color: "#ff6b6b", title: "Stopp (Plan)", style: 3 });
-      if (best.target) lines.push({ price: best.target, color: "#6fd3c3", title: "Ziel (Plan)", style: 3 });
+    if (best && !(holding?.summary?.shares > 0)) {
+      lines.push({ price: best.stop, color: "#ff6b6b", title: "Stopp", style: 3 });
+      if (best.target) lines.push({ price: best.target, color: "#6fd3c3", title: "Ziel", style: 3 });
     }
     return lines;
-  }, [analysis, showPlan]);
+  }, [analysis, showPlan, pro, holding]);
 
   const events = useMemo(() => (showEvents && meta?.events ? meta.events : []), [meta, showEvents]);
-  const positions = useMemo(() => (showPos && meta?.positions ? meta.positions : []), [meta, showPos]);
-  const keepRange = useCallback(() => {}, []);
+  const positions = useMemo(() => meta?.positions || [], [meta]);
 
-  function go(e) {
-    e.preventDefault();
-    const s = input.trim().toUpperCase();
-    if (s) navigate(`/chart/${encodeURIComponent(s)}`);
-  }
-
-  function changeInterval(iv) {
-    setInterval_(iv);
-    if (!PERIODS[iv].includes(period)) setPeriod(PERIODS[iv][Math.min(1, PERIODS[iv].length - 1)]);
-  }
-
-  async function addToWatchlist() {
+  async function toggleWatch() {
+    setMsg("");
+    setError("");
     try {
-      await api.post("/watchlist", { symbol });
-      setWatch((w) => [...w, symbol]);
+      if (watched) await api.del(`/watchlist/${encodeURIComponent(symbol)}`);
+      else await api.post("/watchlist", { symbol });
+      setWatched(!watched);
+      setMsg(watched ? "Wird nicht mehr beobachtet." : "Zu „Meine Werte“ hinzugefügt – ab morgen in deiner Zusammenfassung.");
     } catch (e) {
       setError(e.message);
     }
   }
 
+  function setProInterval(iv) {
+    const periods = PRO_PERIODS[iv];
+    setView((v) => ({ interval: iv, period: periods.includes(v.period) ? v.period : periods[Math.min(1, periods.length - 1)] }));
+  }
+
   const m = analysis?.metrics || {};
-  const cur = meta?.currency;
+  const rec = analysis?.recommendation;
+  const cur = meta?.currency ?? analysis?.currency;
   const p = (v) => money(v, cur);
   const ccyValue = ccy || meta?.display_currency || "native";
-  const rec = analysis?.recommendation;
+  const held = holding?.summary?.shares > 0;
   const last = rows?.[rows.length - 1];
   const prevRow = rows?.[rows.length - 2];
-  const livePrice = interval === "1d" && last ? last.close : analysis?.last_close;
-  const liveChange = interval === "1d" && last && prevRow ? (last.close / prevRow.close - 1) * 100 : analysis?.change_pct_1d;
-  const held = holding?.summary?.shares > 0;
+  const livePrice = view.interval === "1d" && last ? last.close : analysis?.last_close;
+  const liveChange = view.interval === "1d" && last && prevRow ? (last.close / prevRow.close - 1) * 100 : analysis?.change_pct_1d;
   const bestSetup = analysis?.entry?.setups?.find((x) => x.ok && x.status === "now") || analysis?.entry?.setups?.find((x) => x.ok);
+  const info = meta || analysis;
+  const ui = rec ? ACTION_UI[rec.action] : null;
+  const rangeId = RANGES.find((r) => r.period === view.period && r.interval === view.interval)?.id;
+  const intervals = Object.keys(PRO_PERIODS).filter((iv) => meta?.intraday !== false || ["1d", "1wk"].includes(iv));
 
   return (
     <>
-      <div className="page-head">
-        <div className="chart-title">
-          <h1>{symbol || "Chart"}</h1>
-          {livePrice != null && (
-            <span className="chart-quote">
-              <strong>{p(livePrice)}</strong>
-              <span className={tone(liveChange)}>{pct(liveChange)}</span>
-            </span>
-          )}
-          {meta && (meta.name || meta.exchange) && (
-            <p className="muted chart-sub">
-              {[meta.name, meta.exchange && `${meta.exchange}${meta.native_currency ? ` (${meta.native_currency})` : ""}`].filter(Boolean).join(" · ")}
-              {meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}
-            </p>
-          )}
-          {meta && <p className={`muted small chart-sub ${meta.delay_min ? "delayed" : ""}`}>{delayText(meta)} · aktualisiert sich jede Minute</p>}
-        </div>
-        <form className="symbol-form" onSubmit={go}>
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Symbol" aria-label="Symbol" list="watch-symbols" />
-          <datalist id="watch-symbols">{watch.map((s) => <option key={s} value={s} />)}</datalist>
-          <button className="btn">Öffnen</button>
-        </form>
-      </div>
-
-      <div className="toolbar">
-        <div className="seg" role="group" aria-label="Kerzen">
-          {Object.keys(PERIODS).map((iv) => (
-            <button key={iv} className={iv === interval ? "on" : ""} onClick={() => changeInterval(iv)}>{INTERVAL_LABEL[iv]}</button>
-          ))}
-        </div>
-        <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Zeitraum">
-          {PERIODS[interval].map((p) => <option key={p} value={p}>{LABEL[p]}</option>)}
-        </select>
-        {meta?.native_currency && (
-          <select value={ccyValue} onChange={(e) => setCcy(e.target.value)} aria-label="Währung">
-            {["native", "EUR", "USD", "CHF", "GBP"].map((c) => (
-              <option key={c} value={c}>{c === "native" ? `${CURRENCY_LABEL.native} (${meta.native_currency})` : CURRENCY_LABEL[c]}</option>
-            ))}
-          </select>
-        )}
-        <label className="check"><input type="checkbox" checked={showSma} onChange={(e) => setShowSma(e.target.checked)} /> SMA 20/50/200</label>
-        <label className="check"><input type="checkbox" checked={showBb} onChange={(e) => setShowBb(e.target.checked)} /> Bollinger</label>
-        <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
-        <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => setShowPlan(e.target.checked)} /> Einstiegsplan</label>
-        {meta?.positions?.length > 0 && <label className="check"><input type="checkbox" checked={showPos} onChange={(e) => setShowPos(e.target.checked)} /> Meine Käufe</label>}
-        <span className="toolbar-gap" />
-        {symbol && <button className="btn small primary" onClick={() => setBuying(true)}>{held ? "Nachkauf erfassen" : "Kauf erfassen"}</button>}
-        {symbol && !watch.includes(symbol) && <button className="btn small" onClick={addToWatchlist}>Zur Watchlist</button>}
-        {symbol && <Link className="btn small" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>Alarm anlegen</Link>}
-      </div>
-
-      <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} />
-
-      <ErrorText error={error} />
-      {!rows && !error && <Loading text="Lade Kurse …" />}
-      {rows && (
-        <div className="panel chart-panel">
-          <PriceChart key={`${symbol}-${interval}-${period}-${ccy}`} rows={rows} showSma={showSma} showBb={showBb}
-            events={events} planLines={planLines} positions={positions} onVisibleRange={keepRange} />
-          <p className="legend small">
-            {showSma && <><span className="dot" style={{ background: "#f2b84b" }} />SMA 20
-              <span className="dot" style={{ background: "#7aa7ff" }} />SMA 50
-              <span className="dot" style={{ background: "#c792ea" }} />SMA 200</>}
-            {showEvents && <><span className="arrow pos">▲</span>Kaufsignal <span className="arrow neg">▼</span>Verkaufssignal</>}
-            {showPlan && <><span className="dot" style={{ background: "#6fd3c3" }} />Rücksetzer <span className="dot" style={{ background: "#f2b84b" }} />Ausbruch</>}
-            {positions.length > 0 && <><span className="swatch gain" />Gewinnzone <span className="swatch loss" />Verlustzone ab Kaufkurs</>}
+      <div className="stock-head">
+        <div className="stock-id">
+          <Link to="/watchlist" className="back-link small">← Meine Werte</Link>
+          <h1>{info?.name || displayTicker({ symbol })}</h1>
+          <p className="muted small">
+            {displayTicker({ symbol, ticker: info?.ticker })}
+            {info?.exchange && <> · {info.exchange === "gettex" ? <Term name="gettex" /> : info.exchange}</>}
+            {info?.native_currency && ` · ${info.native_currency}`}
+            {info?.isin && ` · ${info.isin}`}
           </p>
         </div>
+        <div className="stock-quote">
+          {livePrice != null && (
+            <>
+              <strong className="big-price">{p(livePrice)}</strong>
+              <span className={`chip ${tone(liveChange)}`}>{pct(liveChange)} heute</span>
+            </>
+          )}
+          {meta && <p className={`muted small ${meta.delay_min ? "delayed" : ""}`}><Term name="Verzögerung">{freshness(meta)}</Term>{meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}</p>}
+        </div>
+        <div className="stock-actions-top">
+          <button className="btn primary" onClick={() => setBuying(true)}>{held ? "Nachkauf erfassen" : "Kauf erfassen"}</button>
+          {watched !== null && !held && <button className="btn" onClick={toggleWatch}>{watched ? "✓ Beobachtet" : "☆ Beobachten"}</button>}
+          <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>🔔 Alarm</Link>
+        </div>
+      </div>
+      {msg && <p className="ok" role="status">{msg}</p>}
+
+      <div className="stock-layout">
+      <aside className="stock-side">
+      {rec && (
+        <section className={`verdict ${ui?.tone || ""}`}>
+          <div className="verdict-main">
+            <span className="verdict-label">{held ? "Für deinen Bestand" : "Unsere Einschätzung"}</span>
+            <ActionBadge action={rec.action} held={held} large />
+            <p className="verdict-text">{held && holding.summary.advice ? holding.summary.advice.text : ui?.explain}</p>
+          </div>
+          <ul className="verdict-reasons">
+            {(pro ? rec.reasons : rec.reasons.slice(0, 2)).map((r) => <li key={r}>{r}</li>)}
+          </ul>
+          <p className="muted small verdict-foot">
+            Passend zu deiner Strategie <Link to="/settings">{rec.profile}</Link>
+            {pro && <> · <Term name="Score">Score</Term> {signed(rec.combined)}</>}
+          </p>
+        </section>
       )}
 
-      {buying && (
-        <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}
-          defaults={{ price: livePrice ? Math.round(livePrice * 100) / 100 : "", stop: bestSetup?.stop ?? rec?.stop ?? "",
-            target: bestSetup?.target ?? rec?.target ?? "", quantity: bestSetup?.position?.shares ?? rec?.position?.shares ?? "" }}
-          onClose={() => setBuying(false)} onSaved={refreshAll} />
-      )}
+      <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} />
+      </aside>
+
+      <div className="stock-main">
+      <section className="panel chart-panel">
+        <div className="toolbar">
+          {pro ? (
+            <>
+              <div className="seg" role="group" aria-label="Kerzen">
+                {intervals.map((iv) => <button key={iv} className={iv === view.interval ? "on" : ""} onClick={() => setProInterval(iv)}>{INTERVAL_LABEL[iv]}</button>)}
+              </div>
+              <select value={view.period} onChange={(e) => setView((v) => ({ ...v, period: e.target.value }))} aria-label="Zeitraum">
+                {PRO_PERIODS[view.interval].map((x) => <option key={x} value={x}>{LABEL[x]}</option>)}
+              </select>
+            </>
+          ) : (
+            <div className="seg" role="group" aria-label="Zeitraum">
+              {RANGES.map((r) => <button key={r.id} className={rangeId === r.id ? "on" : ""} onClick={() => setView({ period: r.period, interval: r.interval })}>{r.label}</button>)}
+            </div>
+          )}
+          {meta?.native_currency && (
+            <select value={ccyValue} onChange={(e) => setCcy(e.target.value)} aria-label="Währung">
+              {["native", "EUR", "USD", "CHF", "GBP"].map((c) => (
+                <option key={c} value={c}>{c === "native" ? `${CURRENCY_LABEL.native} (${meta.native_currency})` : CURRENCY_LABEL[c]}</option>
+              ))}
+            </select>
+          )}
+          <span className="toolbar-gap" />
+          <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
+          <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => { setPlanTouched(true); setShowPlan(e.target.checked); }} /> Einstiegsmarken</label>
+          {pro && <label className="check"><input type="checkbox" checked={showSma} onChange={(e) => setShowSma(e.target.checked)} /> <Term name="SMA">SMA</Term></label>}
+          {pro && <label className="check"><input type="checkbox" checked={showBb} onChange={(e) => setShowBb(e.target.checked)} /> Bollinger</label>}
+        </div>
+        <ErrorText error={error} />
+        {!rows && !error && <Loading text="Lade Kurse …" />}
+        {rows && (
+          <PriceChart key={`${symbol}-${view.interval}-${view.period}-${ccy}-${mode}`} rows={rows} simple={!pro}
+            showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} />
+        )}
+        <p className="legend small">
+          {showEvents && <><span className="arrow pos">▲</span>Kaufsignal <span className="arrow neg">▼</span>Verkaufssignal</>}
+          {showPlan && <><span className="dot" style={{ background: "#6fd3c3" }} />Rücksetzer-Einstieg <span className="dot" style={{ background: "#f2b84b" }} />Ausbruch</>}
+          {positions.length > 0 && <><span className="swatch gain" />Chance bis Ziel <span className="swatch loss" />Risiko bis Stopp <span className="dot" style={{ background: "#f2b84b" }} />dein Kaufkurs</>}
+          {pro && showSma && <><span className="dot" style={{ background: "#f2b84b" }} />SMA 20 <span className="dot" style={{ background: "#7aa7ff" }} />SMA 50 <span className="dot" style={{ background: "#c792ea" }} />SMA 200</>}
+        </p>
+      </section>
 
       {analysis && (
-        <div className="analysis-grid">
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Einschätzung</h2>
-              <ActionBadge action={rec.action} />
-            </div>
-            <p className="muted small">Strategie <Link to="/settings">{rec.profile}</Link>{interval !== "1d" && ` · auf ${INTERVAL_LABEL[interval]}-Kerzen`}</p>
-            <div className="stats">
-              <Stat label="Gesamt" value={signed(rec.combined)} className={tone(rec.combined)} />
-              <Stat label="Technik" value={signed(rec.technical)} className={tone(rec.technical)} />
-              <Stat label="News" value={rec.sentiment === null ? "–" : signed(rec.sentiment)} className={tone(rec.sentiment)} />
-            </div>
-            <Levels rec={rec} currency={cur} />
-            {rec.notes?.length > 0 && <ul className="notes">{rec.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
-            <ul className="signals">
-              {analysis.signals.map((s) => (
-                <li key={s.name + s.text} className={tone(s.score)}>
-                  <span className="sig-score">{s.score > 0 ? `+${s.score}` : s.score}</span>
-                  <span><strong>{s.name}</strong> {s.text}{s.weight !== 1 && <span className="muted small"> · Gewicht {s.weight.toLocaleString("de-DE")}×</span>}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="panel">
-            <h2>Kennzahlen</h2>
-            <div className="stats stats-wide">
-              <Stat label="RSI 14" value={num(m.rsi, 1)} />
-              <Stat label="MACD Hist." value={num(m.hist, 3)} />
-              <Stat label="ADX" value={num(m.adx, 1)} />
-              <Stat label="Stoch %K" value={num(m.stoch_k, 1)} />
-              <Stat label="Bollinger %B" value={num(m.bb_pctb, 2)} />
-              <Stat label="ATR" value={`${num(m.atr_pct, 2)} %`} />
-              <Stat label="SMA 50" value={p(m.sma50)} />
-              <Stat label="SMA 200" value={p(m.sma200)} />
-              <Stat label="1 Monat" value={pct(m.perf_1m, 1)} className={tone(m.perf_1m)} />
-              <Stat label="3 Monate" value={pct(m.perf_3m, 1)} className={tone(m.perf_3m)} />
-              <Stat label="Unterstützung" value={p(analysis.support)} />
-              <Stat label="Widerstand" value={p(analysis.resistance)} />
-            </div>
-          </section>
+        <>
           <EntryPlan symbol={symbol} plan={analysis.entry} currency={analysis.currency} nativeCurrency={analysis.native_currency} held={held} />
-          <section className="panel span-all">
+
+          <details className="panel details-pro" open={pro}>
+            <summary><h2>Details für Profis</h2><span className="muted small">Indikatoren, Kennzahlen und Einzelsignale</span></summary>
+            <div className="analysis-grid">
+              <div>
+                <h3 className="sub-title">Signale</h3>
+                {!held && <Levels rec={rec} currency={cur} />}
+                {rec.notes?.length > 0 && <ul className="notes">{rec.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+                <ul className="signals">
+                  {analysis.signals.map((s) => (
+                    <li key={s.name + s.text} className={tone(s.score)}>
+                      <span className="sig-score">{s.score > 0 ? `+${s.score}` : s.score}</span>
+                      <span><strong>{["RSI", "MACD", "ADX", "Bollinger", "Trend"].includes(s.name) ? <Term name={s.name} /> : s.name}</strong> {s.text}{s.weight !== 1 && <span className="muted small"> · Gewicht {s.weight.toLocaleString("de-DE")}×</span>}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="sub-title">Kennzahlen</h3>
+                <div className="stats stats-wide">
+                  <Stat label="RSI 14" term="RSI" value={num(m.rsi, 1)} />
+                  <Stat label="MACD Hist." term="MACD" value={num(m.hist, 3)} />
+                  <Stat label="ADX" term="ADX" value={num(m.adx, 1)} />
+                  <Stat label="Bollinger %B" term="Bollinger" value={num(m.bb_pctb, 2)} />
+                  <Stat label="ATR" term="ATR" value={`${num(m.atr_pct, 2)} %`} />
+                  <Stat label="SMA 200" term="SMA" value={p(m.sma200)} />
+                  <Stat label="1 Monat" value={pct(m.perf_1m, 1)} className={tone(m.perf_1m)} />
+                  <Stat label="3 Monate" value={pct(m.perf_3m, 1)} className={tone(m.perf_3m)} />
+                  <Stat label="12 Monate" value={pct(m.perf_12m, 1)} className={tone(m.perf_12m)} />
+                  <Stat label="Unterstützung" term="Unterstützung" value={p(analysis.support)} />
+                  <Stat label="Widerstand" term="Widerstand" value={p(analysis.resistance)} />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <section className="panel">
             <h2>Nachrichten</h2>
             {analysis.news.length ? (
               <ul className="news">
                 {analysis.news.map((n) => (
                   <li key={n.url || n.headline}>
-                    <span className={`sent ${tone(n.sentiment)}`}>{signed(n.sentiment)}</span>
+                    <span className={`sent ${tone(n.sentiment)}`} title="Stimmung der Schlagzeile">{n.sentiment > 0.15 ? "positiv" : n.sentiment < -0.15 ? "negativ" : "neutral"}</span>
                     <a href={n.url} target="_blank" rel="noreferrer noopener">{n.headline}</a>
                     <span className="muted small"> · {n.source} · {dateTime(n.published)}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="muted">Keine Nachrichten gefunden. Ohne Finnhub-Schlüssel (Einstellungen) gibt es keine News; für europäische Werte liefert Finnhub oft wenig.</p>
+              <p className="muted">Keine aktuellen Nachrichten gefunden. Ohne Finnhub-Schlüssel (Einstellungen) gibt es keine News; für europäische Werte liefert Finnhub oft wenig.</p>
             )}
           </section>
-        </div>
+        </>
+      )}
+      </div>
+      </div>
+
+      {buying && (
+        <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}
+          defaults={{ price: livePrice ? Math.round(livePrice * 100) / 100 : "", stop: bestSetup?.stop ?? rec?.stop ?? "",
+            target: bestSetup?.target ?? rec?.target ?? "", quantity: bestSetup?.position?.shares ?? rec?.position?.shares ?? "" }}
+          onClose={() => setBuying(false)} onSaved={refreshAll} />
       )}
     </>
   );

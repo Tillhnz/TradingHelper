@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { CURRENCY_LABEL, dateTime } from "../fmt.js";
+import { displayName, displayTicker } from "../texts.js";
+import { Link } from "react-router-dom";
 
 const PARAM_LABEL = {
   value: "Wert", period: "Periode", fast: "Schneller MA", slow: "Langsamer MA", type: "Art",
@@ -150,7 +152,7 @@ export default function Alerts() {
             <label>
               Kerzen
               <select value={form.interval} onChange={(e) => setForm({ ...form, interval: e.target.value })}>
-                {meta.intervals.map((iv) => <option key={iv} value={iv}>{INTERVAL_LABEL[iv] || iv}</option>)}
+                {meta.intervals.filter((iv) => !form.symbol.endsWith(".GTX") || ["1d", "1wk"].includes(iv)).map((iv) => <option key={iv} value={iv}>{INTERVAL_LABEL[iv] || iv}</option>)}
               </select>
             </label>
             <label className="check">
@@ -176,7 +178,7 @@ export default function Alerts() {
             <tbody>
               {list.map((a) => (
                 <tr key={a.id} className={a.active ? "" : "inactive"}>
-                  <td className="sym">{a.symbol}</td>
+                  <td><Link className="sym" to={`/chart/${encodeURIComponent(a.symbol)}`}>{displayName(a)}</Link><div className="muted small">{displayTicker(a)}</div></td>
                   <td>
                     {kindDesc[a.kind] || a.kind}
                     {Object.keys(a.params).length > 0 && <span className="muted small"> · {describeParams(a.params)}{["price_above", "price_below", "cross_up", "cross_down"].includes(a.kind) && (a.currency || a.native_currency) ? ` ${a.currency || a.native_currency}` : ""}</span>}
@@ -201,7 +203,7 @@ export default function Alerts() {
       <h2 className="section-title">Verlauf</h2>
       {log.length ? (
         <ul className="log-list">
-          {log.map((l) => <li key={l.id}><span className="muted small">{dateTime(l.triggered_at)}</span> <strong>{l.symbol}</strong> {l.message}</li>)}
+          {log.map((l) => <li key={l.id}><span className="muted small">{dateTime(l.triggered_at)}</span> <Link to={`/chart/${encodeURIComponent(l.symbol)}`}><strong>{displayName(l)}</strong></Link> {l.message}</li>)}
         </ul>
       ) : <p className="muted">Noch nichts ausgelöst.</p>}
     </>

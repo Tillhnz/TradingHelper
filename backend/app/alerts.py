@@ -25,46 +25,60 @@ class AlertKind:
     check: Callable[[pd.DataFrame, dict], str | None]
 
 
+CUR = "§C"  # Platzhalter für das Währungszeichen, wird in evaluate() ersetzt
+SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF"}
+
+
+def _n(x: float, digits: int = 2) -> str:
+    """Deutsche Schreibweise: 1.234,56"""
+    return f"{x:,.{digits}f}".replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def _p(x) -> str:
+    """Kurs mit Währung, z. B. 82,44 €"""
+    return f"{_n(float(x))}{CUR}"
+
+
 def _last(s: pd.Series) -> float:
     return float(s.iloc[-1])
 
 
 def _price_above(d, p):
     if _last(d["close"]) > p["value"]:
-        return f"Kurs {_last(d['close']):.2f} über {p['value']}"
+        return f"Kurs {_p(_last(d['close']))} über {_p(p['value'])}"
 
 
 def _price_below(d, p):
     if _last(d["close"]) < p["value"]:
-        return f"Kurs {_last(d['close']):.2f} unter {p['value']}"
+        return f"Kurs {_p(_last(d['close']))} unter {_p(p['value'])}"
 
 
 def _cross_up(d, p):
     if ind.crossed_above(d["close"], p["value"]):
-        return f"Kurs kreuzt {p['value']} nach oben ({_last(d['close']):.2f})"
+        return f"Kurs steigt über {_p(p['value'])} (jetzt {_p(_last(d['close']))})"
 
 
 def _cross_down(d, p):
     if ind.crossed_below(d["close"], p["value"]):
-        return f"Kurs kreuzt {p['value']} nach unten ({_last(d['close']):.2f})"
+        return f"Kurs fällt unter {_p(p['value'])} (jetzt {_p(_last(d['close']))})"
 
 
 def _pct_change(d, p):
     chg = (_last(d["close"]) / float(d["close"].iloc[-2]) - 1) * 100
     if abs(chg) >= p["value"]:
-        return f"Tagesbewegung {chg:+.2f} % (Schwelle ±{p['value']} %)"
+        return f"Tagesbewegung {'+' if chg > 0 else ''}{_n(chg)} % (Schwelle ±{_n(p['value'], 1)} %)"
 
 
 def _rsi_above(d, p):
     r = ind.rsi(d["close"], int(p["period"]))
     if ind.crossed_above(r, p["value"]):
-        return f"RSI({p['period']}) steigt über {p['value']} ({_last(r):.1f})"
+        return f"RSI({p['period']}) steigt über {p['value']} ({_n(_last(r), 1)})"
 
 
 def _rsi_below(d, p):
     r = ind.rsi(d["close"], int(p["period"]))
     if ind.crossed_below(r, p["value"]):
-        return f"RSI({p['period']}) fällt unter {p['value']} ({_last(r):.1f})"
+        return f"RSI({p['period']}) fällt unter {p['value']} ({_n(_last(r), 1)})"
 
 
 def _macd_cross_up(d, p):
@@ -103,9 +117,9 @@ def _price_cross_ma(d, p):
     m = _ma(d, p["type"], int(p["period"]))
     t = f"{p['type'].upper()}{p['period']}"
     if ind.crossed_above(d["close"], m):
-        return f"Kurs kreuzt {t} nach oben ({_last(d['close']):.2f})"
+        return f"Kurs kreuzt {t} nach oben ({_p(_last(d['close']))})"
     if ind.crossed_below(d["close"], m):
-        return f"Kurs kreuzt {t} nach unten ({_last(d['close']):.2f})"
+        return f"Kurs kreuzt {t} nach unten ({_p(_last(d['close']))})"
 
 
 def _bb_break(d, p):
@@ -119,19 +133,19 @@ def _bb_break(d, p):
 def _volume_spike(d, p):
     avg = ind.sma(d["volume"], 20).iloc[-2]
     if avg and _last(d["volume"]) >= p["factor"] * avg:
-        return f"Volumen {_last(d['volume']) / avg:.1f}× über 20-Tage-Schnitt"
+        return f"Volumen {_n(_last(d['volume']) / avg, 1)}× über 20-Tage-Schnitt"
 
 
 def _new_high(d, p):
     n = int(p["lookback"])
     if len(d) > n and _last(d["high"]) >= d["high"].iloc[-n - 1:-1].max():
-        return f"Neues {n}-Perioden-Hoch ({_last(d['high']):.2f})"
+        return f"Neues {n}-Perioden-Hoch ({_p(_last(d['high']))})"
 
 
 def _new_low(d, p):
     n = int(p["lookback"])
     if len(d) > n and _last(d["low"]) <= d["low"].iloc[-n - 1:-1].min():
-        return f"Neues {n}-Perioden-Tief ({_last(d['low']):.2f})"
+        return f"Neues {n}-Perioden-Tief ({_p(_last(d['low']))})"
 
 
 KINDS: dict[str, AlertKind] = {k.name: k for k in [
@@ -179,8 +193,20 @@ def build_params(kind: str, given: dict) -> dict:
     return params
 
 
-def evaluate(alert: Alert, df: pd.DataFrame) -> str | None:
-    return KINDS[alert.kind].check(df, alert.params)
+def evaluate(alert: Alert, df: pd.DataFrame, currency: str | None = None) -> str | None:
+    msg = KINDS[alert.kind].check(df, alert.params)
+    if msg:
+        msg = msg.replace(CUR, f" {SYMBOLS.get(currency, currency)}" if currency else "")
+    return msg
+
+
+def label(symbol: str) -> str:
+    """Lesbarer Name statt internem Kürzel (bei gettex sonst die ISIN)."""
+    try:
+        info = market.symbol_info(symbol)
+    except Exception:  # noqa: BLE001
+        return symbol
+    return info.get("name") or info.get("ticker") or symbol
 
 
 def _in_cooldown(alert: Alert, minutes: int) -> bool:
@@ -213,17 +239,19 @@ def check_all(storage: Storage, settings: Settings, send: bool = True) -> list[d
             if key not in frames:
                 frames[key] = market.get_history(alert.symbol, _PERIOD_FOR.get(alert.interval, "1y"), alert.interval,
                                                  currency=alert.currency or None)
-            msg = evaluate(alert, frames[key])
+            ccy = alert.currency or _native(alert.symbol)
+            msg = evaluate(alert, frames[key], ccy)
         except Exception as exc:  # noqa: BLE001
             log.warning("Alarm #%s (%s) nicht prüfbar: %s", alert.id, alert.symbol, exc)
             continue
         if not msg:
             continue
         storage.mark_triggered(alert, msg)
-        fired.append({"id": alert.id, "symbol": alert.symbol, "kind": alert.kind, "message": msg})
+        fired.append({"id": alert.id, "symbol": alert.symbol, "name": label(alert.symbol), "kind": alert.kind,
+                      "message": msg})
         if send:
-            ccy = alert.currency or _native(alert.symbol)
-            label = f"{alert.interval}, {ccy}" if ccy else alert.interval
-            notify.send(settings, f"Alarm {alert.symbol}", f"**{alert.symbol}** ({label}): {msg}",
+            name = label(alert.symbol)
+            when = {"1d": "Tageskurs", "1wk": "Wochenkurs"}.get(alert.interval, alert.interval)
+            notify.send(settings, f"Alarm: {name}", f"**{name}**: {msg} ({when})",
                         priority="high", tags=["chart_with_upwards_trend"])
     return fired

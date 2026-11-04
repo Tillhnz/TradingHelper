@@ -15,6 +15,8 @@ from dataclasses import dataclass
 import pandas as pd
 import requests
 
+from . import gettex
+
 log = logging.getLogger(__name__)
 
 _CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
@@ -29,7 +31,7 @@ MINOR_UNITS = {"GBp": ("GBP", 0.01), "GBX": ("GBP", 0.01), "ZAc": ("ZAR", 0.01),
 
 # Endung → (Börsenplatz, Währung), falls Yahoo keine Metadaten liefert
 SUFFIXES = {
-    "DE": ("Xetra", "EUR"), "F": ("Frankfurt", "EUR"), "SG": ("Stuttgart", "EUR"), "MU": ("München", "EUR"),
+    "GTX": ("gettex", "EUR"), "DE": ("Xetra", "EUR"), "F": ("Frankfurt", "EUR"), "SG": ("Stuttgart", "EUR"), "MU": ("München", "EUR"),
     "BE": ("Berlin", "EUR"), "DU": ("Düsseldorf", "EUR"), "HM": ("Hamburg", "EUR"), "HA": ("Hannover", "EUR"),
     "VI": ("Wien", "EUR"), "PA": ("Euronext Paris", "EUR"), "AS": ("Euronext Amsterdam", "EUR"),
     "BR": ("Euronext Brüssel", "EUR"), "LS": ("Euronext Lissabon", "EUR"), "MI": ("Borsa Italiana", "EUR"),
@@ -104,6 +106,13 @@ def symbol_info(symbol: str) -> dict:
     s = symbol.upper()
     if s in _INFO:
         return _INFO[s]
+    if gettex.is_gettex(s):
+        try:
+            info = gettex.info(s)
+        except gettex.GettexError as exc:
+            raise MarketDataError(str(exc)) from exc
+        _INFO[s] = info
+        return info
     exchange, currency = guess_listing(s)
     info = {"symbol": s, "name": None, "exchange": exchange, "currency": currency, "type": None}
     try:
@@ -157,10 +166,25 @@ def last_trade_time(symbol: str) -> int | None:
 
 
 def search(query: str, limit: int = 15) -> list[dict]:
-    """Suche nach Name, Symbol oder ISIN. Liefert alle Börsenplätze, die Yahoo kennt."""
+    """Suche nach Name, Symbol oder ISIN. Zuerst gettex (Standardbörse), danach alle Börsen, die Yahoo kennt."""
     q = query.strip()
     if not q:
         return []
+    first: list[dict] = []
+    try:
+        first = gettex.search(q, limit=6)
+    except gettex.GettexError as exc:
+        log.info("gettex-Suche nicht möglich: %s", exc)
+    try:
+        rest = _search_yahoo(q, limit)
+    except MarketDataError:
+        if first:
+            return first
+        raise
+    return first + rest
+
+
+def _search_yahoo(q: str, limit: int) -> list[dict]:
     quotes: list[dict] = []
     try:
         quotes = _yf().Search(q, max_results=limit, news_count=0).quotes
@@ -198,6 +222,16 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
     cached = _CACHE.get(key)
     if cached and time.time() - cached[0] < _CACHE_TTL:
         return cached[1].copy()
+    if gettex.is_gettex(symbol):
+        try:
+            df = gettex.history(symbol, period, interval)
+            q = gettex.quote(symbol)
+        except gettex.GettexError as exc:
+            raise MarketDataError(str(exc)) from exc
+        if q.get("time"):
+            _META[symbol.upper()] = {"market_time": q["time"]}
+        _CACHE[key] = (time.time(), df)
+        return df.copy()
     try:
         t = _yf().Ticker(symbol)
         df = t.history(period=period, interval=interval, auto_adjust=True)
@@ -256,6 +290,13 @@ def convert_history(df: pd.DataFrame, native: str | None, target: str | None, pe
     return out
 
 
+INTRADAY = {"1m", "5m", "15m", "30m", "1h"}
+
+
+def supports_intraday(symbol: str) -> bool:
+    return not gettex.is_gettex(symbol)
+
+
 def get_history(symbol: str, period: str = "1y", interval: str = "1d", currency: str | None = None) -> pd.DataFrame:
     """OHLCV-Daten (Spalten open, high, low, close, volume). Mit currency in diese Währung umgerechnet,
     sofern das Symbol eine Währung hat (Indizes bleiben in Punkten)."""
@@ -292,6 +333,15 @@ def shown_currency(native: str | None, target: str | None) -> str | None:
 
 def get_quote(symbol: str) -> Quote:
     symbol = symbol.upper()
+    if gettex.is_gettex(symbol):
+        try:
+            q, inf = gettex.quote(symbol), gettex.info(symbol)
+        except gettex.GettexError as exc:
+            raise MarketDataError(str(exc)) from exc
+        prev = q.get("previous_close")
+        change = q["price"] - prev if prev and q.get("price") is not None else None
+        return Quote(symbol, q["price"], prev, change, change / prev * 100 if change is not None else None,
+                     inf.get("currency"), inf.get("name"))
     df = _raw_history(symbol, "5d", "1d")
     price = float(df["close"].iloc[-1])
     prev = float(df["close"].iloc[-2]) if len(df) > 1 else None

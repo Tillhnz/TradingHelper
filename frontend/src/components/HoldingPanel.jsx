@@ -3,9 +3,41 @@ import { api } from "../api.js";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
 import { RiskBar } from "./BuyDialog.jsx";
 import EditDialog from "./EditDialog.jsx";
+import Term from "./Term.jsx";
 
 const date = (iso) => (iso ? new Date(iso).toLocaleDateString("de-DE") : "–");
 const qty = (q) => num(q, q % 1 ? 3 : 0);
+
+/** Zwei Kacheln wie im Kauf-Dialog: was du bis zum Stopp verlieren und bis zum Ziel gewinnen kannst – ab jetzt. */
+function RiskChance({ s, c }) {
+  const stopHit = s.risk_to_stop != null && s.risk_to_stop < 0;
+  return (
+    <div className="riskchance">
+      <div className={`stat ${s.risk_to_stop == null ? "" : "neg"}`}>
+        <span className="stat-label"><Term name="Stopp">Risiko bis Stopp</Term></span>
+        <strong className="stat-value">
+          {s.risk_to_stop == null ? "kein Stopp" : stopHit ? "Stopp unterschritten" : `−${money(s.risk_to_stop, c)}`}
+        </strong>
+        {s.pl_at_stop != null && <span className="small muted">Ergebnis dann {signedMoney(s.pl_at_stop, c)}</span>}
+        {s.lots_without_stop > 0 && s.risk_to_stop != null && <span className="small warn">{s.lots_without_stop} Kauf ohne Stopp</span>}
+      </div>
+      <div className={`stat ${s.chance_to_target == null ? "" : "pos"}`}>
+        <span className="stat-label"><Term name="Ziel">Chance bis Ziel</Term></span>
+        <strong className="stat-value">
+          {s.chance_to_target == null ? "kein Ziel" : s.chance_to_target <= 0 ? "Ziel erreicht" : `+${money(s.chance_to_target, c)}`}
+        </strong>
+        {s.pl_at_target != null && <span className="small muted">Ergebnis dann {signedMoney(s.pl_at_target, c)}</span>}
+      </div>
+      {s.risk_to_stop > 0 && s.chance_to_target > 0 && (
+        <div className="stat">
+          <span className="stat-label"><Term name="Chance/Risiko" /></span>
+          <strong className="stat-value">{(s.chance_to_target / s.risk_to_stop).toFixed(1).replace(".", ",")}</strong>
+          <span className="small muted">ab aktuellem Kurs</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** „Mein Bestand“ auf der Seite eines Werts: Zusammenfassung, Rat für Halter und alle Käufe mit Aktionen. */
 export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
@@ -27,6 +59,12 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
     }
   }
 
+  const remove = (p) => {
+    if (window.confirm(`Kauf vom ${date(p.buy_date)} (${qty(p.quantity)} Stück) löschen? Das lässt sich nicht rückgängig machen.`)) {
+      act(() => api.del(`/positions/${p.id}`));
+    }
+  };
+
   return (
     <section className={`panel holding ${s.pl > 0 ? "gain" : s.pl < 0 ? "loss" : ""}`}>
       <div className="panel-head">
@@ -43,63 +81,67 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
             </div>
             {s.advice && <p className={`advice ${s.advice.level}`}>{s.advice.text}</p>}
           </div>
+          <RiskChance s={s} c={c} />
+          {s.avg_price && <RiskBar entry={s.avg_price} stop={s.stop} target={s.target} current={s.price} currency={c} />}
           <div className="stats stats-wide">
             <div className="stat"><span className="stat-label">Bestand</span><strong className="stat-value">{qty(s.shares)} Stück</strong></div>
+            <div className="stat"><span className="stat-label">{s.lots > 1 ? "Erster Kauf" : "Gekauft am"}</span><strong className="stat-value">{date(s.since)}</strong>
+              {s.lots > 1 && <span className="small muted">{s.lots} Käufe</span>}</div>
             <div className="stat"><span className="stat-label">Ø Kaufkurs</span><strong className="stat-value">{money(s.avg_price, c)}</strong></div>
             <div className="stat"><span className="stat-label">Aktuell</span><strong className="stat-value">{money(s.price, c)}</strong></div>
             <div className="stat"><span className="stat-label">Eingesetzt</span><strong className="stat-value">{money(s.invested, c)}</strong></div>
             <div className="stat"><span className="stat-label">Wert</span><strong className="stat-value">{money(s.value, c)}</strong></div>
             {s.closed_lots > 0 && <div className={`stat ${tone(s.realized)}`}><span className="stat-label">Realisiert</span><strong className="stat-value">{signedMoney(s.realized, c)}</strong></div>}
           </div>
-          {s.avg_price && <RiskBar entry={s.avg_price} stop={s.stop} target={s.target} current={s.price} currency={c} />}
           {s.mixed_currency && <p className="muted small">Käufe in verschiedenen Währungen – Summen siehe einzelne Käufe.</p>}
         </>
       ) : (
         <p className="muted">Kein offener Bestand. Realisiert: <strong className={tone(s.realized)}>{signedMoney(s.realized, c)}</strong></p>
       )}
 
-      <div className="table-wrap lots">
-        <table className="table">
-          <thead>
-            <tr><th>Kauf</th><th className="num">Stück</th><th className="num">Kurs</th><th className="num hide-sm">Stopp / Ziel</th><th className="num">Ergebnis</th><th /></tr>
-          </thead>
-          <tbody>
-            {open.map((p) => (
-              <tr key={p.id}>
-                <td>{date(p.buy_date)}{p.note && <div className="muted small">„{p.note}“</div>}
-                  {p.hints?.filter((h) => h.suggested_stop || h.level === "bad").map((h) => (
-                    <div key={h.text} className={`small hint-inline ${h.level}`}>
-                      {h.text}
-                      {h.suggested_stop && <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { stop: h.suggested_stop }))}>übernehmen</button>}
-                    </div>
-                  ))}
-                </td>
-                <td className="num">{qty(p.quantity)}</td>
-                <td className="num">{money(p.buy_price, p.display_currency)}</td>
-                <td className="num hide-sm muted small">{money(p.stop, p.display_currency)} / {money(p.target, p.display_currency)}</td>
-                <td className={`num ${tone(p.pl)}`}>{signedMoney(p.pl, p.display_currency)}<div className="small">{pct(p.pl_pct)}</div></td>
-                <td className="row-actions">
-                  <button className="link small" onClick={() => setDialog({ mode: "sell", pos: p })}>Verkauf</button>
-                  <button className="link small" onClick={() => setDialog({ mode: "edit", pos: p })}>Bearbeiten</button>
-                </td>
-              </tr>
-            ))}
-            {closed.map((p) => (
-              <tr key={p.id} className="inactive">
-                <td>{date(p.buy_date)} – {date(p.sell_date)}<div className="muted small">verkauft</div></td>
-                <td className="num">{qty(p.quantity)}</td>
-                <td className="num">{money(p.buy_price, p.display_currency)} → {money(p.sell_price, p.display_currency)}</td>
-                <td className="num hide-sm" />
-                <td className={`num ${tone(p.pl)}`}>{signedMoney(p.pl, p.display_currency)}<div className="small">{pct(p.pl_pct)}</div></td>
-                <td className="row-actions">
-                  <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { reopen: true }))}>Wieder öffnen</button>
-                  <button className="link danger small" onClick={() => window.confirm("Verkauften Kauf löschen?") && act(() => api.del(`/positions/${p.id}`))}>Löschen</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <h3 className="sub-title lots-title">Deine Käufe</h3>
+      <ul className="lots">
+        {open.map((p) => (
+          <li key={p.id} className="lot">
+            <div className="lot-main">
+              <strong>{date(p.buy_date)} · {qty(p.quantity)} Stück à {money(p.buy_price, p.display_currency)}</strong>
+              {p.note && <span className="muted small">„{p.note}“</span>}
+              <span className="muted small">Stopp {money(p.stop, p.display_currency)} · Ziel {money(p.target, p.display_currency)}</span>
+              {p.hints?.filter((h) => h.suggested_stop || h.level === "bad").map((h) => (
+                <span key={h.text} className={`small hint-inline ${h.level}`}>
+                  {h.text}
+                  {h.suggested_stop && <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { stop: h.suggested_stop }))}>übernehmen</button>}
+                </span>
+              ))}
+            </div>
+            <div className={`lot-pl ${tone(p.pl)}`}>
+              <strong>{signedMoney(p.pl, p.display_currency)}</strong>
+              <span className="small">{pct(p.pl_pct)}</span>
+            </div>
+            <div className="lot-actions">
+              <button className="btn small" onClick={() => setDialog({ mode: "sell", pos: p })}>Verkauf erfassen</button>
+              <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: p })}>Bearbeiten</button>
+              <button className="btn small danger" onClick={() => remove(p)}>Löschen</button>
+            </div>
+          </li>
+        ))}
+        {closed.map((p) => (
+          <li key={p.id} className="lot closed">
+            <div className="lot-main">
+              <strong>{qty(p.quantity)} Stück · {money(p.buy_price, p.display_currency)} → {money(p.sell_price, p.display_currency)}</strong>
+              <span className="muted small">verkauft · {date(p.buy_date)} – {date(p.sell_date)}</span>
+            </div>
+            <div className={`lot-pl ${tone(p.pl)}`}>
+              <strong>{signedMoney(p.pl, p.display_currency)}</strong>
+              <span className="small">{pct(p.pl_pct)}</span>
+            </div>
+            <div className="lot-actions">
+              <button className="btn small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { reopen: true }))}>Wieder öffnen</button>
+              <button className="btn small danger" onClick={() => remove(p)}>Löschen</button>
+            </div>
+          </li>
+        ))}
+      </ul>
       {error && <p className="error" role="alert">{error}</p>}
       {dialog && <EditDialog pos={dialog.pos} mode={dialog.mode} onClose={() => setDialog(null)} onSaved={onChanged} />}
     </section>

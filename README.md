@@ -50,7 +50,9 @@ curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.
 
 | Depot | Käufe erfassen (im Chart vorbelegt mit Kurs, Stopp, Ziel und Stückzahl aus dem Einstiegsplan), Gewinn/Verlust je Position und als Verlauf, Hinweise „Stopp erreicht“, „Ziel erreicht“, „Stopp nachziehen“; im Chart grüne Gewinn- und rote Verlustzone ab Kaufkurs |
 
-Symbole in Yahoo-Schreibweise: `AAPL`, `SAP.DE` (Xetra), `^GDAXI` (DAX), `BTC-EUR`, `EURUSD=X`, `IWDA.AS`.
+**Standardbörse ist gettex** (Börse München, 8–22 Uhr, Kurse in Euro nahezu in Echtzeit), abgefragt über die öffentliche onvista-Schnittstelle. gettex-Werte werden intern als `<ISIN>.GTX` geführt, z. B. `DE0007164600.GTX` für SAP. Für gettex gibt es Tages- und Wochenkerzen, keine Stunden- oder Minutenkerzen. Andere Börsen kommen weiterhin über Yahoo.
+
+Symbole anderer Börsen in Yahoo-Schreibweise: `AAPL`, `SAP.DE` (Xetra), `^GDAXI` (DAX), `BTC-EUR`, `EURUSD=X`, `IWDA.AS`.
 
 ## Updates
 

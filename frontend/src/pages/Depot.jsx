@@ -6,6 +6,7 @@ import EditDialog from "../components/EditDialog.jsx";
 import PnlChart from "../components/PnlChart.jsx";
 import { ActionBadge, Empty, ErrorText, Loading, Stat } from "../components/ui.jsx";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
+import { displayName, displayTicker } from "../texts.js";
 
 export default function Depot() {
   const [data, setData] = useState(null);
@@ -94,9 +95,9 @@ export default function Depot() {
                   return (
                     <article key={p.id} className={`position ${p.pl > 0 ? "gain" : p.pl < 0 ? "loss" : ""}`}>
                       <header>
-                        <Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{p.symbol}</Link>
-                        <span className="muted small">{num(p.quantity, p.quantity % 1 ? 3 : 0)} Stück · seit {new Date(p.buy_date).toLocaleDateString("de-DE")}</span>
-                        <ActionBadge action={p.action} />
+                        <Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{displayName(p)}</Link>
+                        <span className="muted small">{displayTicker(p)} · {num(p.quantity, p.quantity % 1 ? 3 : 0)} Stück · seit {new Date(p.buy_date).toLocaleDateString("de-DE")}</span>
+                        <ActionBadge action={p.action} held />
                       </header>
                       {p.error ? <p className="error small">{p.error}</p> : (
                         <>
@@ -106,6 +107,12 @@ export default function Depot() {
                           </div>
                           <p className="muted small">Kauf {money(p.buy_price, c)} · jetzt {money(p.price, c)} · Wert {money(p.value, c)}</p>
                           <RiskBar entry={p.buy_price} stop={p.stop} target={p.target} current={p.price} currency={c} />
+                          {(p.risk_to_stop != null || p.chance_to_target != null) && (
+                            <p className="small riskline">
+                              {p.risk_to_stop != null && <span className="neg">bis Stopp {p.risk_to_stop < 0 ? "unterschritten" : `−${money(p.risk_to_stop, c)}`}</span>}
+                              {p.chance_to_target != null && <span className="pos">bis Ziel {p.chance_to_target <= 0 ? "erreicht" : `+${money(p.chance_to_target, c)}`}</span>}
+                            </p>
+                          )}
                         </>
                       )}
                       {p.hints?.length > 0 && (
@@ -140,7 +147,7 @@ export default function Depot() {
                   <tbody>
                     {closed.map((p) => (
                       <tr key={p.id}>
-                        <td><Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{p.symbol}</Link><div className="muted small">{num(p.quantity, p.quantity % 1 ? 3 : 0)} Stück</div></td>
+                        <td><Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{displayName(p)}</Link><div className="muted small">{num(p.quantity, p.quantity % 1 ? 3 : 0)} Stück</div></td>
                         <td className="hide-sm muted small">{new Date(p.buy_date).toLocaleDateString("de-DE")} – {new Date(p.sell_date).toLocaleDateString("de-DE")}</td>
                         <td className="num">{money(p.buy_price, p.display_currency)}</td>
                         <td className="num">{money(p.sell_price, p.display_currency)}</td>

@@ -110,3 +110,12 @@ def test_advice_priorities():
     assert portfolio.advice([{"stop": 90, "hints": []}], analysis.BUY)["text"] == "Halten – Nachkauf möglich"
     assert "Stopp hinterlegen" in portfolio.advice([{"stop": None, "hints": []}], analysis.HOLD)["text"]
     assert portfolio.summarize([]) is None
+
+
+def test_risk_and_chance_fields(fake_market):
+    p = Profile()
+    ev = portfolio.evaluate(_pos("AAA", fake_market, 100.0, qty=10, fees=5, stop=120.0, target=150.0), p)
+    assert ev["risk_to_stop"] == 100.0 and ev["pl_at_stop"] == 195.0
+    assert ev["chance_to_target"] == 200.0 and ev["pl_at_target"] == 495.0
+    s = portfolio.summarize([ev, portfolio.evaluate(_pos("AAA", fake_market, 110.0, qty=10), p)])
+    assert s["risk_to_stop"] == 100.0 and s["chance_to_target"] == 200.0 and s["lots_without_stop"] == 1

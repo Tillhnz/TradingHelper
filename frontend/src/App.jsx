@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, clearToken, getToken, setUnauthorizedHandler } from "./api.js";
 import Shell from "./components/Shell.jsx";
+import { loadMode, ModeContext, saveMode } from "./mode.js";
 import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
@@ -15,6 +16,8 @@ export default function App() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(!!getToken());
+  const [mode, setModeState] = useState(loadMode);
+  const modeValue = useMemo(() => ({ mode, setMode: (m) => { saveMode(m); setModeState(m); } }), [mode]);
 
   const logout = useCallback(() => {
     clearToken();
@@ -52,11 +55,12 @@ export default function App() {
   }
 
   return (
+    <ModeContext.Provider value={modeValue}>
     <Shell user={user} onLogout={logout}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/watchlist" element={<Watchlist />} />
-        <Route path="/chart" element={<ChartPage />} />
+        <Route path="/chart" element={<Navigate to="/watchlist" replace />} />
         <Route path="/chart/:symbol" element={<ChartPage />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/depot" element={<Depot />} />
@@ -66,5 +70,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
+    </ModeContext.Provider>
   );
 }

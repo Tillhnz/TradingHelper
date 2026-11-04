@@ -2,8 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { money } from "../fmt.js";
+import { KIND_UI } from "../texts.js";
+import Term from "./Term.jsx";
 
-const KIND_LABEL = { now: "Sofort", pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound" };
+const KIND_LABEL = KIND_UI;
+const KIND_TERM = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound" };
 const PRICE_KINDS = ["price_above", "price_below", "cross_up", "cross_down"];
 
 /** Einstiegsplan: Kursmarken mit Zone, Stopp, Ziel und Warte-Signale, jeweils mit Alarm per Klick. */
@@ -34,7 +37,7 @@ export default function EntryPlan({ symbol, plan, currency, nativeCurrency, held
 
   return (
     <section className="panel span-all">
-      <h2>{held ? "Nachkauf-Plan" : "Einstiegsplan"}</h2>
+      <h2>{held ? "Wann nachkaufen?" : "Wann einsteigen?"}</h2>
       {held && <p className="muted small">Du hast den Wert schon im Depot. Diese Marken eignen sich zum Aufstocken.</p>}
       <p className="entry-summary">{plan.summary}</p>
       {plan.setups.length > 0 && (
@@ -42,15 +45,15 @@ export default function EntryPlan({ symbol, plan, currency, nativeCurrency, held
           {plan.setups.map((s, i) => (
             <article key={s.title} className={`setup ${s.ok ? "" : "not-ok"} ${s.status === "now" ? "is-now" : ""}`}>
               <header>
-                <span className={`chip kind-${s.kind}`}>{KIND_LABEL[s.kind] || s.kind}</span>
+                <span className={`chip kind-${s.kind}`}>{KIND_TERM[s.kind] ? <Term name={KIND_TERM[s.kind]}>{KIND_LABEL[s.kind]}</Term> : KIND_LABEL[s.kind] || s.kind}</span>
                 <strong>{s.title}</strong>
                 <span className={`chip ${s.status === "now" ? "ok" : ""}`}>{s.status === "now" ? "jetzt im Bereich" : `${s.distance_pct > 0 ? "+" : ""}${s.distance_pct.toLocaleString("de-DE")} % entfernt`}</span>
               </header>
               <div className="setup-levels">
                 <span><span className="muted">{s.kind === "breakout" ? "Kauf ab" : "Einstieg"}</span> {s.kind === "breakout" ? p(s.entry) : `${p(s.zone[0])} – ${p(s.zone[1])}`}</span>
-                <span><span className="muted">Stopp</span> {p(s.stop)}</span>
-                {s.target && <span><span className="muted">Ziel</span> {p(s.target)}</span>}
-                {s.crv && <span><span className="muted">CRV</span> {s.crv.toLocaleString("de-DE", { maximumFractionDigits: 1 })}</span>}
+                <span><span className="muted"><Term name="Stopp" /></span> {p(s.stop)}</span>
+                {s.target && <span><span className="muted"><Term name="Ziel" /></span> {p(s.target)}</span>}
+                {s.crv && <span><span className="muted"><Term name="Chance/Risiko" /></span> {s.crv.toLocaleString("de-DE", { maximumFractionDigits: 1 })}</span>}
                 {s.position && <span><span className="muted">Position</span> {s.position.shares} Stück ≈ {p(s.position.value)}</span>}
               </div>
               <p className="muted small">{s.why}</p>
@@ -62,7 +65,7 @@ export default function EntryPlan({ symbol, plan, currency, nativeCurrency, held
       )}
       {plan.wait.length > 0 && (
         <>
-          <h3 className="wait-title">Darauf warten</h3>
+          <h3 className="wait-title">Oder auf ein Zeichen warten</h3>
           <ul className="wait-list">
             {plan.wait.map((w, i) => (
               <li key={w.title}>

@@ -114,6 +114,7 @@ class Storage:
             ("watchlist", "name", "TEXT"),
             ("watchlist", "exchange", "TEXT"),
             ("watchlist", "currency", "TEXT"),
+            ("watchlist", "ticker", "TEXT"),
             ("alerts", "currency", "TEXT NOT NULL DEFAULT ''"),
         ]:
             cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
@@ -139,13 +140,14 @@ class Storage:
         return [w["symbol"] for w in self.watchlist()]
 
     def add_symbol(self, symbol: str, note: str = "", name: str | None = None, exchange: str | None = None,
-                   currency: str | None = None) -> None:
+                   currency: str | None = None, ticker: str | None = None) -> None:
         with self._conn() as c:
             c.execute(
-                "INSERT INTO watchlist(symbol, note, added_at, name, exchange, currency) VALUES (?,?,?,?,?,?) "
+                "INSERT INTO watchlist(symbol, note, added_at, name, exchange, currency, ticker) VALUES (?,?,?,?,?,?,?) "
                 "ON CONFLICT(symbol) DO UPDATE SET note=excluded.note, name=COALESCE(excluded.name, name), "
-                "exchange=COALESCE(excluded.exchange, exchange), currency=COALESCE(excluded.currency, currency)",
-                (symbol.upper(), note, now_iso(), name, exchange, currency),
+                "exchange=COALESCE(excluded.exchange, exchange), currency=COALESCE(excluded.currency, currency), "
+                "ticker=COALESCE(excluded.ticker, ticker)",
+                (symbol.upper(), note, now_iso(), name, exchange, currency, ticker),
             )
 
     def update_meta(self, symbol: str, name: str | None, exchange: str | None, currency: str | None) -> None:
