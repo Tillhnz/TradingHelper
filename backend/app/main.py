@@ -6,6 +6,7 @@ import logging
 import math
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -260,19 +261,45 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
         a = analysis.analyze(symbol, df, profile)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    items = news.fetch_news(symbol, settings.finnhub_api_key, settings.news_lookback_days) if with_news else []
-    rec = analysis.recommend(a, news.aggregate_sentiment(items))
     meta = _meta(symbol, target)
+    items = news.collect(symbol, settings, meta.get("name")) if with_news else []
+    rec = analysis.recommend(a, news.aggregate_sentiment(items))
     return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
-            "news": [n.to_dict() for n in items], **meta}
+            "news": [n.to_dict() for n in items], "news_sources": news.sources(settings) if with_news else [], **meta}
+
+
+@app.get("/api/news/market", dependencies=auth)
+def get_market_news(limit: int = 30):
+    """Allgemeine Wirtschafts- und Börsennachrichten aus den eingestellten Feeds (Startseite)."""
+    items = news.market_news(settings, limit=max(1, min(limit, 100)))
+    return {"feeds": [n for n, _ in news.parse_feed_list(settings.news_feeds)], "items": [i.to_dict() for i in items]}
+
+
+@app.get("/api/news/watchlist", dependencies=auth)
+def get_watchlist_news(limit: int = 20, per_symbol: int = 4, st: Storage = Depends(get_storage)):
+    """Neueste Meldungen zu allen beobachteten und gehaltenen Werten, mit Name des Werts."""
+    _sync_watchlist(st)
+    rows = st.watchlist()[:40]
+    per = max(1, min(per_symbol, 10))
+
+    def one(w):
+        return w, news.collect(w["symbol"], settings, w.get("name"), limit=per)
+
+    out = []
+    if rows:
+        with ThreadPoolExecutor(max_workers=min(6, len(rows))) as pool:
+            for w, items in pool.map(one, rows):
+                for i in items:
+                    out.append({**i.to_dict(), "symbol": w["symbol"], "name": w.get("name"), "ticker": w.get("ticker")})
+    out.sort(key=lambda x: x["published"] or "", reverse=True)
+    return {"sources": news.sources(settings), "items": out[: max(1, min(limit, 100))]}
 
 
 @app.get("/api/news/{symbol}", dependencies=auth)
-def get_news(symbol: str):
-    if not settings.finnhub_api_key:
-        raise HTTPException(503, "Kein Finnhub-Schlüssel hinterlegt (Einstellungen → Nachrichten).")
-    items = news.fetch_news(symbol, settings.finnhub_api_key, settings.news_lookback_days, limit=25)
-    return {"symbol": symbol.upper(), "sentiment": news.aggregate_sentiment(items), "items": [i.to_dict() for i in items]}
+def get_news(symbol: str, limit: int = 25):
+    items = news.collect(symbol, settings, _info(symbol).get("name"), limit=max(1, min(limit, 50)))
+    return {"symbol": symbol.upper(), "sources": news.sources(settings),
+            "sentiment": news.aggregate_sentiment(items), "items": [i.to_dict() for i in items]}
 
 
 # ---------- Watchlist ----------
@@ -620,8 +647,9 @@ def admin_status(st: Storage = Depends(get_storage)):
     checks = [
         {"label": "Benachrichtigungen (ntfy)", "ok": bool(settings.ntfy_topic),
          "text": f"{settings.ntfy_url}/{settings.ntfy_topic}" if settings.ntfy_topic else "kein Topic hinterlegt"},
-        {"label": "Nachrichten (Finnhub)", "ok": bool(settings.finnhub_api_key),
-         "text": "Schlüssel hinterlegt" if settings.finnhub_api_key else "kein Schlüssel, Empfehlungen ohne News"},
+        {"label": "Nachrichten", "ok": bool(news.sources(settings)),
+         "text": (", ".join(news.sources(settings)) or "alle Quellen aus")
+         + f" · {len(news.parse_feed_list(settings.news_feeds))} Marktfeeds"},
     ]
     try:
         market.get_history("^GSPC", "5d", "1d")

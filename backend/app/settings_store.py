@@ -23,6 +23,9 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "ntfy_token": ("str:200", "notify", True),
     "finnhub_api_key": ("str:100", "news", True),
     "news_lookback_days": ("int:1:14", "news", False),
+    "news_google": ("bool", "news", False),
+    "news_yahoo": ("bool", "news", False),
+    "news_feeds": ("feeds", "news", False),
     "report_enabled": ("bool", "schedule", False),
     "report_time": ("time", "schedule", False),
     "report_weekends": ("bool", "schedule", False),
@@ -86,6 +89,21 @@ def coerce(key: str, raw):
         if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
             raise SettingError("Uhrzeit im Format HH:MM erwartet")
         return f"{int(m.group(1)):02d}:{m.group(2)}"
+    if base == "feeds":
+        lines = [ln.strip() for ln in str(raw if raw is not None else "").splitlines() if ln.strip()]
+        if len(lines) > 30:
+            raise SettingError("Höchstens 30 Quellen")
+        out = []
+        for ln in lines:
+            if ln.startswith("#"):  # ausgeschaltete Quelle
+                out.append(ln[:480])
+                continue
+            name, _, url = ln.rpartition("|") if "|" in ln else ("", "", ln)
+            name, url = name.strip(), url.strip()
+            if not re.match(r"^https?://[^\s|]+$", url) or len(url) > 400 or len(name) > 60:
+                raise SettingError(f"Ungültige Zeile: {ln[:60]} (Format: Name | https://…)")
+            out.append(f"{name} | {url}" if name else url)
+        return "\n".join(out)
     if base == "tz":
         try:
             ZoneInfo(text)

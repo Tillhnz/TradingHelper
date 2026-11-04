@@ -1,8 +1,19 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main, market
+from app import main, market, news
 from app.config import settings
+
+
+def _fake_feed(url, via="", split_source=False):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    if "news.google.com" in url:
+        return [news.NewsItem("Apple beats estimates", "", "Reuters", "https://r/1", now, 1.0, via),
+                news.NewsItem("Fußball-Ergebnisse", "", "kicker", "https://k/1", now, 0.0, via)]
+    if "yahoo" in url:
+        return [news.NewsItem("Apple Beats Estimates!", "Mehr Text", "Yahoo", "https://y/1", now, 1.0, via)]
+    return [news.NewsItem(f"Marktbericht {via}", "", via, f"https://m/{via}", now, 0.0, via)]
 
 
 @pytest.fixture
@@ -16,6 +27,7 @@ def client(tmp_path, monkeypatch, uptrend):
     monkeypatch.setattr(market, "get_history", lambda *a, **k: uptrend)
     monkeypatch.setattr(market, "symbol_info", lambda s: {
         "symbol": s.upper(), "name": "Apple Inc.", "exchange": "NasdaqGS", "currency": "USD", "type": "EQUITY"})
+    monkeypatch.setattr(news, "fetch_feed", _fake_feed)
     with TestClient(main.app) as c:
         yield c
     settings.reset()
@@ -171,3 +183,21 @@ def test_holding_joins_watchlist(client):
     rep = client.get("/api/report", headers=h).json()
     assert next(e for e in rep["entries"] if e["symbol"] == "MSFT")["holding"]["shares"] == 3
     assert client.get("/api/holdings/NONE", headers=h).json()["summary"] is None
+
+
+def test_news_endpoints(client):
+    h = _login(client)
+    client.post("/api/watchlist", json={"symbol": "AAPL"}, headers=h)
+    r = client.get("/api/news/AAPL", headers=h).json()
+    # Google + Yahoo zusammengeführt, Duplikat entfernt, Fußball nicht relevant
+    assert [i["headline"] for i in r["items"]] == ["Apple Beats Estimates!"]
+    assert r["sources"] == ["Google News", "Yahoo Finance"]
+    w = client.get("/api/news/watchlist", headers=h).json()
+    assert w["items"][0]["symbol"] == "AAPL" and w["items"][0]["name"] == "Apple Inc."
+    m = client.get("/api/news/market", headers=h).json()
+    assert "tagesschau Wirtschaft" in m["feeds"] and len(m["items"]) == len(m["feeds"])
+    assert client.put("/api/settings", json={"news_feeds": "Nur eine | https://x.example/rss", "news_yahoo": False},
+                      headers=h).status_code == 200
+    assert client.get("/api/news/market", headers=h).json()["feeds"] == ["Nur eine"]
+    assert client.get("/api/news/AAPL", headers=h).json()["sources"] == ["Google News"]
+    assert client.put("/api/settings", json={"news_feeds": "kaputt"}, headers=h).status_code == 422

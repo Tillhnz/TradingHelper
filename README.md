@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.
 
 1. **Konto anlegen** – beim ersten Aufruf.
 2. **Einstellungen → Benachrichtigungen:** [ntfy](https://ntfy.sh)-App installieren, ein Topic mit zufälligem Namen abonnieren, denselben Namen eintragen, „Testnachricht senden“.
-3. **Einstellungen → Nachrichten:** kostenlosen Schlüssel von [finnhub.io](https://finnhub.io/register) eintragen (optional, sonst ohne News).
+3. **Einstellungen → Nachrichten:** Quellen wählen. Google News und Yahoo Finance laufen ohne Schlüssel; ein kostenloser Schlüssel von [finnhub.io](https://finnhub.io/register) ist optional. Die Marktnachrichten auf der Startseite kommen aus einer frei editierbaren RSS-Liste (tagesschau, Handelsblatt, n-tv, finanzen.net, FAZ, MarketWatch, CNBC).
 4. **Watchlist** füllen. Ab dem nächsten Morgen (Standard Mo–Fr 07:30) kommt der Report.
 5. **Alarme** anlegen.
 
@@ -43,9 +43,9 @@ curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.
 | Heute | Einschätzung je Watchlist-Wert: 🟢 Kaufen prüfen · 🟡 Halten · 🔴 Reduzieren prüfen, mit Begründung und Schlagzeile; per Knopf als Push senden |
 | Watchlist | Kurs, Tagesänderung, 30-Tage-Verlauf, RSI, Einschätzung |
 | Chart | Kerzen mit Volumen, SMA 20/50/200, Bollinger, Unterstützung/Widerstand, RSI- und MACD-Fenster; Tag, Woche, Stunde, 15 Minuten |
-| Analyse | SMA, EMA, RSI, MACD, Bollinger, Stochastik, ADX, ATR, OBV, Volumen → Einzelsignale und Score; News-Stimmung aus Finnhub-Schlagzeilen (Gewicht einstellbar) |
+| Analyse | SMA, EMA, RSI, MACD, Bollinger, Stochastik, ADX, ATR, OBV, Volumen → Einzelsignale und Score; News-Stimmung aus Google News, Yahoo Finance und Finnhub (zusammengeführt, ohne Duplikate) |
 | Alarme | 16 Bedingungen: Kurs über/unter, Kreuzungen, RSI-Schwellen, MACD-Kreuz, Golden/Death Cross, Kurs kreuzt MA, Bollinger-Ausbruch, Volumenspitze, neue Hochs/Tiefs, Tagesbewegung; beliebiges Kerzenintervall, Pause nach Auslösung, einmalig |
-| Einstellungen | ntfy, Finnhub, Zeitplan von Report und Alarmprüfung, Zeitzone – alles ohne Neustart |
+| Einstellungen | ntfy, Nachrichtenquellen und Marktfeeds, Zeitplan von Report und Alarmprüfung, Zeitzone – alles ohne Neustart |
 | Administration | Zustand der Dienste, **Update per Knopf** (mit Sicherung vorher und automatischem Zurückrollen), Sicherungen |
 
 | Depot | Käufe erfassen (im Chart vorbelegt mit Kurs, Stopp, Ziel und Stückzahl aus dem Einstiegsplan), Gewinn/Verlust je Position und als Verlauf, Hinweise „Stopp erreicht“, „Ziel erreicht“, „Stopp nachziehen“; im Chart grüne Gewinn- und rote Verlustzone ab Kaufkurs |
@@ -131,7 +131,7 @@ cd frontend && npm install && npm run dev  # Oberfläche auf :5173
 
 - **Keine durchgehenden Echtzeitkurse.** Laut [Yahoo](https://help.yahoo.com/kb/SLN2310.html) sind Nasdaq, Krypto und Devisen in Echtzeit, Xetra, Frankfurt und die übrigen deutschen Börsen sowie Euronext 15 Minuten verzögert, London 20 und SIX 30 Minuten. Der Chart zeigt Stand und Verzögerung je Wert und lädt jede Minute neu; Alarme werden im eingestellten Intervall geprüft. Für Daytrading ist das nicht geeignet.
 - Kurse über yfinance (inoffizielle Yahoo-Schnittstelle): Ausfälle sind möglich, Intraday-Daten nur für begrenzte Zeiträume.
-- Finnhub-News decken vor allem US-Werte ab.
+- Finnhub-News decken vor allem US-Werte ab; Google News findet Meldungen über den Firmennamen, auch für europäische Werte und ETFs. Die Stimmung wird regelbasiert aus den Schlagzeilen geschätzt.
 - Die News-Stimmung ist ein einfaches Wortlisten-Verfahren.
 
 Lizenz: MIT

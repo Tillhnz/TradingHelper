@@ -78,6 +78,7 @@ await mobile.getByRole("button", { name: "Einfach" }).first().click();
 await mobile.goto(`${base}/chart/DE0007164600.GTX`);
 await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-stock.png", fullPage: true });
+console.log("stock news", JSON.stringify(await mobile.evaluate(() => [...document.querySelectorAll(".news-list li")].slice(0, 8).map((li) => li.querySelector(".news-src")?.textContent + " | " + li.querySelector(".news-head")?.textContent))));
 const before = await mobile.evaluate(() => window.scrollY);
 const box = await mobile.locator(".chart-main").boundingBox();
 if (box) {
@@ -89,6 +90,10 @@ console.log("scroll over locked chart", before, "->", await mobile.evaluate(() =
 await mobile.goto(`${base}/watchlist`);
 await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-watchlist.png", fullPage: true });
+await mobile.goto(`${base}/`);
+await mobile.waitForTimeout(12000);
+const mNews = mobile.locator(".news-grid");
+if (await mNews.count()) { await mNews.scrollIntoViewIfNeeded(); await mobile.screenshot({ path: "shots/mobile-news.png" }); }
 
 // Laptop (1366×768) und Tablet (1024×768)
 for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
@@ -118,6 +123,14 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   await pg.goto(`${base}/`);
   await pg.waitForTimeout(10000);
   await pg.screenshot({ path: `shots/${tag}-home.png` });
+  console.log(`${tag} news`, JSON.stringify(await pg.evaluate(() => ({
+    mine: document.querySelector('[aria-label="Nachrichten zu deinen Werten"] .news-list')?.children.length ?? 0,
+    market: document.querySelector('[aria-label="Marktnachrichten"] .news-list')?.children.length ?? 0,
+    stocks: [...document.querySelectorAll(".news-stock")].slice(0, 6).map((e) => e.textContent),
+    sources: [...document.querySelectorAll('[aria-label="Marktnachrichten"] .news-src')].slice(0, 8).map((e) => e.textContent),
+  }))));
+  const newsBox = pg.locator(".news-grid");
+  if (await newsBox.count()) await newsBox.screenshot({ path: `shots/${tag}-news.png` });
   await pg.keyboard.press("/");
   console.log(`${tag} slash focuses search`, await pg.evaluate(() => document.activeElement?.getAttribute("aria-label")));
   await pg.close();

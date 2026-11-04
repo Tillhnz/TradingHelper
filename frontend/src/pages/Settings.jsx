@@ -28,10 +28,14 @@ const GROUPS = [
   {
     id: "news",
     title: "Nachrichten",
-    intro: "Für die News-Stimmung im Report. Kostenlosen Schlüssel auf finnhub.io anlegen (Register → Dashboard → API Key).",
+    intro: "Nachrichten zu deinen Werten kommen aus mehreren Quellen, werden zusammengeführt und fließen als Stimmung in die Einschätzung ein. Google News und Yahoo Finance brauchen keinen Schlüssel. Finnhub ist optional (kostenloser Schlüssel auf finnhub.io) und liefert vor allem zu US-Aktien viel.",
     fields: {
-      finnhub_api_key: { label: "Finnhub-Schlüssel" },
+      news_google: { label: "Google News (deutsch und englisch, Suche nach dem Firmennamen)", type: "bool" },
+      news_yahoo: { label: "Yahoo Finance (Meldungen zum Ticker, nicht für gettex-Einträge)", type: "bool" },
+      finnhub_api_key: { label: "Finnhub-Schlüssel", hint: "optional" },
       news_lookback_days: { label: "Nachrichten der letzten … Tage", type: "number" },
+      news_feeds: { label: "Marktnachrichten auf der Startseite", type: "feeds",
+        hint: "eine Quelle pro Zeile: Name | Adresse des RSS-Feeds. Zeilen mit # sind ausgeschaltet." },
     },
   },
   {
@@ -95,6 +99,13 @@ function Field({ name, spec, entry, value, onChange, onClear }) {
       <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
         {spec.options.map((o) => <option key={o} value={o}>{spec.labels?.[o] ?? o}</option>)}
       </select>
+    );
+  } else if (spec.type === "feeds") {
+    return (
+      <label htmlFor={id} className="span-all">
+        <span>{spec.label} {spec.hint && <span className="hint">{spec.hint}</span>}</span>
+        <textarea id={id} className="feeds-input" spellCheck={false} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+      </label>
     );
   } else if (spec.type === "hour") {
     input = (
@@ -169,6 +180,11 @@ export default function Settings() {
   useEffect(() => {
     api.get("/settings").then(adopt).catch((e) => setError(e.message));
   }, []);
+
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (fields && id) document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, [fields]);
 
   function change(key, value) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -249,7 +265,7 @@ export default function Settings() {
 
       <form onSubmit={save}>
         {GROUPS.map((g) => (
-          <section key={g.id} className="panel">
+          <section key={g.id} id={g.id} className="panel">
             <h2>{g.title}</h2>
             {g.intro && <p className="muted small">{g.intro}</p>}
             <div className="form-grid">

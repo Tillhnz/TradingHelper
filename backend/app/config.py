@@ -19,6 +19,19 @@ def _bool(v: str) -> bool:
     return str(v).strip().lower() in ("1", "true", "yes", "ja", "on")
 
 
+# Marktnachrichten für die Startseite: eine Quelle pro Zeile, "Name | Adresse" (RSS oder Atom).
+DEFAULT_FEEDS = "\n".join([
+    "tagesschau Wirtschaft | https://www.tagesschau.de/wirtschaft/index~rss2.xml",
+    "tagesschau Finanzen | https://www.tagesschau.de/wirtschaft/finanzen/index~rss2.xml",
+    "Handelsblatt Finanzen | https://www.handelsblatt.com/contentexport/feed/finanzen",
+    "n-tv Wirtschaft | https://www.n-tv.de/wirtschaft/rss",
+    "finanzen.net | https://www.finanzen.net/rss/news",
+    "FAZ Finanzen | https://www.faz.net/rss/aktuell/finanzen/",
+    "MarketWatch | https://feeds.content.dowjones.io/public/rss/mw_topstories",
+    "CNBC Markets | https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258",
+])
+
+
 @dataclass
 class Settings:
     # Nur über die Umgebung (Infrastruktur)
@@ -31,6 +44,9 @@ class Settings:
     timezone: str = field(default_factory=lambda: _env("timezone", "Europe/Berlin"))
     finnhub_api_key: str = field(default_factory=lambda: _env("finnhub_api_key", ""))
     news_lookback_days: int = field(default_factory=lambda: int(_env("news_lookback_days", "3")))
+    news_google: bool = field(default_factory=lambda: _bool(_env("news_google", "true")))
+    news_yahoo: bool = field(default_factory=lambda: _bool(_env("news_yahoo", "true")))
+    news_feeds: str = field(default_factory=lambda: _env("news_feeds", DEFAULT_FEEDS))
     ntfy_url: str = field(default_factory=lambda: _env("ntfy_url", "https://ntfy.sh"))
     ntfy_topic: str = field(default_factory=lambda: _env("ntfy_topic", ""))
     ntfy_token: str = field(default_factory=lambda: _env("ntfy_token", ""))

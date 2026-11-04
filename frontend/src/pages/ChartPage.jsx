@@ -4,12 +4,13 @@ import { api } from "../api.js";
 import BuyDialog from "../components/BuyDialog.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
 import HoldingPanel from "../components/HoldingPanel.jsx";
+import NewsList from "../components/NewsList.jsx";
 import PriceChart from "../components/PriceChart.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading, Stat } from "../components/ui.jsx";
-import { CURRENCY_LABEL, dateTime, money, num, pct, signed, tone } from "../fmt.js";
+import { CURRENCY_LABEL, money, num, pct, signed, tone } from "../fmt.js";
 import { useMode } from "../mode.js";
-import { ACTION_UI, displayTicker } from "../texts.js";
+import { ACTION_UI, displayName, displayTicker } from "../texts.js";
 
 const RANGES = [
   { id: "1mo", label: "1 M", period: "1mo", interval: "1d" },
@@ -295,20 +296,15 @@ export default function ChartPage() {
           </details>
 
           <section className="panel">
-            <h2>Nachrichten</h2>
-            {analysis.news.length ? (
-              <ul className="news">
-                {analysis.news.map((n) => (
-                  <li key={n.url || n.headline}>
-                    <span className={`sent ${tone(n.sentiment)}`} title="Stimmung der Schlagzeile">{n.sentiment > 0.15 ? "positiv" : n.sentiment < -0.15 ? "negativ" : "neutral"}</span>
-                    <a href={n.url} target="_blank" rel="noreferrer noopener">{n.headline}</a>
-                    <span className="muted small"> · {n.source} · {dateTime(n.published)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">Keine aktuellen Nachrichten gefunden. Ohne Finnhub-Schlüssel (Einstellungen) gibt es keine News; für europäische Werte liefert Finnhub oft wenig.</p>
+            <div className="panel-head">
+              <h2>Nachrichten</h2>
+              <Link className="link small" to="/settings#news">Quellen</Link>
+            </div>
+            {analysis.news_sources?.length > 0 && (
+              <div className="news-sources">{analysis.news_sources.map((s) => <span key={s} className="src-chip">{s}</span>)}</div>
             )}
+            <NewsList items={analysis.news} initial={6}
+              empty={analysis.news_sources?.length ? `In den letzten Tagen keine Meldungen zu ${displayName(meta || analysis) || "diesem Wert"} gefunden.` : "Alle Nachrichtenquellen sind ausgeschaltet (Einstellungen → Nachrichten)."} />
           </section>
         </>
       )}

@@ -125,7 +125,7 @@ def build_report(storage: Storage, settings: Settings) -> Report:
         try:
             df = market.get_history(sym, profile.period, "1d", currency=target)
             a = analysis.analyze(sym, df, profile)
-            items = news.fetch_news(sym, settings.finnhub_api_key, settings.news_lookback_days)
+            items = news.collect(sym, settings, w.get("name"))
             rec = analysis.recommend(a, news.aggregate_sentiment(items))
             native = w.get("currency")
             if native is None and w.get("exchange") is None:

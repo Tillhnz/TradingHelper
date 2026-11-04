@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
+import NewsList from "../components/NewsList.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
@@ -18,7 +19,6 @@ function Onboarding({ settings, count }) {
   const steps = [
     { done: count > 0, title: "Werte hinzufügen", text: "Oben nach einer Aktie oder einem ETF suchen und „Beobachten“ antippen.", to: "/watchlist", cta: "Meine Werte" },
     { done: settings.fields.ntfy_topic?.value, title: "Push aufs Handy", text: "ntfy-App installieren und das Topic in den Einstellungen eintragen.", to: "/settings", cta: "Einrichten" },
-    { done: settings.fields.finnhub_api_key?.set, title: "Nachrichten einbinden", text: "Kostenlosen Finnhub-Schlüssel eintragen, damit News in die Einschätzung einfließen.", to: "/settings", cta: "Einrichten" },
     { done: settings.fields.invest_horizon?.from_ui, title: "Strategie festlegen", text: "Anlagehorizont und Risikobereitschaft wählen – danach richten sich alle Empfehlungen.", to: "/settings", cta: "Festlegen" },
   ];
   const open = steps.filter((s) => !s.done).length;
@@ -39,6 +39,60 @@ function Onboarding({ settings, count }) {
         ))}
       </ol>
     </section>
+  );
+}
+
+function NewsSection({ hasStocks }) {
+  const [mine, setMine] = useState(null);
+  const [market, setMarket] = useState(null);
+  const [tab, setTab] = useState("mine");
+
+  useEffect(() => {
+    let alive = true;
+    api.get("/news/market?limit=40").then((r) => alive && setMarket(r)).catch(() => alive && setMarket({ items: [], feeds: [] }));
+    if (hasStocks) api.get("/news/watchlist?limit=30").then((r) => alive && setMine(r)).catch(() => alive && setMine({ items: [], sources: [] }));
+    return () => { alive = false; };
+  }, [hasStocks]);
+
+  const minePanel = hasStocks && (
+    <section className={`panel ${tab === "mine" ? "" : "hide-narrow"}`} aria-label="Nachrichten zu deinen Werten">
+      <div className="panel-head"><h2>Zu deinen Werten</h2></div>
+      {mine?.sources?.length > 0 && (
+        <div className="news-sources">{mine.sources.map((s) => <span key={s} className="src-chip">{s}</span>)}</div>
+      )}
+      {!mine ? <Loading text="Suche Nachrichten …" /> : (
+        <NewsList items={mine.items} initial={6} showStock
+          empty={mine.sources?.length ? "In den letzten Tagen nichts Neues zu deinen Werten." : "Alle Nachrichtenquellen sind ausgeschaltet (Einstellungen → Nachrichten)."} />
+      )}
+    </section>
+  );
+  const marketPanel = (
+    <section className={`panel ${!hasStocks || tab === "market" ? "" : "hide-narrow"}`} aria-label="Marktnachrichten">
+      <div className="panel-head"><h2>Markt &amp; Wirtschaft</h2><Link className="link small" to="/settings#news">Quellen</Link></div>
+      {market?.feeds?.length > 0 && (
+        <div className="news-sources">{market.feeds.map((s) => <span key={s} className="src-chip">{s}</span>)}</div>
+      )}
+      {!market ? <Loading text="Lade Marktnachrichten …" /> : (
+        <NewsList items={market.items} initial={8} empty="Keine Marktnachrichten. Quellen lassen sich in den Einstellungen eintragen." />
+      )}
+    </section>
+  );
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="section-title">Nachrichten</h2>
+        {hasStocks && (
+          <div className="seg show-narrow" role="tablist">
+            <button className={tab === "mine" ? "on" : ""} role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")}>Deine Werte</button>
+            <button className={tab === "market" ? "on" : ""} role="tab" aria-selected={tab === "market"} onClick={() => setTab("market")}>Markt</button>
+          </div>
+        )}
+      </div>
+      <div className={`news-grid ${hasStocks ? "" : "single"}`}>
+        {minePanel}
+        {marketPanel}
+      </div>
+    </>
   );
 }
 
@@ -186,6 +240,8 @@ export default function Home() {
         {entries.map((e) => <StockCard key={e.symbol} e={e} pro={mode === "pro"} />)}
       </div>
       {report && Object.entries(report.errors).map(([sym, err]) => <p key={sym} className="error small">{sym}: {err}</p>)}
+
+      {report && <NewsSection hasStocks={report.entries.length > 0} />}
 
       {log.length > 0 && (
         <>
