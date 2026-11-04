@@ -87,3 +87,10 @@ def test_feeds_setting_validation():
         pass
     else:
         raise AssertionError("ungültige Adresse akzeptiert")
+
+
+def test_relevant_drops_quote_pages():
+    mk = lambda h: news.NewsItem(h, "", "x", "u", "", 0.0)  # noqa: E731
+    out = news._relevant([mk("SAP261106P00240000 Interactive Stock Chart | SAP Nov 2026 240.000 put"),
+                          mk("SAP Aktie: Goldman schraubt das Ziel auf 258 Euro"), mk("DAX im Plus")], "SAP")
+    assert [i.headline for i in out] == ["SAP Aktie: Goldman schraubt das Ziel auf 258 Euro"]

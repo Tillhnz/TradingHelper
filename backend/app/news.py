@@ -319,11 +319,20 @@ def is_yahoo_symbol(symbol: str) -> bool:
     return not symbol.upper().endswith(".GTX")
 
 
-def _relevant(items: list[NewsItem], term: str) -> list[NewsItem]:
-    """Google findet auch Meldungen, die den Namen nur am Rand nennen; Schlagzeile muss ihn enthalten."""
-    words = [w for w in re.findall(r"\w+", term.lower()) if len(w) > 2] or [term.lower()]
+# Kursseiten, Optionsscheine und ähnliche Treffer ohne Nachrichtenwert
+_JUNK = re.compile(
+    r"\b[A-Z]{1,6}\d{6}[CP]\d{8}\b|interactive stock chart|stock price,? news|stock quote|quote (&|and) history"
+    r"|price history|kurs,? (news|chart)|aktienkurs (und|&) |realtime-kurs|kurs (&|und) chart",
+    re.I,
+)
+
+
+def _relevant(items: list[NewsItem], term: str, in_summary: bool = False) -> list[NewsItem]:
+    """Suchtreffer nennen den Namen oft nur am Rand: Schlagzeile (bei Yahoo auch Anreißer) muss ihn enthalten."""
+    words = [w for w in re.findall(r"\w+", term.lower()) if len(w) > 1] or [term.lower()]
     first = words[0]
-    return [i for i in items if first in i.headline.lower()]
+    return [i for i in items
+            if first in (f"{i.headline} {i.summary}" if in_summary else i.headline).lower() and not _JUNK.search(i.headline)]
 
 
 def collect(symbol: str, settings, name: str | None = None, limit: int = 12) -> list[NewsItem]:
@@ -336,7 +345,8 @@ def collect(symbol: str, settings, name: str | None = None, limit: int = 12) -> 
         tasks.append(lambda: _relevant(fetch_feed(google_url(f"{q} Aktie", "de"), "Google News", True), term))
         tasks.append(lambda: _relevant(fetch_feed(google_url(f"{q} stock", "en"), "Google News", True), term))
     if getattr(settings, "news_yahoo", True) and is_yahoo_symbol(symbol) and not symbol.startswith("^"):
-        tasks.append(lambda: fetch_feed(yahoo_url(symbol), "Yahoo Finance"))
+        yterm = term or symbol.split(".")[0]
+        tasks.append(lambda: _relevant(fetch_feed(yahoo_url(symbol), "Yahoo Finance"), yterm, in_summary=True))
     key = getattr(settings, "finnhub_api_key", "")
     if key:
         tasks.append(lambda: fetch_news(symbol, key, days, limit=limit))
