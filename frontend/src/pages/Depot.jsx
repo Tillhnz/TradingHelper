@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import BuyDialog, { RiskBar } from "../components/BuyDialog.jsx";
+import DepotTabs from "../components/DepotTabs.jsx";
 import EditDialog from "../components/EditDialog.jsx";
 import PnlChart from "../components/PnlChart.jsx";
 import { ActionBadge, Empty, ErrorText, Loading, Stat } from "../components/ui.jsx";
@@ -59,6 +60,7 @@ export default function Depot() {
         </div>
         <button className="btn primary" onClick={() => setDialog({ mode: "buy" })}>Kauf erfassen</button>
       </div>
+      <DepotTabs />
       <ErrorText error={error} />
       {!data && !error && <Loading />}
 

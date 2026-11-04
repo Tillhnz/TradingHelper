@@ -3,7 +3,8 @@ import { createChart, LineStyle } from "lightweight-charts";
 import { finePointer, LockButton } from "./PriceChart.jsx";
 
 /** Gewinn/Verlust über die Zeit: Fläche über null grün, darunter rot. Gesperrt, bis man entsperrt. */
-export default function PnlChart({ points, height = 260 }) {
+/** lines: weitere Vergleichslinien [{ points, color, title }]. */
+export default function PnlChart({ points, height = 260, lines = null }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   const [locked, setLocked] = useState(true);
@@ -35,10 +36,16 @@ export default function PnlChart({ points, height = 260 }) {
       lineWidth: 2, priceLineVisible: false,
     });
     s.setData(points);
+    for (const l of lines || []) {
+      if (!l.points?.length) continue;
+      const ls = chart.addLineSeries({ color: l.color, lineWidth: 2, lineStyle: l.dashed ? LineStyle.Dashed : LineStyle.Solid,
+        priceLineVisible: false, lastValueVisible: false, title: l.title || "" });
+      ls.setData(l.points);
+    }
     s.createPriceLine({ price: 0, color: "#5d7389", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false });
     chart.timeScale().fitContent();
     return () => { chart.remove(); chartRef.current = null; };
-  }, [points]);
+  }, [points, lines]);
 
   return (
     <div className={`chart-stack ${locked ? "is-locked" : "is-unlocked"}`}>

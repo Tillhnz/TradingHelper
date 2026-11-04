@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+import numpy as np
 import pandas as pd
 
 from . import indicators as ind
@@ -135,18 +136,26 @@ def _f(x) -> float | None:
     return None if math.isnan(v) else round(v, 4)
 
 
+def _swing(x: np.ndarray, fn) -> np.ndarray:
+    """Werte, die das Minimum/Maximum ihres 5er-Fensters (zentriert) sind – wie rolling(5, center=True)."""
+    out = np.zeros(len(x), dtype=bool)
+    if len(x) >= 5:
+        w = fn(np.lib.stride_tricks.sliding_window_view(x, 5), axis=1)
+        out[2:-2] = x[2:-2] == w
+    return out
+
+
 def support_resistance(df: pd.DataFrame, lookback: int = 60) -> tuple[float | None, float | None]:
     """Einfache Unterstützung/Widerstand: Swing-Tiefs/-Hochs der letzten `lookback` Kerzen."""
     tail = df.tail(lookback)
     if len(tail) < 10:
         return None, None
-    close = tail["close"].iloc[-1]
-    lows = tail["low"][(tail["low"] == tail["low"].rolling(5, center=True).min())]
-    highs = tail["high"][(tail["high"] == tail["high"].rolling(5, center=True).max())]
-    below = lows[lows < close]
-    above = highs[highs > close]
-    sup = _f(below.max()) if not below.empty else _f(tail["low"].min())
-    res = _f(above.min()) if not above.empty else _f(tail["high"].max())
+    lo, hi = tail["low"].to_numpy(dtype=float), tail["high"].to_numpy(dtype=float)
+    close = float(tail["close"].iloc[-1])
+    lows, highs = lo[_swing(lo, np.min)], hi[_swing(hi, np.max)]
+    below, above = lows[lows < close], highs[highs > close]
+    sup = _f(below.max()) if below.size else _f(np.nanmin(lo))
+    res = _f(above.min()) if above.size else _f(np.nanmax(hi))
     return sup, res
 
 
@@ -158,7 +167,7 @@ def analyze(symbol: str, df: pd.DataFrame, profile: Profile | None = None) -> An
     p = profile or Profile()
     if len(df) < 30:
         raise ValueError(f"Zu wenige Kerzen für {symbol} ({len(df)}), mindestens 30 nötig.")
-    d = ind.add_all(df)
+    d = df if "rsi" in df.columns else ind.add_all(df)  # Rückblick rechnet die Indikatoren einmal vorab
     last = d.iloc[-1]
     close = float(last["close"])
     prev = float(d["close"].iloc[-2])

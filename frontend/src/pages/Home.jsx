@@ -96,6 +96,18 @@ function NewsSection({ hasStocks }) {
   );
 }
 
+function ShadowStrip({ data }) {
+  if (!data?.started) return null;
+  return (
+    <Link to="/depot/schatten" className="shadow-strip">
+      <span className="muted small">🤖 Schattendepot</span>
+      <strong className={tone(data.pl)}>{signedMoney(data.pl, data.currency)} ({pct(data.pl_pct, 1)})</strong>
+      <span className="muted small">{data.positions.length} {data.positions.length === 1 ? "Position" : "Positionen"} · Kaufen und halten {pct(data.benchmark_pct, 1)}</span>
+      <span className="go small">ansehen →</span>
+    </Link>
+  );
+}
+
 function DepotStrip({ data }) {
   if (!data?.items?.length) return null;
   const t = data.totals;
@@ -165,6 +177,7 @@ export default function Home() {
   const [log, setLog] = useState([]);
   const [settings, setSettings] = useState(null);
   const [depot, setDepot] = useState(null);
+  const [shadow, setShadow] = useState(null);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
@@ -174,6 +187,7 @@ export default function Home() {
     setReport(null);
     api.get("/settings").then(setSettings).catch(() => {});
     api.get("/positions").then(setDepot).catch(() => {});
+    api.get("/paper").then(setShadow).catch(() => {});
     api.get("/alerts/log?limit=6").then(setLog).catch(() => {});
     try {
       setReport(await api.get("/report"));
@@ -225,6 +239,7 @@ export default function Home() {
 
       <Onboarding settings={settings} count={report?.entries.length ?? 1} />
       <DepotStrip data={depot} />
+      <ShadowStrip data={shadow} />
 
       <ErrorText error={error} />
       {!report && !error && <Loading text="Schaue mir deine Werte und die Nachrichten an …" />}

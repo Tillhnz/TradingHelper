@@ -54,6 +54,39 @@ CREATE TABLE IF NOT EXISTS positions (
     sell_fees REAL NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS paper_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paper_positions (
+    symbol TEXT PRIMARY KEY,
+    shares REAL NOT NULL,
+    entry REAL NOT NULL,
+    entry_day TEXT NOT NULL,
+    cost REAL NOT NULL,
+    stop REAL,
+    target REAL,
+    checked_day TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS paper_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    shares REAL NOT NULL,
+    price REAL NOT NULL,
+    fee REAL NOT NULL,
+    day TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    pl REAL,
+    pl_pct REAL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paper_equity (
+    day TEXT PRIMARY KEY,
+    equity REAL NOT NULL,
+    cash REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alert_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     alert_id INTEGER NOT NULL,
@@ -295,3 +328,52 @@ class Storage:
                 dict(r)
                 for r in c.execute("SELECT * FROM alert_log ORDER BY id DESC LIMIT ?", (limit,))
             ]
+
+    # --- Schattendepot -------------------------------------------------------
+    def paper_state(self) -> dict[str, str]:
+        with self._conn() as c:
+            return {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM paper_state")}
+
+    def set_paper_state(self, **values) -> None:
+        with self._conn() as c:
+            for k, v in values.items():
+                c.execute("INSERT INTO paper_state(key, value) VALUES (?,?) "
+                          "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, str(v)))
+
+    def paper_positions(self) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM paper_positions ORDER BY entry_day, symbol")]
+
+    def save_paper_position(self, pos: dict) -> None:
+        cols = ("symbol", "shares", "entry", "entry_day", "cost", "stop", "target", "checked_day", "reason")
+        with self._conn() as c:
+            c.execute(f"INSERT OR REPLACE INTO paper_positions({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                      tuple(pos.get(k) for k in cols))
+
+    def remove_paper_position(self, symbol: str) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM paper_positions WHERE symbol=?", (symbol,))
+
+    def add_paper_trade(self, t: dict) -> None:
+        cols = ("symbol", "side", "shares", "price", "fee", "day", "reason", "pl", "pl_pct")
+        with self._conn() as c:
+            c.execute(f"INSERT INTO paper_trades({', '.join(cols)}, created_at) VALUES ({', '.join('?' * len(cols))}, ?)",
+                      (*[t.get(k) for k in cols], now_iso()))
+
+    def paper_trades(self, limit: int = 500) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM paper_trades ORDER BY id DESC LIMIT ?", (limit,))]
+
+    def set_paper_equity(self, day: str, equity: float, cash: float) -> None:
+        with self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO paper_equity(day, equity, cash) VALUES (?,?,?)", (day, equity, cash))
+
+    def paper_equity(self) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM paper_equity ORDER BY day")]
+
+    def reset_paper(self) -> None:
+        with self._conn() as c:
+            for t in ("paper_positions", "paper_trades", "paper_equity"):
+                c.execute(f"DELETE FROM {t}")
+            c.execute("DELETE FROM paper_state WHERE key != 'backtest'")

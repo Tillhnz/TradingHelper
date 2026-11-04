@@ -8,7 +8,7 @@ import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from . import alerts, report
+from . import alerts, paper, report
 from .config import Settings
 from .storage import Storage
 
@@ -48,6 +48,19 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
                         hour=_hours(settings.alert_start_hour, settings.alert_end_hour),
                         minute=f"*/{settings.alert_interval_minutes}", timezone=tz),
             id="alert_check", max_instances=1, coalesce=True,
+        )
+    if settings.paper_enabled:
+        hh, mm = settings.paper_time.split(":")
+        sched.add_job(
+            lambda: _paper(storage, settings),
+            CronTrigger(day_of_week="mon-fri", hour=int(hh), minute=int(mm), timezone=tz),
+            id="paper_run", max_instances=1, coalesce=True, misfire_grace_time=3600,
+        )
+        # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
+        sched.add_job(
+            lambda: paper.run_backtest(storage, settings),
+            CronTrigger(day_of_week="sun", hour=4, minute=17, timezone=tz),
+            id="paper_backtest", max_instances=1, coalesce=True, misfire_grace_time=6 * 3600,
         )
 
 
@@ -90,3 +103,11 @@ def _check(storage: Storage, settings: Settings) -> None:
             log.info("%d Alarm(e) ausgelöst", len(fired))
     except Exception:  # noqa: BLE001
         log.exception("Alarmprüfung fehlgeschlagen")
+
+
+def _paper(storage: Storage, settings: Settings) -> None:
+    try:
+        res = paper.run_live(storage, settings)
+        log.info("Schattendepot: %d Order(s), Wert %.2f", len(res["trades"]), res["equity"])
+    except Exception:  # noqa: BLE001
+        log.exception("Schattendepot-Lauf fehlgeschlagen")

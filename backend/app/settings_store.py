@@ -18,6 +18,11 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "invest_horizon": ("choice:short,medium,long", "strategy", False),
     "risk_profile": ("choice:conservative,balanced,aggressive", "strategy", False),
     "portfolio_size": ("int:0:1000000000", "strategy", False),
+    "paper_enabled": ("bool", "paper", False),
+    "paper_capital": ("int:100:10000000", "paper", False),
+    "paper_fee": ("float:0:50", "paper", False),
+    "paper_time": ("time", "paper", False),
+    "paper_notify": ("bool", "paper", False),
     "ntfy_url": ("url", "notify", False),
     "ntfy_topic": ("topic", "notify", False),
     "ntfy_token": ("str:200", "notify", True),
@@ -38,7 +43,7 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "display_currency": ("choice:native,EUR,USD,CHF,GBP", "general", False),
     "timezone": ("tz", "general", False),
 }
-SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone"}
+SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "paper_enabled", "paper_time"}
 
 
 class SettingError(ValueError):
@@ -66,6 +71,15 @@ def coerce(key: str, raw):
         if not lo <= n <= hi:
             raise SettingError(f"Wert zwischen {lo} und {hi} erwartet")
         return n
+    if base == "float":
+        try:
+            x = float(str(raw).strip().replace(",", "."))
+        except ValueError as exc:
+            raise SettingError("Zahl erwartet") from exc
+        lo, hi = (float(v) for v in args[0].split(":"))
+        if not lo <= x <= hi or x != x:
+            raise SettingError(f"Wert zwischen {lo:g} und {hi:g} erwartet")
+        return round(x, 2)
     text = str(raw if raw is not None else "").strip()
     if base == "choice":
         options = args[0].split(",")

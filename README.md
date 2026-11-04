@@ -49,6 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.
 | Administration | Zustand der Dienste, **Update per Knopf** (mit Sicherung vorher und automatischem Zurückrollen), Sicherungen |
 
 | Depot | Käufe erfassen (im Chart vorbelegt mit Kurs, Stopp, Ziel und Stückzahl aus dem Einstiegsplan), Gewinn/Verlust je Position und als Verlauf, Hinweise „Stopp erreicht“, „Ziel erreicht“, „Stopp nachziehen“; im Chart grüne Gewinn- und rote Verlustzone ab Kaufkurs |
+| Schattendepot | Virtuelles Depot mit Spielgeld (Standard 10.000 €, 1 € pro Order), das die Einschätzungen jeden Handelstag automatisch handelt: Kauf bei „Gute Gelegenheit“ mit Positionsgröße nach Risikoprofil, Verkauf am nachgezogenen Stopp, am Ziel oder wenn die Einschätzung kippt. Vergleich mit „kaufen und halten“. Dazu ein Rückblick über zwei Jahre für alle neun Strategien (Lernjahr wählt aus, Prüfjahr kontrolliert), wöchentlich neu gerechnet |
 
 **Standardbörse ist gettex** (Börse München, 8–22 Uhr, Kurse in Euro nahezu in Echtzeit), abgefragt über die öffentliche onvista-Schnittstelle. gettex-Werte werden intern als `<ISIN>.GTX` geführt, z. B. `DE0007164600.GTX` für SAP. Für gettex gibt es Tages- und Wochenkerzen, keine Stunden- oder Minutenkerzen. Andere Börsen kommen weiterhin über Yahoo.
 

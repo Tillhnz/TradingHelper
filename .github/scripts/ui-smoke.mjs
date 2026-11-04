@@ -62,6 +62,29 @@ await page.getByLabel("Stückzahl").fill("10");
 await page.waitForTimeout(800);
 await page.screenshot({ path: "shots/buy-dialog.png" });
 
+// Schattendepot: starten, handeln, Rückblick rechnen
+await page.goto(`${base}/depot/schatten`);
+await page.waitForTimeout(3000);
+await page.screenshot({ path: "shots/shadow-empty.png", fullPage: true });
+await page.getByRole("button", { name: /starten$/ }).first().click();
+await page.waitForTimeout(25000);
+await page.getByRole("button", { name: "Rückblick starten" }).click();
+const t0 = Date.now();
+while (Date.now() - t0 < 300000) {
+  await page.waitForTimeout(5000);
+  if (await page.locator(".verdict-box").count()) break;
+  if (await page.locator(".error").count()) break;
+}
+console.log("backtest seconds", Math.round((Date.now() - t0) / 1000));
+console.log("shadow", JSON.stringify(await page.evaluate(() => ({
+  stats: [...document.querySelectorAll(".stat")].map((e) => e.textContent),
+  verdict: document.querySelector(".verdict-box")?.textContent,
+  rows: [...document.querySelectorAll("#rueckblick tbody tr")].map((r) => r.textContent),
+  orders: document.querySelectorAll("main .table-wrap")[1]?.textContent?.slice(0, 600),
+  error: document.querySelector(".error")?.textContent,
+}))));
+await page.screenshot({ path: "shots/shadow.png", fullPage: true });
+
 const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 await mobile.goto(`${base}/login`);
 await mobile.evaluate((t) => localStorage.setItem("tradehelper_token", t), token);
@@ -87,6 +110,9 @@ if (box) {
   await mobile.waitForTimeout(800);
 }
 console.log("scroll over locked chart", before, "->", await mobile.evaluate(() => window.scrollY));
+await mobile.goto(`${base}/depot/schatten`);
+await mobile.waitForTimeout(6000);
+await mobile.screenshot({ path: "shots/mobile-shadow.png", fullPage: true });
 await mobile.goto(`${base}/watchlist`);
 await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-watchlist.png", fullPage: true });

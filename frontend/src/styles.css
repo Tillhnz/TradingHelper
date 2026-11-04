@@ -715,3 +715,40 @@ h1 { font-size: 2.4rem; }
   .show-narrow { display: inline-flex; }
   .hide-narrow { display: none; }
 }
+
+/* ---------- Schattendepot ---------- */
+
+.depot-tabs { margin: 0 0 1.25rem; }
+.depot-tabs a { font-size: 0.9rem; color: var(--mute); padding: 0.35rem 0.9rem; border-radius: 4px; text-decoration: none; }
+.depot-tabs a.on { background: var(--panel-2); color: var(--chalk); }
+.shadow-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 1.25rem; }
+.shadow-bar .grow { flex: 1 1 260px; }
+.progress { height: 8px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin: 0.6rem 0; }
+.progress span { display: block; height: 100%; background: var(--celeste); transition: width 0.4s ease; }
+.verdict-box { border-left: 3px solid var(--amber); background: var(--ink-2); border-radius: 8px; padding: 0.9rem 1rem; margin: 0 0 1rem; }
+.verdict-box.switch { border-left-color: var(--celeste); }
+.verdict-box p { margin: 0; }
+.verdict-box .actions { margin-top: 0.7rem; }
+.table tr.is-current td { background: rgba(242, 184, 75, 0.07); }
+.table tr.is-best td:first-child { box-shadow: inset 3px 0 0 var(--celeste); }
+.tag { display: inline-block; font-size: 0.72rem; font-weight: 600; border-radius: 999px; padding: 0 0.45rem; margin-left: 0.35rem; vertical-align: middle; }
+.tag.cur { background: rgba(242, 184, 75, 0.15); color: var(--amber); }
+.tag.best { background: rgba(111, 211, 195, 0.15); color: var(--celeste); }
+.side-buy { color: var(--celeste); font-weight: 600; }
+.side-sell { color: var(--amber); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.5rem 0 0; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 0.4rem; vertical-align: middle; background: var(--c); }
+.reason { max-width: 32rem; }
+.sub-title { font-size: 1.15rem; margin: 1.25rem 0 0.6rem; }
+.section-gap { height: 1.5rem; }
+.show-sm-block { display: none; }
+@media (max-width: 800px) {
+  .show-sm-block { display: block; }
+  .table.compact th, .table.compact td { padding: 0.55rem 0.5rem; }
+  .reason { max-width: none; }
+}
+.details summary { cursor: pointer; margin: 1rem 0 0.6rem; color: var(--celeste); font-size: 0.9rem; }
+.shadow-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.8rem; margin: -0.5rem 0 1.5rem; padding: 0.55rem 1rem;
+  border: 1px dashed var(--line); border-radius: 10px; color: var(--chalk); text-decoration: none; font-size: 0.92rem; }
+.shadow-strip:hover { border-color: var(--celeste); }
+.shadow-strip .go { margin-left: auto; color: var(--celeste); }

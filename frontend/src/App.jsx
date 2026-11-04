@@ -9,6 +9,7 @@ import Watchlist from "./pages/Watchlist.jsx";
 import ChartPage from "./pages/ChartPage.jsx";
 import Alerts from "./pages/Alerts.jsx";
 import Depot from "./pages/Depot.jsx";
+import Shadow from "./pages/Shadow.jsx";
 import Settings from "./pages/Settings.jsx";
 import Admin from "./pages/Admin.jsx";
 
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/chart/:symbol" element={<ChartPage />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/depot" element={<Depot />} />
+        <Route path="/depot/schatten" element={<Shadow />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/login" element={<Navigate to="/" replace />} />

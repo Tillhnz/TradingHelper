@@ -62,6 +62,11 @@ class Settings:
     display_currency: str = field(default_factory=lambda: _env("display_currency", "EUR"))  # oder "native"
     invest_horizon: str = field(default_factory=lambda: _env("invest_horizon", "medium"))  # short|medium|long
     risk_profile: str = field(default_factory=lambda: _env("risk_profile", "balanced"))  # conservative|balanced|aggressive
+    paper_enabled: bool = field(default_factory=lambda: _bool(_env("paper_enabled", "true")))
+    paper_capital: int = field(default_factory=lambda: int(_env("paper_capital", "10000")))
+    paper_fee: float = field(default_factory=lambda: float(_env("paper_fee", "1")))
+    paper_time: str = field(default_factory=lambda: _env("paper_time", "17:45"))
+    paper_notify: bool = field(default_factory=lambda: _bool(_env("paper_notify", "false")))
     portfolio_size: int = field(default_factory=lambda: int(_env("portfolio_size", "0")))  # 0 = aus
 
     @property

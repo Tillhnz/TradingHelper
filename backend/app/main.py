@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from datetime import date
 
-from . import __version__, alerts, analysis, entry, events, indicators, market, news, notify, portfolio, scheduler
+from . import __version__, alerts, analysis, entry, events, indicators, market, news, notify, paper, portfolio, scheduler
 from . import settings_store
 from . import updater_client
 from .config import settings
@@ -638,6 +638,42 @@ def test_notify():
     if not notify.send(settings, "TradeHelper Test", "Benachrichtigungen funktionieren ✅", tags=["white_check_mark"]):
         raise HTTPException(502, "Versand fehlgeschlagen. Adresse, Topic und Token prüfen.")
     return {"ok": True}
+
+
+# ---------- Schattendepot ----------
+
+@app.get("/api/paper", dependencies=auth)
+def paper_view(st: Storage = Depends(get_storage)):
+    return {**paper.view(st, settings), "enabled": settings.paper_enabled,
+            "next_run": scheduler.next_runs().get("paper_run")}
+
+
+@app.post("/api/paper/run", dependencies=auth)
+def paper_run(st: Storage = Depends(get_storage)):
+    """Startet das Schattendepot (falls nötig) und handelt sofort nach den aktuellen Einschätzungen."""
+    if not st.watchlist():
+        raise HTTPException(400, "Die Watchlist ist leer – erst Werte hinzufügen.")
+    return paper.run_live(st, settings, push=False)
+
+
+@app.post("/api/paper/reset", dependencies=auth)
+def paper_reset(st: Storage = Depends(get_storage)):
+    """Alles löschen und mit dem eingestellten Startkapital neu beginnen (der Rückblick bleibt)."""
+    st.reset_paper()
+    return {"ok": True}
+
+
+@app.get("/api/paper/backtest", dependencies=auth)
+def paper_backtest(st: Storage = Depends(get_storage)):
+    return {**paper.backtest_status(), "result": paper.last_backtest(st)}
+
+
+@app.post("/api/paper/backtest", dependencies=auth)
+def paper_backtest_start(st: Storage = Depends(get_storage)):
+    if not st.watchlist():
+        raise HTTPException(400, "Die Watchlist ist leer – erst Werte hinzufügen.")
+    paper.start_backtest(st, settings)
+    return paper.backtest_status()
 
 
 # ---------- Administration ----------

@@ -16,6 +16,18 @@ const GROUPS = [
     },
   },
   {
+    id: "paper",
+    title: "Schattendepot",
+    intro: "Das Schattendepot handelt die Einschätzungen automatisch mit Spielgeld – einmal pro Handelstag zur eingestellten Uhrzeit. Ein neues Startkapital gilt erst nach dem Zurücksetzen (Depot → Schattendepot).",
+    fields: {
+      paper_enabled: { label: "Schattendepot automatisch handeln lassen", type: "bool" },
+      paper_capital: { label: "Startkapital", type: "number", hint: "in Anzeigewährung" },
+      paper_fee: { label: "Gebühr pro Order", type: "number", hint: "z. B. 1 bei Neobrokern über gettex" },
+      paper_time: { label: "Handeln um", type: "time", hint: "Mo–Fr; nach Xetra-Schluss sind die Tageskerzen fast vollständig" },
+      paper_notify: { label: "Orders als Push-Nachricht melden", type: "bool" },
+    },
+  },
+  {
     id: "notify",
     title: "Benachrichtigungen",
     intro: "Push-Nachrichten kommen über ntfy. App installieren (Android/iOS), Topic abonnieren, hier denselben Namen eintragen. Bei ntfy.sh ist jedes Topic öffentlich lesbar: wähle einen langen, zufälligen Namen.",

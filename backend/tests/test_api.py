@@ -201,3 +201,19 @@ def test_news_endpoints(client):
     assert client.get("/api/news/market", headers=h).json()["feeds"] == ["Nur eine"]
     assert client.get("/api/news/AAPL", headers=h).json()["sources"] == ["Google News"]
     assert client.put("/api/settings", json={"news_feeds": "kaputt"}, headers=h).status_code == 422
+
+
+def test_paper_endpoints(client):
+    h = _login(client)
+    assert client.post("/api/paper/run", headers=h).status_code == 400  # leere Watchlist
+    assert client.get("/api/paper", headers=h).json()["started"] is False
+    client.post("/api/watchlist", json={"symbol": "AAPL"}, headers=h)
+    r = client.post("/api/paper/run", headers=h)
+    assert r.status_code == 200 and r.json()["errors"] == {}
+    v = client.get("/api/paper", headers=h).json()
+    assert v["started"] and v["capital"] == 10000 and v["enabled"] is True
+    assert client.put("/api/settings", json={"paper_fee": "1,5", "paper_capital": 5000}, headers=h).status_code == 200
+    assert client.put("/api/settings", json={"paper_fee": "-1"}, headers=h).status_code == 422
+    assert client.get("/api/paper/backtest", headers=h).json()["status"] in ("idle", "done", "error", "running")
+    assert client.post("/api/paper/reset", headers=h).json() == {"ok": True}
+    assert client.get("/api/paper", headers=h).json()["capital"] == 5000

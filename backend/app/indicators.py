@@ -111,16 +111,26 @@ def add_all(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _last2(x, index) -> np.ndarray:
+    if isinstance(x, pd.Series):
+        return x.to_numpy(dtype=float)[-2:]
+    return np.array([float(x), float(x)])
+
+
 def crossed_above(a: pd.Series, b: pd.Series | float) -> bool:
     """True, wenn a auf der letzten Kerze b von unten nach oben gekreuzt hat (wie ta.crossover)."""
-    b = b if isinstance(b, pd.Series) else pd.Series(b, index=a.index)
-    if len(a) < 2 or pd.isna(a.iloc[-2:]).any() or pd.isna(b.iloc[-2:]).any():
+    if len(a) < 2:
         return False
-    return bool(a.iloc[-2] <= b.iloc[-2] and a.iloc[-1] > b.iloc[-1])
+    x, y = _last2(a, a.index), _last2(b, a.index)
+    if np.isnan(x).any() or np.isnan(y).any():
+        return False
+    return bool(x[0] <= y[0] and x[1] > y[1])
 
 
 def crossed_below(a: pd.Series, b: pd.Series | float) -> bool:
-    b = b if isinstance(b, pd.Series) else pd.Series(b, index=a.index)
-    if len(a) < 2 or pd.isna(a.iloc[-2:]).any() or pd.isna(b.iloc[-2:]).any():
+    if len(a) < 2:
         return False
-    return bool(a.iloc[-2] >= b.iloc[-2] and a.iloc[-1] < b.iloc[-1])
+    x, y = _last2(a, a.index), _last2(b, a.index)
+    if np.isnan(x).any() or np.isnan(y).any():
+        return False
+    return bool(x[0] >= y[0] and x[1] < y[1])
