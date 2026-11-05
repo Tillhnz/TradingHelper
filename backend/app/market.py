@@ -354,10 +354,12 @@ def live(symbol: str, currency: str | None = None) -> dict:
     else:
         df = _raw_history(symbol, "5d", "1d")
         price, prev = float(df["close"].iloc[-1]), (float(df["close"].iloc[-2]) if len(df) > 1 else None)
+        t = last_trade_time(symbol)
         try:
             m = _raw_history(symbol, "1d", "1m")
             if len(m) and pd.Timestamp(m.index[-1]).date() == pd.Timestamp(df.index[-1]).date():
                 price = float(m["close"].iloc[-1])
+                t = int(pd.Timestamp(m.index[-1]).timestamp()) + 60  # Ende der letzten Minutenkerze
         except MarketDataError:
             pass
         info = {}
@@ -366,7 +368,7 @@ def live(symbol: str, currency: str | None = None) -> dict:
         except MarketDataError:
             pass
         native = info.get("currency")
-        out.update(price=price, previous_close=prev, time=last_trade_time(symbol), bid=None, ask=None, bid_time=None,
+        out.update(price=price, previous_close=prev, time=min(t, int(time.time())) if t else None, bid=None, ask=None, bid_time=None,
                    delay_min=info.get("delay_min"))
     if currency and native:
         for k in ("price", "previous_close", "bid", "ask"):

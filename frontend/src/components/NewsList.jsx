@@ -58,7 +58,9 @@ export default function NewsList({ items, initial = 5, showStock = false, empty 
   groups.forEach((g) => { counts[mood(g.sentiment)] += 1; });
   const total = groups.length || 1;
   const shown = all ? groups : groups.slice(0, initial);
-  const overall = counts.pos > counts.neg * 1.5 ? "überwiegend positiv" : counts.neg > counts.pos * 1.5 ? "überwiegend negativ" : "gemischt";
+  const decided = counts.pos + counts.neg;
+  const overall = decided < total * 0.25 ? "eher neutral"
+    : counts.pos > counts.neg * 1.5 ? "eher positiv" : counts.neg > counts.pos * 1.5 ? "eher negativ" : "gemischt";
 
   return (
     <>

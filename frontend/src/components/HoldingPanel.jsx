@@ -118,7 +118,7 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
               ))}
               {!p.trail_pct && p.trail_suggest_pct && (
                 <span className="small muted">
-                  Tipp: Stopp mitlaufen lassen ({String(p.trail_suggest_pct).replace(".", ",")} % passend zu deiner Strategie)
+                  Tipp: Stopp mitlaufen lassen ({String(p.trail_suggest_pct).replace(".", ",")} % passend zu deiner Strategie){" "}
                   <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { trail_pct: p.trail_suggest_pct }))}>einschalten</button>
                 </span>
               )}

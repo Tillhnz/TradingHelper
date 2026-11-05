@@ -155,7 +155,7 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
     const open = positions.filter((p) => !p.sell_date);
     // Leere Zeitpunkte nach rechts, damit die Zonen offener Positionen auch bei einem Kauf von heute sichtbar sind
     let future = [];
-    if (open.length && rows.length > 1) {
+    if (open.length && rows.length > 1 && !intraday) {
       const step = rows[rows.length - 1].time - rows[rows.length - 2].time;
       // etwa ein Siebtel der sichtbaren Breite, damit die Zonen klar zu sehen sind
       const n = Math.max(12, Math.round(Math.min(rows.length, 160) * 0.15));
@@ -165,6 +165,14 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
       dataRef.current = { data, last: rows.length - 1, ohlc };
     }
     positions.forEach((p) => {
+      // Im Tagesverlauf nur Linien: Zonen und Kaufpfeile alter Käufe würden die Skala sprengen
+      if (intraday) {
+        if (p.sell_date) return;
+        priceSeries.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: `Kauf ${shortDate(p.buy_date)}` });
+        if (p.stop) priceSeries.createPriceLine({ price: p.stop, color: COLORS.down, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "Stopp" });
+        if (p.target) priceSeries.createPriceLine({ price: p.target, color: COLORS.up, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "Ziel" });
+        return;
+      }
       // Tageskerzen liegen je nach Börse auf Mitternacht Ortszeit (gettex: 23 Uhr UTC am Vortag), daher ±12 h Spielraum
       const from = dayStart(p.buy_date) - 12 * 3600;
       const to = p.sell_date ? dayStart(p.sell_date) + 12 * 3600 : Infinity;

@@ -76,10 +76,10 @@ WORDS: list[tuple[str, float]] = [
     (r"legt (\S+ ){0,3}zu|zieht an|steigt|steigen|klettert|klettern|springt|springen|erholt|erholung|gewinnt|"
      r"im plus|kaufsignal|bricht aus|ausbruch|rekordhoch|allzeithoch|höchststand|zwei-monatshoch|"
      r"climbs?|rises?|rose|jumps?|surges?|soars?|rall(y|ies)|gains?|rebounds?|record high|all-time high|"
-     r"breaks? (through|out)|breakout|higher|bullish", 1),
+     r"breaks? (through|out)|breakout|higher|bullish|höher|fester|erholt sich|im aufwind", 1),
     (r"fällt|fallen|sinkt|sinken|rutscht|rutschen|bricht ein|stürzt|einbruch|verliert|verlieren|im minus|gibt nach|"
      r"unter druck|minus \d+|verkaufssignal|tiefststand|jahrestief|falls?|fell|drops?|dropped|slides?|slumps?|plunges?|"
-     r"tumbles?|sinks?|declines?|sell-?off|crash(es)?|lower|bearish", -1),
+     r"tumbles?|sinks?|declines?|sell-?off|crash(es)?|lower|bearish|tiefer|schwächer|leichter|im abwind", -1),
     # Geschäft
     (r"rekord\w*|record (revenue|sales|profit|quarter|results)|wachstum|growth|gewinnsprung|gewinnsteigerung|"
      r"großauftrag|auftrag|wins? (a )?(contract|order|deal)|partnerschaft|partnership|kooperation|aktienrückkauf|"
