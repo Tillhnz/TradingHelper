@@ -1,44 +1,48 @@
-import urllib.request, urllib.parse, xml.etree.ElementTree as ET, json
-H = {"User-Agent": "Mozilla/5.0 (TradeHelper)", "Accept": "application/rss+xml, application/xml, text/xml, */*"}
-def rss(name, url):
+import json, subprocess, sys, time
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "requests", "yfinance"], check=False)
+import requests
+B = "https://api.onvista.de/api/v1"
+H1 = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+H2 = {**H1, "Referer": "https://www.onvista.de/", "Origin": "https://www.onvista.de"}
+
+def show(label, url, params=None, h=H1):
     try:
-        raw = urllib.request.urlopen(urllib.request.Request(url, headers=H), timeout=20).read()
-        root = ET.fromstring(raw)
-        items = root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry")
-        first = items[0] if items else None
-        t = first.findtext("title") if first is not None else None
-        d = (first.findtext("pubDate") or first.findtext("{http://www.w3.org/2005/Atom}updated")) if first is not None else None
-        src = first.find("source").text if first is not None and first.find("source") is not None else None
-        print(f"OK   {name}: {len(items)} items | {d} | {src} | {t[:90] if t else t}")
+        r = requests.get(url, params=params, headers=h, timeout=20)
+        body = r.text[:500].replace("\n", " ")
+        print(f"## {label} {r.status_code} len={len(r.text)} :: {body}")
+        return r
     except Exception as e:
-        print(f"FAIL {name}: {e}")
-q = lambda s, hl="de", gl="DE": f"https://news.google.com/rss/search?q={urllib.parse.quote(s)}&hl={hl}&gl={gl}&ceid={gl}:{hl}"
-rss("google de SAP", q("SAP Aktie when:7d"))
-rss("google en Apple", q("Apple stock when:7d", "en-US", "US"))
-rss("google de Beiersdorf", q('"Beiersdorf" Aktie when:7d'))
-rss("google de business top", "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=de&gl=DE&ceid=DE:de")
-rss("yahoo rss AAPL", "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US")
-rss("tagesschau wirtschaft", "https://www.tagesschau.de/wirtschaft/index~rss2.xml")
-rss("tagesschau finanzen", "https://www.tagesschau.de/wirtschaft/finanzen/index~rss2.xml")
-rss("handelsblatt finanzen", "https://www.handelsblatt.com/contentexport/feed/finanzen")
-rss("handelsblatt top", "https://www.handelsblatt.com/contentexport/feed/schlagzeilen")
-rss("ntv wirtschaft", "https://www.n-tv.de/wirtschaft/rss")
-rss("finanzen.net news", "https://www.finanzen.net/rss/news")
-rss("spiegel wirtschaft", "https://www.spiegel.de/wirtschaft/index.rss")
-rss("faz finanzen", "https://www.faz.net/rss/aktuell/finanzen/")
-rss("marketwatch top", "https://feeds.content.dowjones.io/public/rss/mw_topstories")
-rss("marketwatch markets", "https://feeds.content.dowjones.io/public/rss/mw_marketpulse")
-rss("cnbc markets", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258")
-rss("cnbc top", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114")
-rss("boerse.de", "https://www.boerse.de/rss/nachrichten/")
-rss("investing de", "https://de.investing.com/rss/news.rss")
+        print(f"## {label} EXC {e}")
+
+for isin, kind in [("DE0007164600", "stocks"), ("IE00B4L5Y983", "funds")]:
+    s = requests.get(f"{B}/{kind}/ISIN:{isin}/snapshot", headers=H1, timeout=20).json()
+    inst = s["instrument"]; et, ev = inst["entityType"], inst["entityValue"]
+    q = [x for x in s["quoteList"]["list"] if x["market"]["codeMarket"] == "_TRO"][0]
+    idn = q["market"]["idNotation"]
+    print("====", isin, et, ev, idn, q.get("datetimeLast"), q.get("last"), q.get("codeQualityPrice"))
+    base = f"{B}/instruments/{et}/{ev}"
+    for h, hn in [(H1, "plain"), (H2, "ref")]:
+        show(f"chart D1 1m {hn}", f"{base}/chart_history", {"idNotation": idn, "range": "D1", "resolution": "1m"}, h)
+        show(f"chart D1 {hn}", f"{base}/chart_history", {"idNotation": idn, "range": "D1"}, h)
+        show(f"chart W1 {hn}", f"{base}/chart_history", {"idNotation": idn, "range": "W1"}, h)
+        show(f"tas {hn}", f"{base}/times_and_sales", {"idNotation": idn, "limit": 50}, h)
+        show(f"intraday {hn}", f"{base}/intraday_history", {"idNotation": idn}, h)
+        show(f"eod D1 {hn}", f"{base}/eod_history", {"idNotation": idn, "range": "D1"}, h)
+        show(f"notation tas {hn}", f"{B}/notations/{idn}/times_and_sales", {"limit": 50}, h)
+        show(f"notation chart {hn}", f"{B}/notations/{idn}/chart_history", {"range": "D1"}, h)
+
+import yfinance as yf
+for sym in ["SAP.DE", "SAP.MU", "SAP.F", "EUNL.DE", "IWDA.AS"]:
+    try:
+        df = yf.Ticker(sym).history(period="1d", interval="1m")
+        print("YF", sym, len(df), df.index[-1] if len(df) else None, df["Close"].iloc[-1] if len(df) else None)
+        df5 = yf.Ticker(sym).history(period="5d", interval="5m")
+        print("YF5", sym, len(df5))
+    except Exception as e:
+        print("YF", sym, "EXC", e)
 try:
-    import subprocess, sys
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "yfinance"], check=True)
-    import yfinance as yf
-    n = yf.Ticker("AAPL").news
-    print("yfinance AAPL news", len(n), json.dumps(n[0])[:400] if n else None)
-    n2 = yf.Ticker("SAP.DE").news
-    print("yfinance SAP.DE news", len(n2), json.dumps(n2[0])[:300] if n2 else None)
+    print("YFSEARCH", [ (x.get("symbol"), x.get("exchange")) for x in yf.Search("DE0007164600", max_results=10).quotes])
+    print("YFSEARCH", [ (x.get("symbol"), x.get("exchange")) for x in yf.Search("IE00B4L5Y983", max_results=10).quotes])
 except Exception as e:
-    print("yfinance FAIL", e)
+    print("YFSEARCH EXC", e)
+print("now", time.strftime("%H:%M:%S", time.gmtime()))
