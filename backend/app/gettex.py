@@ -179,6 +179,13 @@ def intraday(symbol: str, period: str = "1d", interval: str = "5m") -> pd.DataFr
     return ohlc.dropna(subset=["close"])
 
 
+RANGE_DAYS = {"Y1": 366, "Y5": 1827, "Y10": 3653}
+
+
+def range_start(rng: str) -> date:
+    return date.today() - timedelta(days=RANGE_DAYS.get(rng, 366))
+
+
 def history(symbol: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
     if interval in INTRADAY_RULES:
         return intraday(symbol, period, interval)
@@ -193,8 +200,10 @@ def history(symbol: str, period: str = "1y", interval: str = "1d") -> pd.DataFra
     if cached and time.time() - cached[0] < _EOD_TTL:
         df = cached[1].copy()
     else:
+        # Immer den ganzen Bereich laden: Der Zwischenspeicher gilt pro Bereich (Y1/Y5/Y10), nicht pro Zeitraum.
+        # Sonst bekäme nach einer 1-Monats-Abfrage auch die 1-Jahres-Abfrage nur einen Monat.
         data = _get(f"/instruments/{inst['entityType']}/{inst['entityValue']}/eod_history",
-                    {"idNotation": q["market"]["idNotation"], "range": rng, "startDate": start.isoformat()})
+                    {"idNotation": q["market"]["idNotation"], "range": rng, "startDate": range_start(rng).isoformat()})
         if rng == "Y10" and not data.get("datetimeLast"):
             data = _get(f"/instruments/{inst['entityType']}/{inst['entityValue']}/eod_history",
                         {"idNotation": q["market"]["idNotation"], "range": "Y5",

@@ -166,7 +166,7 @@ def _perf(close: pd.Series, bars: int) -> float | None:
 def analyze(symbol: str, df: pd.DataFrame, profile: Profile | None = None) -> Analysis:
     p = profile or Profile()
     if len(df) < 30:
-        raise ValueError(f"Zu wenige Kerzen für {symbol} ({len(df)}), mindestens 30 nötig.")
+        raise ValueError(f"Noch zu wenig Kursverlauf für eine Einschätzung ({len(df)} Kerzen, mindestens 30 nötig).")
     d = df if "rsi" in df.columns else ind.add_all(df)  # Rückblick rechnet die Indikatoren einmal vorab
     last = d.iloc[-1]
     close = float(last["close"])

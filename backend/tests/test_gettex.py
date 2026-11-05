@@ -128,3 +128,15 @@ def test_market_history_routes_to_gettex(fake):
     df = market.get_history("DE0007164600.GTX", "1y", "1d", currency="EUR")
     assert df["close"].iloc[-1] == 205.1
     assert market.last_trade_time("DE0007164600.GTX") == int(pd.Timestamp("2026-11-03T15:23:57.947Z").timestamp())
+
+
+def test_eod_cache_independent_of_period(fake, monkeypatch):
+    # Echte Bereichszuordnung: 1mo und 1y liegen beide im Bereich Y1 und teilen sich den Zwischenspeicher
+    monkeypatch.setattr(gettex, "_range_for", lambda period: (
+        "Y1", pd.Timestamp("2026-10-01" if period == "1mo" else "2026-01-01").date()))
+    gettex.history("DE0007164600.GTX", "1mo", "1d")
+    eod = [c for c in fake if "eod_history" in c[0]]
+    assert eod[-1][1]["startDate"] == gettex.range_start("Y1").isoformat()  # ganzer Bereich, nicht nur 1 Monat
+    full = gettex.history("DE0007164600.GTX", "1y", "1d")
+    assert len([c for c in fake if "eod_history" in c[0]]) == 1  # aus dem Zwischenspeicher
+    assert len(full) == 4  # alle Tageskurse plus heute
