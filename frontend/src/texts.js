@@ -32,7 +32,9 @@ export const GLOSSARY = {
   "ADX": "Misst, wie stark ein Trend ist (über 25 = deutlicher Trend), egal ob auf- oder abwärts.",
   "ATR": "Durchschnittliche Tagesschwankung. Hohe Werte bedeuten große Kurssprünge.",
   "Score": "Zusammenfassung aller Signale von −1 (sehr negativ) bis +1 (sehr positiv).",
-  "Verzögerung": "Wie aktuell der Kurs ist. gettex, Nasdaq und Krypto kommen in (nahezu) Echtzeit, viele Börsen 15 Minuten verzögert.",
+  "Verzögerung": "Wie aktuell der Kurs ist. gettex, Nasdaq und Krypto kommen in Echtzeit, viele Börsen 15 Minuten verzögert. Der Kurs ändert sich nur, wenn tatsächlich gehandelt wird – bei weniger gehandelten Werten kann das letzte Geschäft ein paar Minuten zurückliegen. TradeHelper fragt alle 15 Sekunden nach.",
+  "Geld/Brief": "Geld: so viel bekommst du gerade beim Verkauf. Brief: so viel zahlst du gerade beim Kauf. Diese Kurse stellt der Handelsplatz laufend, auch wenn gerade niemand handelt – sie sind also oft aktueller als der letzte Kurs.",
+  "Mitlaufender Stopp": "Ein Stopp, der mit dem Kurs nach oben wandert: Er liegt immer einen festen Prozentsatz unter dem höchsten Kurs seit dem Kauf und sinkt nie. So sicherst du Gewinne, ohne den Stopp selbst nachzuziehen. Beim Broker heißt das Trailing-Stop-Order.",
   "gettex": "Börse München mit langen Handelszeiten (8–22 Uhr) und günstigen Gebühren bei vielen Neobrokern.",
 };
 

@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { CURRENCY_LABEL, money } from "../fmt.js";
 import Modal from "./Modal.jsx";
 import SymbolSearch from "./SymbolSearch.jsx";
+import Term from "./Term.jsx";
 
 const today = () => {
   const d = new Date();
@@ -49,7 +50,9 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
   const [form, setForm] = useState({
     quantity: defaults.quantity ?? "", buy_price: defaults.price ?? "", buy_date: today(), fees: "",
     currency: shownCcy, stop: defaults.stop ?? "", target: defaults.target ?? "", note: "", create_alerts: true,
+    trail: !!defaults.trail_pct, trail_pct: defaults.trail_pct ?? "",
   });
+  const [trailHint, setTrailHint] = useState(defaults.trail_pct ?? null);
   const [depot, setDepot] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,10 +72,12 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
       setMeta({ currency: a.currency, native_currency: a.native_currency, name: a.name, exchange: a.exchange, price: a.last_close });
       const best = a.entry?.setups?.find((s) => s.ok) || {};
       const conv = a.currency && a.currency !== a.native_currency ? a.currency : "";
+      const tp = a.recommendation?.trail_pct ?? null;
+      setTrailHint(tp);
       setForm((f) => ({
         ...f, currency: conv, buy_price: a.last_close,
         stop: best.stop ?? a.recommendation?.stop ?? "", target: best.target ?? a.recommendation?.target ?? "",
-        quantity: best.position?.shares ?? f.quantity,
+        quantity: best.position?.shares ?? f.quantity, trail: !!tp, trail_pct: tp ?? "",
       }));
     } catch (e) {
       setError(e.message);
@@ -95,6 +100,10 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
   }, [qty, price, stop, target, fees, depot]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  const tpct = form.trail ? n(form.trail_pct) : null;
+  const trailStop = tpct && price ? Math.round(price * (1 - tpct / 100) * 100) / 100 : null;
+  // Mitlaufender Stopp: Startwert aus dem Abstand ableiten
+  const useTrailStop = () => setForm((f) => ({ ...f, stop: trailStop ?? f.stop }));
 
   async function save(e) {
     e.preventDefault();
@@ -104,6 +113,7 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
       const body = {
         symbol, quantity: qty, buy_price: price, buy_date: form.buy_date, fees, currency: form.currency || "",
         stop: stop || null, target: target || null, note: form.note, create_alerts: form.create_alerts && !!(stop || target),
+        trail_pct: tpct || null,
       };
       const r = await api.post("/positions", body);
       onSaved?.(r);
@@ -139,6 +149,23 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
             )}
             <label>Stopp <span className="hint">Verlustgrenze</span><input inputMode="decimal" value={form.stop} onChange={set("stop")} /></label>
             <label>Ziel <span className="hint">optional</span><input inputMode="decimal" value={form.target} onChange={set("target")} /></label>
+            <div className="span-all trail-box">
+              <label className="check">
+                <input type="checkbox" checked={form.trail} onChange={set("trail")} />
+                <span><Term name="Mitlaufender Stopp">Stopp automatisch mitlaufen lassen</Term> (Trailing Stop)</span>
+              </label>
+              {form.trail && (
+                <div className="trail-row">
+                  <label className="trail-input">Abstand in %<input inputMode="decimal" value={form.trail_pct} onChange={set("trail_pct")} /></label>
+                  <p className="small muted">
+                    {trailHint ? <>Empfehlung für deine Strategie: <strong>{String(trailHint).replace(".", ",")} %</strong> – das ist der übliche Stopp-Abstand gemessen an der Schwankung dieses Werts. </> : null}
+                    Der Stopp steigt mit jedem neuen Hoch und fällt nie.
+                    {trailStop && <> Er startet bei <strong>{money(trailStop, ccy)}</strong>{stop !== trailStop && <> – <button type="button" className="link small" onClick={useTrailStop}>als Stopp übernehmen</button></>}.</>}
+                    {" "}Beim Broker als Trailing-Stop-Order mit diesem Abstand anlegen; TradeHelper meldet sich, wenn er erreicht wird.
+                  </p>
+                </div>
+              )}
+            </div>
             <label className="span-all">Notiz <span className="hint">optional, z. B. Grund für den Kauf</span><input value={form.note} onChange={set("note")} maxLength={300} /></label>
           </div>
 

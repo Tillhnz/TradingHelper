@@ -5,6 +5,7 @@ import BuyDialog from "../components/BuyDialog.jsx";
 import SymbolSearch from "../components/SymbolSearch.jsx";
 import { ActionBadge, Empty, ErrorText, Loading, Sparkline } from "../components/ui.jsx";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
+import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { displayName, displayTicker } from "../texts.js";
 
@@ -62,6 +63,7 @@ export default function Watchlist() {
     }
   }
 
+  const quotes = useLiveQuotes((rows || []).map((r) => r.symbol));
   const shown = (rows || []).filter((r) => (filter === "held" ? r.holding : filter === "watch" ? !r.holding
     : filter === "chance" ? r.action === "Kaufen prüfen" : true));
   const converted = rows?.some((r) => r.native_currency && r.native_currency !== r.currency);
@@ -101,7 +103,9 @@ export default function Watchlist() {
             {converted && <span className="muted small">Kurse teils umgerechnet in {rows.find((r) => r.currency)?.currency} · <Link to="/settings">ändern</Link></span>}
           </div>
           <ul className="stock-list">
-            {shown.map((r) => {
+            {shown.map((row) => {
+              const q = quotes[row.symbol];
+              const r = q && q.currency === row.currency ? { ...row, price: q.price, change_pct: q.change_pct ?? row.change_pct } : row;
               const to = `/chart/${encodeURIComponent(r.symbol)}`;
               return (
                 <li key={r.symbol} className={`stock-row ${r.holding ? "held" : ""}`}>

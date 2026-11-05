@@ -8,7 +8,7 @@ import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from . import alerts, paper, report
+from . import alerts, paper, portfolio, report
 from .config import Settings
 from .storage import Storage
 
@@ -103,6 +103,12 @@ def _check(storage: Storage, settings: Settings) -> None:
             log.info("%d Alarm(e) ausgelöst", len(fired))
     except Exception:  # noqa: BLE001
         log.exception("Alarmprüfung fehlgeschlagen")
+    try:
+        sent = portfolio.watch(storage, settings)
+        if sent:
+            log.info("%d Depot-Hinweis(e) verschickt", len(sent))
+    except Exception:  # noqa: BLE001
+        log.exception("Depot-Prüfung fehlgeschlagen")
 
 
 def _paper(storage: Storage, settings: Settings) -> None:

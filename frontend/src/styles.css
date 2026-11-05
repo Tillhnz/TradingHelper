@@ -752,3 +752,36 @@ h1 { font-size: 2.4rem; }
   border: 1px dashed var(--line); border-radius: 10px; color: var(--chalk); text-decoration: none; font-size: 0.92rem; }
 .shadow-strip:hover { border-color: var(--celeste); }
 .shadow-strip .go { margin-left: auto; color: var(--celeste); }
+
+/* Nachrichten kompakt */
+.news-summary { display: flex; flex-direction: column; gap: 0.4rem; margin: 0 0 0.9rem; }
+.news-summary p { margin: 0; }
+.news-summary .pos { color: var(--celeste); }
+.news-summary .neg { color: var(--signal); }
+.mood-bar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--ink-2); }
+.mood-bar span { display: block; height: 100%; }
+.mood-bar .pos { background: var(--celeste); }
+.mood-bar .neu { background: #3a4c60; }
+.mood-bar .neg { background: var(--signal); }
+.seg-small { align-self: flex-start; }
+.seg-small button { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+.news-list.compact li { padding: 0.55rem 0 0.55rem 0.75rem; border-left: 3px solid transparent; margin-left: -0.2rem; }
+.news-list.compact li.mood-pos { border-left-color: var(--celeste); }
+.news-list.compact li.mood-neg { border-left-color: var(--signal); }
+.news-list.compact li.mood-neu { border-left-color: #2c3d50; }
+.news-list.compact .news-head { font-size: 0.97rem; }
+.news-list.compact .news-meta { margin: 0.2rem 0 0; }
+.news-list.compact .news-src { font-weight: 500; }
+.mood-tag { font-size: 0.75rem; border-radius: 999px; padding: 0 0.45rem; }
+.mood-tag.pos { color: var(--celeste); background: rgba(111, 211, 195, 0.12); }
+.mood-tag.neg { color: var(--signal); background: rgba(255, 107, 107, 0.12); }
+.news-more-list { list-style: none; margin: 0.4rem 0 0; padding: 0 0 0 0.6rem; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
+.news-more-list a { color: var(--chalk); text-decoration: none; }
+.news-more-list a:hover { color: var(--celeste); }
+
+.trail-box { border: 1px solid var(--line); border-radius: 10px; padding: 0.7rem 0.9rem; background: var(--ink-2); }
+.trail-row { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin-top: 0.6rem; }
+.trail-row p { flex: 1 1 260px; margin: 0; }
+.trail-input { width: 7.5rem; }
+.hint-inline.warn { color: var(--amber); }
+.hint-inline.good { color: var(--celeste); }

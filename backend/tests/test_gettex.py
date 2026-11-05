@@ -19,10 +19,15 @@ EOD = {"datetimeLast": [1793275200, 1793361600, 1793620800], "first": [200.0, 20
        "volume": [1000.0, 1100.0, 1200.0]}
 
 
+TAS: dict = {}
+
+
 @pytest.fixture
 def fake(monkeypatch):
     gettex._SNAP.clear()
     gettex._EOD.clear()
+    gettex._TAS.clear()
+    TAS.clear()
     market._CACHE.clear()
     market._INFO.clear()
     calls = []
@@ -35,6 +40,8 @@ def fake(monkeypatch):
             raise gettex.GettexError("404")
         if "eod_history" in path:
             return EOD
+        if "times_and_sales" in path:
+            return TAS.get((params or {}).get("startDate", "heute"), {})
         if path == "/instruments/query":
             return {"list": [
                 {"entityType": "STOCK", "isin": "DE0007164600", "name": "SAP", "symbol": "SAP"},
@@ -75,8 +82,34 @@ def test_weekly_and_no_intraday(fake):
     wk = gettex.history("DE0007164600.GTX", "1y", "1wk")
     assert len(wk) == 2 and wk.iloc[-1]["close"] == 205.1
     with pytest.raises(gettex.GettexError):
-        gettex.history("DE0007164600.GTX", "1mo", "1h")
-    assert not market.supports_intraday("DE0007164600.GTX") and market.supports_intraday("SAP.DE")
+        gettex.history("DE0007164600.GTX", "1mo", "1h")  # Minutenkerzen nur für 1 oder 5 Tage
+    assert market.intraday_limit("DE0007164600.GTX") == "5d" and market.intraday_limit("SAP.DE") is None
+
+
+def test_intraday_from_trades(fake, monkeypatch):
+    import datetime as dt
+    today = pd.Timestamp.now(tz="Europe/Berlin").normalize()
+    # an einem Wochenende auf den letzten Freitag zurückgehen
+    while today.weekday() >= 5:
+        today -= pd.Timedelta(days=1)
+    t0 = int((today + pd.Timedelta(hours=9)).timestamp())
+    trades = {"datetimePrice": [t0, t0 + 60, t0 + 240, t0 + 400], "price": [10.0, 11.0, 9.5, 10.5],
+              "volume": [1.0, 2.0, 3.0, 4.0]}
+    if today.date() == dt.datetime.now(tz=today.tz).date():
+        TAS["heute"] = trades
+    else:
+        TAS[today.date().isoformat()] = trades
+    df = gettex.history("DE0007164600.GTX", "1d", "5m")
+    assert list(df["open"]) == [10.0, 10.5] and list(df["high"]) == [11.0, 10.5]
+    assert list(df["low"]) == [9.5, 10.5] and list(df["volume"]) == [6.0, 4.0]
+    assert str(df.index.tz) == "Europe/Berlin"
+
+
+def test_live_quote_with_bid_ask(fake):
+    SNAP["quoteList"]["list"][1].update(bid=205.0, ask=205.2, datetimeBid="2026-11-03T15:24:10.000+00:00")
+    q = market.live("DE0007164600.GTX")
+    assert q["price"] == 205.1 and q["bid"] == 205.0 and q["ask"] == 205.2 and q["currency"] == "EUR"
+    assert q["change_pct"] == pytest.approx((205.1 / 208.45 - 1) * 100, abs=1e-3)
 
 
 def test_not_traded_on_gettex(fake, monkeypatch):

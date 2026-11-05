@@ -119,3 +119,58 @@ def test_risk_and_chance_fields(fake_market):
     assert ev["chance_to_target"] == 200.0 and ev["pl_at_target"] == 495.0
     s = portfolio.summarize([ev, portfolio.evaluate(_pos("AAA", fake_market, 110.0, qty=10), p)])
     assert s["risk_to_stop"] == 100.0 and s["chance_to_target"] == 200.0 and s["lots_without_stop"] == 1
+
+
+def test_trailing_stop_follows_high(fake_market):
+    # AAA steigt von 100 auf 130: 5 % mitlaufend → Stopp 123,5, über dem eingetragenen 95
+    pos = {**_pos("AAA", fake_market, 100.0, stop=95.0), "trail_pct": 5.0}
+    ev = portfolio.evaluate(pos, Profile())
+    assert ev["trail_high"] == 130.0 and ev["stop"] == pytest.approx(123.5) and ev["stop_dynamic"]
+    assert ev["stop_base"] == 95.0
+    assert ev["pl_at_stop"] == pytest.approx((123.5 - 100) * 10)
+    assert any(h["text"].startswith("Stopp läuft mit") for h in ev["hints"])
+    assert not any(h.get("suggested_stop") for h in ev["hints"])  # kein manuelles Nachziehen nötig
+    assert ev["trail_suggest_pct"] >= 2
+
+
+def test_trail_pct_recommendation():
+    p = Profile("medium")
+    assert analysis.trail_pct(p, 100.0, 2.0) == 5.0  # 2,5 × 2 / 100
+    assert analysis.trail_pct(p, 100.0, 0.1) == 2.0  # Mindestabstand
+    assert analysis.trail_pct(p, 100.0, None) is None
+
+
+def test_target_hints_reached_raise_lower():
+    class A:  # Minimal-Analyse
+        def __init__(self, res, atr=2.0):
+            self.resistance, self.metrics = res, {"atr": atr}
+
+    class R:
+        def __init__(self, action):
+            self.action = action
+
+    p = Profile("medium")
+    reached = portfolio.target_hints({}, p, A(140.0), R(analysis.HOLD), 130.0, 125.0, "EUR")
+    assert reached[0]["suggested_target"] == 140.0 and reached[0]["reason"] == "reached"
+    raise_ = portfolio.target_hints({}, p, A(150.0), R(analysis.BUY), 120.0, 130.0, "EUR")
+    assert raise_[0]["reason"] == "raise" and "anheben" in raise_[0]["text"]
+    lower = portfolio.target_hints({}, p, A(124.0), R(analysis.SELL), 120.0, 140.0, "EUR")
+    assert lower[0]["reason"] == "lower" and "senken" in lower[0]["text"]
+    assert portfolio.target_hints({}, p, A(131.0), R(analysis.HOLD), 120.0, 130.0, "EUR") == []
+    assert portfolio.target_hints({}, Profile("long"), A(150.0), R(analysis.BUY), 120.0, 130.0, "EUR") == []
+    sold = portfolio.target_hints({}, p, A(140.0), R(analysis.SELL), 130.0, 125.0, "EUR")
+    assert "Signale drehen" in sold[0]["text"] and "suggested_target" not in sold[0]
+
+
+def test_watch_notifies_once(fake_market, tmp_path):
+    from app.config import Settings
+    from app.storage import Storage
+    st = Storage(tmp_path / "w.db")
+    st.add_position({"symbol": "BBB", "quantity": 10, "buy_price": 50.0, "buy_date": fake_market.isoformat(),
+                     "stop": 42.0, "currency": ""})
+    got = []
+    send = lambda title, text: got.append(text)  # noqa: E731
+    portfolio.watch(st, Settings(), send)
+    assert len(got) == 1 and "Stopp" in got[0]
+    portfolio.watch(st, Settings(), send)
+    assert len(got) == 1  # nicht doppelt

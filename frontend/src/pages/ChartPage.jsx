@@ -5,14 +5,17 @@ import BuyDialog from "../components/BuyDialog.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
 import HoldingPanel from "../components/HoldingPanel.jsx";
 import NewsList from "../components/NewsList.jsx";
-import PriceChart from "../components/PriceChart.jsx";
+import PriceChart, { CHART_TYPES } from "../components/PriceChart.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading, Stat } from "../components/ui.jsx";
 import { CURRENCY_LABEL, money, num, pct, signed, tone } from "../fmt.js";
+import { since, useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { ACTION_UI, displayName, displayTicker } from "../texts.js";
 
 const RANGES = [
+  { id: "1d", label: "1 T", period: "1d", interval: "5m" },
+  { id: "5d", label: "1 W", period: "5d", interval: "15m" },
   { id: "1mo", label: "1 M", period: "1mo", interval: "1d" },
   { id: "3mo", label: "3 M", period: "3mo", interval: "1d" },
   { id: "6mo", label: "6 M", period: "6mo", interval: "1d" },
@@ -22,11 +25,16 @@ const RANGES = [
 const PRO_PERIODS = {
   "1d": ["3mo", "6mo", "1y", "2y", "5y"],
   "1wk": ["1y", "2y", "5y", "10y"],
-  "1h": ["1mo", "3mo", "6mo"],
-  "15m": ["5d", "1mo"],
+  "1h": ["5d", "1mo", "3mo", "6mo"],
+  "15m": ["1d", "5d", "1mo"],
+  "5m": ["1d", "5d"],
 };
-const LABEL = { "5d": "5 Tage", "1mo": "1 Monat", "3mo": "3 Monate", "6mo": "6 Monate", "1y": "1 Jahr", "2y": "2 Jahre", "5y": "5 Jahre", "10y": "10 Jahre" };
-const INTERVAL_LABEL = { "1d": "Tag", "1wk": "Woche", "1h": "Stunde", "15m": "15 Min" };
+const INTRADAY = new Set(["1h", "15m", "5m"]);
+const BAR_SECONDS = { "5m": 300, "15m": 900, "1h": 3600 };
+const TYPE_KEY = "tradehelper_chart_type";
+const loadType = () => { try { return localStorage.getItem(TYPE_KEY) || null; } catch { return null; } };
+const LABEL = { "1d": "1 Tag", "5d": "5 Tage", "1mo": "1 Monat", "3mo": "3 Monate", "6mo": "6 Monate", "1y": "1 Jahr", "2y": "2 Jahre", "5y": "5 Jahre", "10y": "10 Jahre" };
+const INTERVAL_LABEL = { "1d": "Tag", "1wk": "Woche", "1h": "Stunde", "15m": "15 Min", "5m": "5 Min" };
 const REFRESH_MS = 60 * 1000;
 const KIND_COLOR = { pullback: "#6fd3c3", breakout: "#f2b84b", rebound: "#ff9f6b", now: "#6fd3c3" };
 const KIND_TITLE = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound", now: "Einstieg" };
@@ -58,6 +66,7 @@ export default function ChartPage() {
   const [msg, setMsg] = useState("");
   const [buying, setBuying] = useState(false);
   const [tick, setTick] = useState(0);
+  const [chartType, setChartType] = useState(loadType);
   const [holding, setHolding] = useState(null);
   const refreshAll = useCallback(() => setTick((t) => t + 1), []);
 
@@ -97,9 +106,9 @@ export default function ChartPage() {
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       api.get(`/history/${encodeURIComponent(symbol)}?${q}`).then((r) => { setRows(r.rows); setMeta(r); }).catch(() => {});
-    }, REFRESH_MS);
+    }, INTRADAY.has(view.interval) ? REFRESH_MS : 5 * REFRESH_MS);
     return () => clearInterval(id);
-  }, [symbol, q]);
+  }, [symbol, q, view.interval]);
 
   useEffect(() => {
     const name = meta?.name || analysis?.name;
@@ -139,11 +148,20 @@ export default function ChartPage() {
     }
   }
 
+  const limited = !!meta?.intraday_limit;
+  const periodsFor = (iv) => PRO_PERIODS[iv].filter((x) => !limited || !INTRADAY.has(iv) || ["1d", "5d"].includes(x));
+
+  function pickType(t) {
+    setChartType(t);
+    try { localStorage.setItem(TYPE_KEY, t); } catch { /* egal */ }
+  }
+
   function setProInterval(iv) {
-    const periods = PRO_PERIODS[iv];
+    const periods = periodsFor(iv);
     setView((v) => ({ interval: iv, period: periods.includes(v.period) ? v.period : periods[Math.min(1, periods.length - 1)] }));
   }
 
+  const quotes = useLiveQuotes([symbol], { currency: ccy, every: 15000 });
   const m = analysis?.metrics || {};
   const rec = analysis?.recommendation;
   const cur = meta?.currency ?? analysis?.currency;
@@ -152,13 +170,23 @@ export default function ChartPage() {
   const held = holding?.summary?.shares > 0;
   const last = rows?.[rows.length - 1];
   const prevRow = rows?.[rows.length - 2];
-  const livePrice = view.interval === "1d" && last ? last.close : analysis?.last_close;
-  const liveChange = view.interval === "1d" && last && prevRow ? (last.close / prevRow.close - 1) * 100 : analysis?.change_pct_1d;
+  const lq = quotes[symbol];
+  const quoteOk = lq && (!cur || lq.currency === cur);
+  const livePrice = quoteOk ? lq.price : view.interval === "1d" && last ? last.close : analysis?.last_close;
+  const liveChange = quoteOk && lq.change_pct != null ? lq.change_pct : view.interval === "1d" && last && prevRow ? (last.close / prevRow.close - 1) * 100 : analysis?.change_pct_1d;
+  // Live-Kurs nur in die letzte Kerze schreiben, wenn sie zum selben Zeitraum gehört
+  const liveBar = useMemo(() => {
+    if (!quoteOk || !last || !lq.time) return null;
+    if (INTRADAY.has(view.interval)) return lq.time - last.time < (BAR_SECONDS[view.interval] || 900) ? { price: lq.price } : null;
+    if (view.interval === "1d") return new Date(lq.time * 1000).toDateString() === new Date(last.time * 1000).toDateString() ? { price: lq.price } : null;
+    return null;
+  }, [quoteOk, lq, last, view.interval]);
   const bestSetup = analysis?.entry?.setups?.find((x) => x.ok && x.status === "now") || analysis?.entry?.setups?.find((x) => x.ok);
   const info = meta || analysis;
   const ui = rec ? ACTION_UI[rec.action] : null;
   const rangeId = RANGES.find((r) => r.period === view.period && r.interval === view.interval)?.id;
-  const intervals = Object.keys(PRO_PERIODS).filter((iv) => meta?.intraday !== false || ["1d", "1wk"].includes(iv));
+  const intervals = ["5m", "15m", "1h", "1d", "1wk"].filter((iv) => meta?.intraday !== false || !INTRADAY.has(iv));
+  const ranges = RANGES;
 
   return (
     <>
@@ -180,7 +208,13 @@ export default function ChartPage() {
               <span className={`chip ${tone(liveChange)}`}>{pct(liveChange)} heute</span>
             </>
           )}
-          {meta && <p className={`muted small ${meta.delay_min ? "delayed" : ""}`}><Term name="Verzögerung">{freshness(meta)}</Term>{meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}</p>}
+          {quoteOk && lq.time ? (
+            <p className={`muted small ${lq.delay_min ? "delayed" : ""}`}>
+              <Term name="Verzögerung">Letztes Geschäft {since(lq.time)}{lq.delay_min ? ` · ${lq.delay_min} Min. verzögert` : lq.delay_min === 0 ? " · Echtzeit" : ""}</Term>
+              {lq.bid && lq.ask && <> · <Term name="Geld/Brief">Geld {p(lq.bid)} / Brief {p(lq.ask)}</Term></>}
+              {meta?.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}
+            </p>
+          ) : meta && <p className={`muted small ${meta.delay_min ? "delayed" : ""}`}><Term name="Verzögerung">{freshness(meta)}</Term>{meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}</p>}
         </div>
         <div className="stock-actions-top">
           <button className="btn primary" onClick={() => setBuying(true)}>{held ? "Nachkauf erfassen" : "Kauf erfassen"}</button>
@@ -221,12 +255,12 @@ export default function ChartPage() {
                 {intervals.map((iv) => <button key={iv} className={iv === view.interval ? "on" : ""} onClick={() => setProInterval(iv)}>{INTERVAL_LABEL[iv]}</button>)}
               </div>
               <select value={view.period} onChange={(e) => setView((v) => ({ ...v, period: e.target.value }))} aria-label="Zeitraum">
-                {PRO_PERIODS[view.interval].map((x) => <option key={x} value={x}>{LABEL[x]}</option>)}
+                {periodsFor(view.interval).map((x) => <option key={x} value={x}>{LABEL[x]}</option>)}
               </select>
             </>
           ) : (
             <div className="seg" role="group" aria-label="Zeitraum">
-              {RANGES.map((r) => <button key={r.id} className={rangeId === r.id ? "on" : ""} onClick={() => setView({ period: r.period, interval: r.interval })}>{r.label}</button>)}
+              {ranges.map((r) => <button key={r.id} className={rangeId === r.id ? "on" : ""} onClick={() => setView({ period: r.period, interval: r.interval })}>{r.label}</button>)}
             </div>
           )}
           {meta?.native_currency && (
@@ -236,6 +270,9 @@ export default function ChartPage() {
               ))}
             </select>
           )}
+          <select value={chartType || (pro ? "candles" : "area")} onChange={(e) => pickType(e.target.value)} aria-label="Darstellung">
+            {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
           <span className="toolbar-gap" />
           <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
           <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => { setPlanTouched(true); setShowPlan(e.target.checked); }} /> Einstiegsmarken</label>
@@ -246,6 +283,7 @@ export default function ChartPage() {
         {!rows && !error && <Loading text="Lade Kurse …" />}
         {rows && (
           <PriceChart key={`${symbol}-${view.interval}-${view.period}-${ccy}-${mode}`} rows={rows} simple={!pro}
+            type={chartType || undefined} live={liveBar} intraday={INTRADAY.has(view.interval)}
             showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} />
         )}
         <p className="legend small">
@@ -300,10 +338,7 @@ export default function ChartPage() {
               <h2>Nachrichten</h2>
               <Link className="link small" to="/settings#news">Quellen</Link>
             </div>
-            {analysis.news_sources?.length > 0 && (
-              <div className="news-sources">{analysis.news_sources.map((s) => <span key={s} className="src-chip">{s}</span>)}</div>
-            )}
-            <NewsList items={analysis.news} initial={6}
+            <NewsList items={analysis.news} initial={5}
               empty={analysis.news_sources?.length ? `In den letzten Tagen keine Meldungen zu ${displayName(meta || analysis) || "diesem Wert"} gefunden.` : "Alle Nachrichtenquellen sind ausgeschaltet (Einstellungen → Nachrichten)."} />
           </section>
         </>
@@ -314,7 +349,8 @@ export default function ChartPage() {
       {buying && (
         <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}
           defaults={{ price: livePrice ? Math.round(livePrice * 100) / 100 : "", stop: bestSetup?.stop ?? rec?.stop ?? "",
-            target: bestSetup?.target ?? rec?.target ?? "", quantity: bestSetup?.position?.shares ?? rec?.position?.shares ?? "" }}
+            target: bestSetup?.target ?? rec?.target ?? "", quantity: bestSetup?.position?.shares ?? rec?.position?.shares ?? "",
+            trail_pct: rec?.trail_pct ?? null }}
           onClose={() => setBuying(false)} onSaved={refreshAll} />
       )}
     </>

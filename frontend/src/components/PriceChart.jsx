@@ -22,12 +22,35 @@ const interaction = (locked) => {
   };
 };
 
-const baseOptions = (locked) => ({
+// lightweight-charts rechnet in UTC; Beschriftungen in Ortszeit des Browsers (wichtig für den Tagesverlauf)
+const fmtTime = (t, opts) => new Date(t * 1000).toLocaleString("de-DE", opts);
+const tickFormatter = (t, kind) => {
+  if (typeof t !== "number") return null;
+  if (kind === 0) return fmtTime(t, { year: "numeric" });
+  if (kind === 1) return fmtTime(t, { month: "short" });
+  if (kind === 2) return fmtTime(t, { day: "numeric", month: "numeric" });
+  return fmtTime(t, { hour: "2-digit", minute: "2-digit" });
+};
+
+export const CHART_TYPES = [
+  { id: "area", label: "Fläche" },
+  { id: "line", label: "Linie" },
+  { id: "candles", label: "Kerzen" },
+  { id: "bars", label: "Balken" },
+];
+
+const baseOptions = (locked, intraday) => ({
   autoSize: true,
+  localization: {
+    locale: "de-DE",
+    timeFormatter: (t) => (typeof t === "number"
+      ? fmtTime(t, intraday ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", year: "2-digit" })
+      : String(t)),
+  },
   layout: { background: { color: COLORS.bg }, textColor: COLORS.text, fontFamily: "Barlow, system-ui, sans-serif" },
   grid: { vertLines: { color: COLORS.grid }, horzLines: { color: COLORS.grid } },
   rightPriceScale: { borderColor: COLORS.line },
-  timeScale: { borderColor: COLORS.line, timeVisible: true, secondsVisible: false },
+  timeScale: { borderColor: COLORS.line, timeVisible: true, secondsVisible: false, tickMarkFormatter: tickFormatter },
   crosshair: { mode: CrosshairMode.Normal },
   ...interaction(locked),
 });
@@ -67,7 +90,10 @@ export function LockButton({ locked, onToggle }) {
  * und MACD. Overlays: Signal-Marker, Linien des Einstiegsplans und eigene Käufe mit Gewinn-/Verlustzone.
  * Standardmäßig gesperrt, damit Wischen die Seite scrollt und nicht den Chart verschiebt.
  */
-export default function PriceChart({ rows, simple = false, showSma = true, showBb = false, events = [], planLines = [], positions = [] }) {
+export default function PriceChart({ rows, simple = false, type, live = null, intraday = false, showSma = true, showBb = false, events = [], planLines = [], positions = [] }) {
+  const kind = type || (simple ? "area" : "candles");
+  const seriesRef = useRef(null);
+  const dataRef = useRef({ data: [], last: -1, ohlc: false });
   const mainRef = useRef(null);
   const rsiRef = useRef(null);
   const macdRef = useRef(null);
@@ -83,22 +109,31 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
 
   useEffect(() => {
     if (!rows?.length) return undefined;
-    const opts = baseOptions(lockedRef.current);
+    const opts = baseOptions(lockedRef.current, intraday);
     const main = createChart(mainRef.current, opts);
     let priceSeries;
-    if (simple) {
-      const up = rows[rows.length - 1].close >= rows[0].close;
+    const ohlc = kind === "candles" || kind === "bars";
+    const up = rows[rows.length - 1].close >= rows[0].close;
+    if (kind === "area") {
       priceSeries = main.addAreaSeries({
         lineColor: up ? COLORS.up : COLORS.down, lineWidth: 2,
         topColor: up ? "rgba(111, 211, 195, 0.28)" : "rgba(255, 107, 107, 0.25)", bottomColor: "rgba(17, 27, 38, 0)",
         priceLineVisible: true, priceLineColor: "#5d7389",
       });
-      priceSeries.setData(rows.map((r) => ({ time: r.time, value: r.close })));
+    } else if (kind === "line") {
+      priceSeries = main.addLineSeries({ color: up ? COLORS.up : COLORS.down, lineWidth: 2, priceLineVisible: true, priceLineColor: "#5d7389" });
+    } else if (kind === "bars") {
+      priceSeries = main.addBarSeries({ upColor: COLORS.up, downColor: COLORS.down, thinBars: rows.length > 120 });
     } else {
       priceSeries = main.addCandlestickSeries({
         upColor: COLORS.up, downColor: COLORS.down, borderVisible: false, wickUpColor: COLORS.up, wickDownColor: COLORS.down,
       });
-      priceSeries.setData(rows.map((r) => ({ time: r.time, open: r.open, high: r.high, low: r.low, close: r.close })));
+    }
+    const toPoint = (r) => (ohlc ? { time: r.time, open: r.open, high: r.high, low: r.low, close: r.close } : { time: r.time, value: r.close });
+    priceSeries.setData(rows.map(toPoint));
+    seriesRef.current = priceSeries;
+    dataRef.current = { data: rows.map(toPoint), last: rows.length - 1, ohlc };
+    if (!simple) {
       const vol = main.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, priceLineVisible: false, lastValueVisible: false });
       main.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
       vol.setData(rows.map((r) => ({ time: r.time, value: r.volume ?? 0, color: r.close >= r.open ? "#6fd3c344" : "#ff6b6b44" })));
@@ -125,8 +160,9 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
       // etwa ein Siebtel der sichtbaren Breite, damit die Zonen klar zu sehen sind
       const n = Math.max(12, Math.round(Math.min(rows.length, 160) * 0.15));
       future = Array.from({ length: n }, (_, i) => rows[rows.length - 1].time + step * (i + 1));
-      const data = simple ? rows.map((r) => ({ time: r.time, value: r.close })) : rows.map((r) => ({ time: r.time, open: r.open, high: r.high, low: r.low, close: r.close }));
-      priceSeries.setData([...data, ...future.map((time) => ({ time }))]);
+      const data = [...rows.map(toPoint), ...future.map((time) => ({ time }))];
+      priceSeries.setData(data);
+      dataRef.current = { data, last: rows.length - 1, ohlc };
     }
     positions.forEach((p) => {
       // Tageskerzen liegen je nach Börse auf Mitternacht Ortszeit (gettex: 23 Uhr UTC am Vortag), daher ±12 h Spielraum
@@ -212,8 +248,22 @@ export default function PriceChart({ rows, simple = false, showSma = true, showB
       main.timeScale().setVisibleLogicalRange({ from: rows.length - visible, to: rows.length + (future.length || 3) });
     }
 
-    return () => { charts.forEach((c) => c.remove()); chartsRef.current = []; };
-  }, [rows, simple, showSma, showBb, events, planLines, positions]);
+    return () => { charts.forEach((c) => c.remove()); chartsRef.current = []; seriesRef.current = null; };
+  }, [rows, simple, kind, intraday, showSma, showBb, events, planLines, positions]);
+
+  // Live-Kurs: letzte Kerze bzw. letzten Punkt aktualisieren, ohne den Chart neu aufzubauen
+  useEffect(() => {
+    const s = seriesRef.current;
+    const { data, last, ohlc } = dataRef.current;
+    if (!s || !live?.price || last < 0 || !data[last]) return;
+    const cur = data[last];
+    const next = ohlc
+      ? { ...cur, close: live.price, high: Math.max(cur.high, live.price), low: Math.min(cur.low, live.price) }
+      : { ...cur, value: live.price };
+    if ((ohlc ? cur.close : cur.value) === live.price) return;
+    data[last] = next;
+    try { s.setData(data); } catch { /* Chart wurde gerade ersetzt */ }
+  }, [live]);
 
   return (
     <div className={`chart-stack ${locked ? "is-locked" : "is-unlocked"}`}>

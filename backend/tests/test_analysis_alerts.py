@@ -43,6 +43,25 @@ def test_sentiment_lexicon():
     assert news.score_text("Gewinnwarnung: Aktie fällt") < 0
 
 
+def test_sentiment_phrases_and_context():
+    f = news.score_text
+    pos, neg = 0.15, -0.15
+    assert f("Airbus Aktie: UBS senkt Kursziel trotz Kaufempfehlung") < neg
+    assert f("Deutsche Bank hebt Kursziel für SAP auf 300 Euro") > pos
+    assert f("Goldman schraubt das Ziel auf 258 Euro hoch") > pos
+    assert f("JPMorgan cuts price target on Apple but keeps overweight") < 0
+    assert f("Airbus-Aktie legt 3,65 Prozent zu - Jahresziele im Fokus") > pos
+    assert f("Airbus stock climbs as targets stay unchanged after results") > pos
+    assert neg < f("Airbus (OTCMKTS:EADSY) Sees Strong Trading Volume - Time to Buy?") < pos
+    assert f("Inflation im Euroraum steigt auf 4,0 Prozent") < neg
+    assert f("Aktie fällt trotz starker Zahlen") < neg
+    assert f("Apple shares rise despite weak iPhone sales") > pos
+    assert f("Kein Grund zur Sorge: Aktie nicht unter Druck") > 0
+    assert f("SAP verfehlt Erwartungen, Aktie bricht ein") < neg
+    assert f("Minus 33 % in einer Woche! Star-Analyst sieht jetzt Kaufchance") <= pos
+    assert f("Airbus Balances Drone Qualification and Digital Services Push") == 0
+
+
 def test_build_params():
     assert alerts.build_params("rsi_below", {"value": "25"}) == {"value": 25.0, "period": 14}
     assert alerts.build_params("ma_cross_up", {"type": "EMA"})["type"] == "ema"

@@ -36,6 +36,15 @@ export default function Depot() {
     }
   }
 
+  async function applyTarget(pos, value) {
+    try {
+      await api.patch(`/positions/${pos.id}`, { target: value });
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function remove(pos) {
     if (!window.confirm(`Position ${pos.symbol} vom ${pos.buy_date} löschen?`)) return;
     await api.del(`/positions/${pos.id}`).catch((e) => setError(e.message));
@@ -123,6 +132,7 @@ export default function Depot() {
                             <li key={h.text} className={h.level}>
                               {h.text}
                               {h.suggested_stop && <button className="link small" onClick={() => applyStop(p, h.suggested_stop)}>übernehmen</button>}
+                              {h.suggested_target && <button className="link small" onClick={() => applyTarget(p, h.suggested_target)}>Ziel übernehmen</button>}
                             </li>
                           ))}
                         </ul>

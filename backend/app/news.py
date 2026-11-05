@@ -25,23 +25,131 @@ log = logging.getLogger(__name__)
 
 FINNHUB_URL = "https://finnhub.io/api/v1"
 
-# Kleines Finanz-Lexikon (Englisch + Deutsch). Gewichte: +/-1 normal, +/-2 stark.
-POSITIVE = {
-    "beat": 2, "beats": 2, "surge": 2, "surges": 2, "soar": 2, "soars": 2, "record": 1, "upgrade": 2,
-    "upgraded": 2, "outperform": 2, "buy rating": 2, "raises guidance": 2, "raised guidance": 2,
-    "strong": 1, "growth": 1, "profit": 1, "rally": 1, "rallies": 1, "jump": 1, "jumps": 1, "gain": 1,
-    "gains": 1, "bullish": 2, "partnership": 1, "approval": 1, "approved": 1, "buyback": 1,
-    "dividend increase": 2, "exceeds": 1, "tops": 1, "rekord": 1, "steigt": 1, "hochgestuft": 2,
-    "kaufempfehlung": 2, "gewinn": 1, "übertrifft": 2, "prognose angehoben": 2, "wachstum": 1,
-}
-NEGATIVE = {
-    "miss": 2, "misses": 2, "plunge": 2, "plunges": 2, "tumble": 2, "tumbles": 2, "downgrade": 2,
-    "downgraded": 2, "underperform": 2, "sell rating": 2, "cuts guidance": 2, "lowered guidance": 2,
-    "weak": 1, "loss": 1, "losses": 1, "lawsuit": 1, "probe": 1, "investigation": 1, "recall": 1,
-    "bearish": 2, "layoffs": 1, "fall": 1, "falls": 1, "drop": 1, "drops": 1, "slump": 2, "fraud": 2,
-    "bankruptcy": 2, "warning": 1, "fine": 1, "fällt": 1, "herabgestuft": 2, "verkaufsempfehlung": 2,
-    "verlust": 1, "gewinnwarnung": 2, "prognose gesenkt": 2, "klage": 1, "stellenabbau": 1,
-}
+# ---------- Stimmung einer Schlagzeile (regelbasiert, Deutsch und Englisch) ----------
+#
+# 1. Feste Wendungen zuerst („senkt Kursziel“, „price target raised“, „Inflation steigt“). Was sie abdecken, wird
+#    für die Einzelwörter danach nicht mehr gezählt – „senkt Kursziel trotz Kaufempfehlung“ zählt also nicht positiv.
+# 2. Nebensätze mit „trotz/despite/obwohl“ zählen nur zu 30 %: Die Hauptaussage steht davor.
+# 3. Verneinung kurz vor einem Treffer („nicht“, „kein“, „not“, „no“) dreht ihn um.
+# 4. Fragen („Time to Buy?“) und Lockschlagzeilen sind Meinungsmache und zählen nur zu 30 % bzw. gar nicht.
+# Ergebnis: Summe / (Betragssumme + 2). Ein einzelnes schwaches Signal ergibt also nur ±0,33, nicht gleich ±1.
+
+_W = r"[\wäöüß-]*"
+PHRASES: list[tuple[str, float]] = [
+    # Lockschlagzeilen ohne Aussage
+    (r"time to buy|should you buy|is it time to|buy (it )?now\?|kaufen oder (nicht|verkaufen)|jetzt kaufen\?", 0),
+    # Kursziele und Einstufungen
+    (rf"(senkt|senken|reduziert|kappt|kürzt|streicht){_W}( \S+){{0,4}} (kurs)?ziel", -2),
+    (r"(kurs)?ziel (für \S+ )?(wird |werden )?(gesenkt|reduziert|gekappt|gekürzt)", -2),
+    (r"(cuts?|lowers?|lowered|trims?|trimmed|slash(es|ed)?|reduces?|reduced)( \S+){0,4} (price )?targets?", -2),
+    (r"price targets? (cut|lowered|trimmed|reduced|slashed)", -2),
+    (rf"(hebt|heben|erhöht|erhöhen|schraubt|schrauben){_W}( \S+){{0,4}} (kurs)?ziel( \S+){{0,4}} (an|hoch|nach oben)\b", 2),
+    (rf"(hebt|heben|erhöht|erhöhen){_W}( \S+){{0,4}} (kurs)?ziel", 2),
+    (r"(kurs)?ziel (für \S+ )?(wird |werden )?(angehoben|erhöht|hochgesetzt)", 2),
+    (r"(raises?|raised|lifts?|lifted|boosts?|boosted|hikes?|hiked|ups)( \S+){0,4} (price )?targets?", 2),
+    (r"price targets? (raised|lifted|increased|hiked|boosted)", 2),
+    (r"targets? (stays?|remains?|unchanged|bestätigt|unverändert)|(kurs)?ziel (bestätigt|unverändert|bleibt)", 0),
+    (r"(herabgestuft|abgestuft|downgrades?|downgraded|downgrading|cut to (sell|underweight|neutral|hold))", -2),
+    (r"(hochgestuft|heraufgestuft|upgrades?|upgraded|upgrading|raised to (buy|overweight|outperform))", 2),
+    (r"(kaufempfehlung|kaufen-empfehlung|buy rating|outperform|overweight|übergewichten|kaufchance)", 1),
+    (r"(verkaufsempfehlung|sell rating|underperform|underweight|untergewichten)", -1),
+    # Prognosen und Zahlen
+    (r"gewinnwarnung|umsatzwarnung|profit warning", -2),
+    (rf"(senkt|kappt|kürzt|reduziert){_W}( \S+){{0,3}} (prognose|ausblick|jahresziele?)|(prognose|ausblick) (gesenkt|gekappt|gekürzt)", -2),
+    (r"(cuts?|lowers?|lowered|slashes?|trims?)( \S+){0,2} (guidance|forecast|outlook)", -2),
+    (rf"(hebt|erhöht){_W}( \S+){{0,3}} (prognose|ausblick|jahresziele?)|(prognose|ausblick) (angehoben|erhöht)", 2),
+    (r"(raises?|raised|lifts?|boosts?)( \S+){0,2} (guidance|forecast|outlook)", 2),
+    (r"(beats?|tops?|topped|exceeds?|exceeded|surpass(es|ed)?) (\S+ )?(estimates|expectations|forecasts?|consensus)", 2),
+    (r"übertr(ifft|afen?) (die )?(erwartungen|prognosen?|schätzungen)|über (den )?erwartungen", 2),
+    (r"(misses|missed|miss|falls? short of|below) (\S+ )?(estimates|expectations|forecasts?|consensus)", -2),
+    (r"verfehlt (die )?(erwartungen|prognosen?|schätzungen)|unter (den )?erwartungen|enttäusch\w*", -2),
+    # Makro: steigende Inflation/Zinsen/Arbeitslosigkeit sind schlecht, fallende gut
+    (r"(inflation|teuerung|zinsen|leitzins|arbeitslosigkeit|arbeitslosenquote|ölpreis|unemployment|yields?|rates)"
+     r"( \S+){0,2} (steigt|steigen|klettert|klettern|zieht an|erreicht|rises?|rose|climbs?|jumps?|surges?|hits?)", -1),
+    (r"(inflation|teuerung|zinsen|leitzins|arbeitslosigkeit|ölpreis|unemployment|yields?)( \S+){0,2} "
+     r"(sinkt|sinken|fällt|fallen|geht zurück|eases?|falls?|fell|drops?|cools?)", 1),
+    (r"zinserhöhung|rate hike", -1),
+    (r"zinssenkung|rate cut", 1),
+]
+WORDS: list[tuple[str, float]] = [
+    # Kursbewegung
+    (r"legt (\S+ ){0,3}zu|zieht an|steigt|steigen|klettert|klettern|springt|springen|erholt|erholung|gewinnt|"
+     r"im plus|kaufsignal|bricht aus|ausbruch|rekordhoch|allzeithoch|höchststand|zwei-monatshoch|"
+     r"climbs?|rises?|rose|jumps?|surges?|soars?|rall(y|ies)|gains?|rebounds?|record high|all-time high|"
+     r"breaks? (through|out)|breakout|higher|bullish", 1),
+    (r"fällt|fallen|sinkt|sinken|rutscht|rutschen|bricht ein|stürzt|einbruch|verliert|verlieren|im minus|gibt nach|"
+     r"unter druck|minus \d+|verkaufssignal|tiefststand|jahrestief|falls?|fell|drops?|dropped|slides?|slumps?|plunges?|"
+     r"tumbles?|sinks?|declines?|sell-?off|crash(es)?|lower|bearish", -1),
+    # Geschäft
+    (r"rekord\w*|record (revenue|sales|profit|quarter|results)|wachstum|growth|gewinnsprung|gewinnsteigerung|"
+     r"großauftrag|auftrag|wins? (a )?(contract|order|deal)|partnerschaft|partnership|kooperation|aktienrückkauf|"
+     r"buyback|dividendenerhöhung|dividend (hike|increase)|zulassung|approval|approved|übernahmeangebot|takeover bid|strong|stark", 1),
+    (r"verlust\w*|loss(es)?|klage|lawsuit|sued|ermittlung\w*|investigation|probe into|rückruf|recall|stellenabbau|"
+     r"layoffs?|job cuts|insolvenz|bankruptcy|betrug|fraud|razzia|streik|strike|lieferproblem\w*|verzögerung\w*|"
+     r"delay(s|ed)?|schwach\w*|weak|warnung|warning|sanktion\w*|zölle|tariffs?", -1),
+]
+_NEGATORS = {"nicht", "kein", "keine", "keinen", "not", "no", "never", "ohne", "without", "kaum"}
+_SUBORDINATE = re.compile(r"\b(trotz|despite|obwohl|although|even as|in spite of)\b")
+_PHRASES = [(re.compile(rf"\b(?:{p})"), w) for p, w in PHRASES]
+_WORDS = [(re.compile(rf"\b(?:{p})\b"), w) for p, w in WORDS]
+
+
+def _clause_score(t: str) -> tuple[float, float]:
+    """(Summe, Betragssumme) eines Satzteils."""
+    used = [False] * len(t)
+    total = weight = 0.0
+
+    def free(m) -> bool:
+        return not any(used[m.start():m.end()])
+
+    def take(m, w):
+        nonlocal total, weight
+        for i in range(m.start(), m.end()):
+            used[i] = True
+        before = re.findall(r"[\wäöüß]+", t[max(0, m.start() - 25):m.start()])[-3:]
+        if w and any(b in _NEGATORS for b in before):
+            w = -w
+        total += w
+        weight += abs(w)
+
+    for rx, w in _PHRASES:
+        for m in rx.finditer(t):
+            if free(m):
+                take(m, w)
+    for rx, w in _WORDS:
+        for m in rx.finditer(t):
+            if free(m):
+                take(m, w)
+    return total, weight
+
+
+def score_text(text: str) -> float:
+    """Stimmung einer Meldung zwischen −1 und +1."""
+    t = " ".join((text or "").lower().replace("’", "'").split())
+    if not t:
+        return 0.0
+    head = t.split(". ", 1)[0]
+    question = head.rstrip().endswith("?")
+    total = weight = 0.0
+    # Hauptsatz und Nebensatz mit „trotz/despite“ getrennt bewerten
+    parts = _SUBORDINATE.split(t, maxsplit=1)
+    main = parts[0]
+    s, w = _clause_score(main)
+    total, weight = s, w
+    if len(parts) == 3:
+        rest = parts[2]
+        # Der Nebensatz reicht bis zum nächsten Satzzeichen, danach geht es normal weiter
+        sub, _, after = re.split(r"([,;:.!?–-] )", rest, maxsplit=1) + ["", ""] if re.search(r"[,;:.!?–-] ", rest) else (rest, "", "")
+        s2, w2 = _clause_score(sub)
+        total += 0.3 * s2
+        weight += 0.3 * w2
+        if after:
+            s3, w3 = _clause_score(after)
+            total += s3
+            weight += w3
+    if question:
+        total *= 0.3
+    return round(max(-1.0, min(1.0, total / (weight + 2))), 3) if weight else 0.0
 
 
 @dataclass
@@ -56,15 +164,6 @@ class NewsItem:
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()
-
-
-def score_text(text: str) -> float:
-    """Sentiment zwischen -1 und +1 auf Basis des Lexikons."""
-    t = text.lower()
-    pos = sum(w * len(re.findall(rf"\b{re.escape(k)}\b", t)) for k, w in POSITIVE.items())
-    neg = sum(w * len(re.findall(rf"\b{re.escape(k)}\b", t)) for k, w in NEGATIVE.items())
-    total = pos + neg
-    return 0.0 if total == 0 else round((pos - neg) / total, 3)
 
 
 def finnhub_symbol(symbol: str) -> str:

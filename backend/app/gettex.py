@@ -3,9 +3,9 @@
 Symbole haben die Form <ISIN>.GTX, z. B. DE0007164600.GTX für SAP auf gettex. So ist jeder Wert eindeutig und
 ohne zusätzliche Zuordnungstabelle auflösbar.
 
-Verfügbar: aktueller Kurs (nahezu Echtzeit) und Tageskurse (OHLCV) über Jahre. Stunden- oder Minutenkerzen liefert
-die Schnittstelle nicht frei, deshalb gibt es für gettex nur Tages- und Wochenkerzen. Die heutige Tageskerze wird
-aus dem aktuellen Kurs gebildet.
+Verfügbar: aktueller Kurs mit Geld/Brief (Echtzeit), Tageskurse (OHLCV) über Jahre und die Einzelgeschäfte
+(„Times & Sales“) eines Handelstags. Fertige Minutenkerzen gibt onvista nicht frei; der Tagesverlauf wird deshalb
+aus den Einzelgeschäften der letzten Handelstage gebaut. Die heutige Tageskerze entsteht aus dem aktuellen Kurs.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ MARKET = "_TRO"  # gettex in der onvista-Systematik
 KINDS = {"STOCK": "stocks", "FUND": "funds"}
 SEARCH_TYPES = {"STOCK": "Aktie", "FUND": "ETF/Fonds"}
 _SNAP: dict[str, tuple[float, dict]] = {}
-_SNAP_TTL = 30
+_SNAP_TTL = 10
 _EOD: dict[tuple, tuple[float, pd.DataFrame]] = {}
 _EOD_TTL = 600
 
@@ -112,7 +112,8 @@ def quote(symbol: str) -> dict:
     q = gettex_quote(snapshot(isin_of(symbol)))
     return {"price": q.get("last"), "previous_close": q.get("previousLast"), "open": q.get("open"),
             "high": q.get("high"), "low": q.get("low"), "volume": q.get("totalVolume"), "time": _ts(q.get("datetimeLast")),
-            "realtime": q.get("codeQualityPrice") == "RLT"}
+            "realtime": q.get("codeQualityPrice") == "RLT", "bid": q.get("bid"), "ask": q.get("ask"),
+            "bid_time": _ts(q.get("datetimeBid"))}
 
 
 def _range_for(period: str) -> tuple[str, date]:
@@ -120,9 +121,69 @@ def _range_for(period: str) -> tuple[str, date]:
     return ("Y1" if days <= 366 else "Y5" if days <= 1827 else "Y10"), date.today() - timedelta(days=days)
 
 
+INTRADAY_RULES = {"1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h"}
+INTRADAY_DAYS = {"1d": 1, "5d": 5}
+_TAS: dict[tuple[str, str], tuple[float, tuple[list, list, list]]] = {}
+_TAS_TTL = 15
+
+
+def _trades(symbol: str, day: date | None) -> tuple[list, list, list]:
+    """Einzelgeschäfte eines Handelstags (ohne day: heute). Vergangene Tage bleiben im Speicher."""
+    key = (symbol.upper(), day.isoformat() if day else "heute")
+    hit = _TAS.get(key)
+    if hit and (day is not None or time.time() - hit[0] < _TAS_TTL):
+        return hit[1]
+    snap = snapshot(isin_of(symbol))
+    q = gettex_quote(snap)
+    inst = snap["instrument"]
+    params = {"idNotation": q["market"]["idNotation"]}
+    if day:
+        params["startDate"] = day.isoformat()
+    data = _get(f"/instruments/{inst['entityType']}/{inst['entityValue']}/times_and_sales", params)
+    out = (data.get("datetimePrice") or [], data.get("price") or [], data.get("volume") or [])
+    if len(_TAS) > 2000:
+        _TAS.clear()
+    _TAS[key] = (time.time(), out)
+    return out
+
+
+def intraday(symbol: str, period: str = "1d", interval: str = "5m") -> pd.DataFrame:
+    """Minutenkerzen der letzten 1 oder 5 Handelstage aus den Einzelgeschäften."""
+    days = INTRADAY_DAYS.get(period)
+    rule = INTRADAY_RULES.get(interval)
+    if not days or not rule:
+        raise GettexError("Für gettex gibt es Minutenkerzen nur für den letzten Tag oder die letzten 5 Handelstage.")
+    berlin_today = pd.Timestamp.now(tz="Europe/Berlin").date()
+    frames, found = [], 0
+    for back in range(0, 12):
+        if found >= days:
+            break
+        d = berlin_today - timedelta(days=back)
+        if d.weekday() >= 5:
+            continue
+        times, prices, vols = _trades(symbol, None if back == 0 else d)
+        if not times:
+            continue
+        idx = pd.to_datetime(times, unit="s", utc=True).tz_convert("Europe/Berlin")
+        f = pd.DataFrame({"price": prices, "volume": vols}, index=idx).astype(float)
+        f = f[f.index.date == d]
+        if f.empty:
+            continue
+        frames.append(f)
+        found += 1
+    if not frames:
+        raise GettexError("Für diesen Wert gab es in den letzten Tagen keine Geschäfte auf gettex.")
+    t = pd.concat(frames).sort_index()
+    ohlc = t["price"].resample(rule).ohlc()
+    ohlc["volume"] = t["volume"].resample(rule).sum()
+    return ohlc.dropna(subset=["close"])
+
+
 def history(symbol: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    if interval in INTRADAY_RULES:
+        return intraday(symbol, period, interval)
     if interval not in ("1d", "1wk"):
-        raise GettexError("Für gettex gibt es nur Tages- und Wochenkerzen.")
+        raise GettexError("Unbekanntes Intervall.")
     snap = snapshot(isin_of(symbol))
     q = gettex_quote(snap)
     inst = snap["instrument"]

@@ -106,13 +106,22 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
             <div className="lot-main">
               <strong>{date(p.buy_date)} · {qty(p.quantity)} Stück à {money(p.buy_price, p.display_currency)}</strong>
               {p.note && <span className="muted small">„{p.note}“</span>}
-              <span className="muted small">Stopp {money(p.stop, p.display_currency)} · Ziel {money(p.target, p.display_currency)}</span>
-              {p.hints?.filter((h) => h.suggested_stop || h.level === "bad").map((h) => (
+              <span className="muted small">
+                Stopp {money(p.stop, p.display_currency)}{p.trail_pct ? ` (läuft ${String(p.trail_pct).replace(".", ",")} % unter dem Hoch mit)` : ""} · Ziel {money(p.target, p.display_currency)}
+              </span>
+              {p.hints?.filter((h) => h.suggested_stop || h.suggested_target || h.level === "bad" || h.text.startsWith("Stopp läuft")).map((h) => (
                 <span key={h.text} className={`small hint-inline ${h.level}`}>
                   {h.text}
                   {h.suggested_stop && <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { stop: h.suggested_stop }))}>übernehmen</button>}
+                  {h.suggested_target && <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { target: h.suggested_target }))}>Ziel übernehmen</button>}
                 </span>
               ))}
+              {!p.trail_pct && p.trail_suggest_pct && (
+                <span className="small muted">
+                  Tipp: Stopp mitlaufen lassen ({String(p.trail_suggest_pct).replace(".", ",")} % passend zu deiner Strategie)
+                  <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { trail_pct: p.trail_suggest_pct }))}>einschalten</button>
+                </span>
+              )}
             </div>
             <div className={`lot-pl ${tone(p.pl)}`}>
               <strong>{signedMoney(p.pl, p.display_currency)}</strong>

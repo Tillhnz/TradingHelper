@@ -166,8 +166,8 @@ def _info(symbol: str) -> dict:
 
 
 def _history(symbol: str, period: str, interval: str, target: str | None = None):
-    if interval in market.INTRADAY and not market.supports_intraday(symbol):
-        raise HTTPException(422, "Für gettex gibt es nur Tages- und Wochenkerzen.")
+    if interval in market.INTRADAY and market.intraday_limit(symbol) and period not in ("1d", "5d"):
+        raise HTTPException(422, "Für gettex gibt es Minutenkerzen nur für den letzten Tag oder die letzten 5 Handelstage.")
     try:
         return market.get_history(symbol, period, interval, currency=target)
     except market.MarketDataError as exc:
@@ -178,7 +178,7 @@ def _meta(symbol: str, target: str | None) -> dict:
     info = _info(symbol)
     t = market.last_trade_time(symbol)
     return {
-        "ticker": info.get("ticker"), "isin": info.get("isin"), "intraday": market.supports_intraday(symbol),
+        "ticker": info.get("ticker"), "isin": info.get("isin"), "intraday": market.supports_intraday(symbol), "intraday_limit": market.intraday_limit(symbol),
         "name": info.get("name"), "exchange": info.get("exchange"), "native_currency": info.get("currency"),
         "currency": market.shown_currency(info.get("currency"), target),
         "display_currency": settings.display_currency,
@@ -220,6 +220,24 @@ def quote(symbol: str):
         return market.get_quote(symbol).to_dict()
     except market.MarketDataError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/quotes", dependencies=auth)
+def quotes(symbols: str, currency: str | None = None):
+    """Aktuelle Kurse mehrerer Werte für die Live-Anzeige (wird von der Oberfläche alle paar Sekunden abgefragt)."""
+    target = _target(currency)
+    syms = [x.strip().upper() for x in symbols.split(",") if x.strip()][:40]
+
+    def one(sym):
+        try:
+            return market.live(sym, target)
+        except Exception as exc:  # noqa: BLE001
+            return {"symbol": sym, "error": str(exc)[:120]}
+
+    if not syms:
+        return []
+    with ThreadPoolExecutor(max_workers=min(8, len(syms))) as pool:
+        return list(pool.map(one, syms))
 
 
 @app.get("/api/search", dependencies=auth)
@@ -427,7 +445,7 @@ def alert_list(st: Storage = Depends(get_storage)):
 def alert_add(item: AlertIn, st: Storage = Depends(get_storage)):
     if item.interval not in INTERVALS:
         raise HTTPException(422, f"Intervall muss eines von {', '.join(INTERVALS)} sein")
-    if item.interval in market.INTRADAY and not market.supports_intraday(item.symbol):
+    if item.interval in market.INTRADAY and market.intraday_limit(item.symbol):
         raise HTTPException(422, "Für gettex-Werte gibt es Alarme nur auf Tages- oder Wochenkerzen.")
     if item.currency and item.currency not in market.CURRENCIES:
         raise HTTPException(422, f"Währung muss leer oder eine von {', '.join(market.CURRENCIES)} sein")
@@ -479,6 +497,7 @@ class PositionIn(BaseModel):
     stop: float | None = Field(default=None, gt=0)
     target: float | None = Field(default=None, gt=0)
     note: str = Field(default="", max_length=300)
+    trail_pct: float | None = Field(default=None, ge=0.5, le=50)  # mitlaufender Stopp in Prozent
     create_alerts: bool = False
 
 
@@ -493,6 +512,7 @@ class PositionPatch(BaseModel):
     sell_price: float | None = Field(default=None, gt=0)
     sell_date: date | None = None
     sell_fees: float | None = Field(default=None, ge=0)
+    trail_pct: float | None = Field(default=None, ge=0, le=50)  # 0 = nicht mitlaufen lassen
     reopen: bool = False
 
 
@@ -561,7 +581,8 @@ def position_add(item: PositionIn, st: Storage = Depends(get_storage)):
     _sync_watchlist(st)
     created = []
     if create_alerts:
-        if data["stop"]:
+        # Ein mitlaufender Stopp ändert sich; den meldet die Depot-Prüfung statt eines festen Kursalarms
+        if data["stop"] and not data.get("trail_pct"):
             created.append(st.add_alert(data["symbol"], "price_below", {"value": data["stop"]}, "1d", True, data["currency"]))
         if data["target"]:
             created.append(st.add_alert(data["symbol"], "price_above", {"value": data["target"]}, "1d", True,
@@ -578,7 +599,7 @@ def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(get_
     for key in ("buy_date", "sell_date"):
         if isinstance(data.get(key), date):
             data[key] = data[key].isoformat()
-    for key in ("stop", "target"):
+    for key in ("stop", "target", "trail_pct"):
         if data.get(key) == 0:
             data[key] = None
     if item.reopen:
@@ -587,7 +608,18 @@ def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(get_
         raise HTTPException(422, "Für einen Verkauf bitte Kurs und Datum angeben")
     _check_position({**current, **data})
     st.update_position(pos_id, data)
+    _move_alerts(st, current, data)
     return st.get_position(pos_id)
+
+
+def _move_alerts(st: Storage, old: dict, new: dict) -> None:
+    """Kursalarme, die zum alten Stopp bzw. Ziel der Position gehören, auf den neuen Wert umstellen."""
+    for key, kind in (("stop", "price_below"), ("target", "price_above")):
+        if key not in new or not old.get(key) or not new[key] or new[key] == old[key]:
+            continue
+        for al in st.alerts(active_only=True):
+            if al.symbol == old["symbol"] and al.kind == kind and abs(float(al.params.get("value", 0)) - old[key]) < 1e-6:
+                st.set_alert_params(al.id, {**al.params, "value": new[key]})
 
 
 @app.delete("/api/positions/{pos_id}", dependencies=auth)

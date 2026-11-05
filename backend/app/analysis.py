@@ -319,6 +319,7 @@ class Recommendation:
     crv: float | None = None
     position: dict | None = None
     notes: list[str] = field(default_factory=list)
+    trail_pct: float | None = None  # empfohlener Abstand für einen mitlaufenden Stopp in Prozent
 
 
 def position_size(p: Profile, entry: float, stop: float | None) -> dict | None:
@@ -395,4 +396,12 @@ def recommend(a: Analysis, sentiment: float | None, profile: Profile | None = No
         mood = "positiv" if sentiment > 0.15 else "negativ" if sentiment < -0.15 else "neutral"
         reasons.append(f"News-Stimmung {mood} ({sentiment:+.2f})")
     return Recommendation(a.symbol, action, EMOJI[action], combined, tech, sentiment, reasons, p.label,
-                          stop, target, crv, position, notes)
+                          stop, target, crv, position, notes, trail_pct(p, close, atr))
+
+
+def trail_pct(p: Profile, price: float, atr: float | None) -> float | None:
+    """Abstand eines mitlaufenden Stopps: Stopp-Abstand des Horizonts (x-faches der Tagesschwankung) in Prozent,
+    auf halbe Prozent gerundet, mindestens 2 %."""
+    if not atr or not price:
+        return None
+    return max(2.0, round(p.h["stop_atr"] * atr / price * 100 * 2) / 2)

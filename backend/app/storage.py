@@ -149,6 +149,8 @@ class Storage:
             ("watchlist", "currency", "TEXT"),
             ("watchlist", "ticker", "TEXT"),
             ("alerts", "currency", "TEXT NOT NULL DEFAULT ''"),
+            ("positions", "trail_pct", "REAL"),
+            ("positions", "watch_state", "TEXT NOT NULL DEFAULT ''"),
         ]:
             cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
             if col not in cols:
@@ -215,6 +217,10 @@ class Storage:
     def remove_alert(self, alert_id: int) -> bool:
         with self._conn() as c:
             return c.execute("DELETE FROM alerts WHERE id=?", (alert_id,)).rowcount > 0
+
+    def set_alert_params(self, alert_id: int, params: dict) -> bool:
+        with self._conn() as c:
+            return c.execute("UPDATE alerts SET params=? WHERE id=?", (json.dumps(params), alert_id)).rowcount > 0
 
     def set_alert_active(self, alert_id: int, active: bool) -> bool:
         with self._conn() as c:
@@ -283,7 +289,7 @@ class Storage:
 
     # --- Positionen (erfasste Käufe) -----------------------------------------
     POSITION_FIELDS = ("symbol", "quantity", "buy_price", "buy_date", "fees", "currency", "stop", "target", "note",
-                       "sell_price", "sell_date", "sell_fees")
+                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state")
 
     def positions(self, symbol: str | None = None, open_only: bool = False) -> list[dict]:
         q, args = "SELECT * FROM positions WHERE 1=1", []

@@ -20,7 +20,7 @@ from . import gettex
 log = logging.getLogger(__name__)
 
 _CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
-_CACHE_TTL = 60  # Sekunden
+_CACHE_TTL = 30  # Sekunden (Yahoo)
 _INFO: dict[str, dict] = {}
 
 # Anzeigewährungen, in die umgerechnet werden kann
@@ -223,6 +223,7 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
     if cached and time.time() - cached[0] < _CACHE_TTL:
         return cached[1].copy()
     if gettex.is_gettex(symbol):
+        # Kein zusätzlicher Zwischenspeicher: gettex.py hält Tageskurse 10 Minuten, den aktuellen Kurs 10 Sekunden
         try:
             df = gettex.history(symbol, period, interval)
             q = gettex.quote(symbol)
@@ -230,7 +231,6 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
             raise MarketDataError(str(exc)) from exc
         if q.get("time"):
             _META[symbol.upper()] = {"market_time": q["time"]}
-        _CACHE[key] = (time.time(), df)
         return df.copy()
     try:
         t = _yf().Ticker(symbol)
@@ -294,7 +294,12 @@ INTRADAY = {"1m", "5m", "15m", "30m", "1h"}
 
 
 def supports_intraday(symbol: str) -> bool:
-    return not gettex.is_gettex(symbol)
+    return True  # gettex: letzte 5 Handelstage aus den Einzelgeschäften
+
+
+def intraday_limit(symbol: str) -> str | None:
+    """Längster Zeitraum mit Minutenkerzen (None = wie bei Yahoo üblich)."""
+    return "5d" if gettex.is_gettex(symbol) else None
 
 
 def get_history(symbol: str, period: str = "1y", interval: str = "1d", currency: str | None = None) -> pd.DataFrame:
@@ -329,6 +334,50 @@ def shown_currency(native: str | None, target: str | None) -> str | None:
     if not native:
         return None
     return target or native
+
+
+def live(symbol: str, currency: str | None = None) -> dict:
+    """Schneller, möglichst aktueller Kurs für die Anzeige (gettex: Echtzeit mit Geld/Brief, Yahoo: Minutenkerze)."""
+    symbol = symbol.upper()
+    native = None
+    out: dict = {"symbol": symbol}
+    if gettex.is_gettex(symbol):
+        try:
+            q, inf = gettex.quote(symbol), gettex.info(symbol)
+        except gettex.GettexError as exc:
+            raise MarketDataError(str(exc)) from exc
+        native = inf.get("currency")
+        out.update(price=q["price"], previous_close=q.get("previous_close"), time=q.get("time"), bid=q.get("bid"),
+                   ask=q.get("ask"), bid_time=q.get("bid_time"), delay_min=inf.get("delay_min"))
+        if q.get("time"):
+            _META[symbol] = {"market_time": q["time"]}
+    else:
+        df = _raw_history(symbol, "5d", "1d")
+        price, prev = float(df["close"].iloc[-1]), (float(df["close"].iloc[-2]) if len(df) > 1 else None)
+        try:
+            m = _raw_history(symbol, "1d", "1m")
+            if len(m) and pd.Timestamp(m.index[-1]).date() == pd.Timestamp(df.index[-1]).date():
+                price = float(m["close"].iloc[-1])
+        except MarketDataError:
+            pass
+        info = {}
+        try:
+            info = symbol_info(symbol)
+        except MarketDataError:
+            pass
+        native = info.get("currency")
+        out.update(price=price, previous_close=prev, time=last_trade_time(symbol), bid=None, ask=None, bid_time=None,
+                   delay_min=info.get("delay_min"))
+    if currency and native:
+        for k in ("price", "previous_close", "bid", "ask"):
+            out[k] = convert_price(out[k], native, currency) if out.get(k) is not None else None
+    out["currency"] = shown_currency(native, currency)
+    p, prev = out.get("price"), out.get("previous_close")
+    out["change_pct"] = round((p / prev - 1) * 100, 3) if p and prev else None
+    for k in ("price", "previous_close", "bid", "ask"):
+        if out.get(k) is not None:
+            out[k] = round(float(out[k]), 4)
+    return out
 
 
 def get_quote(symbol: str) -> Quote:

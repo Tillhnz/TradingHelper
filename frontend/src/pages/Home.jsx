@@ -5,6 +5,7 @@ import NewsList from "../components/NewsList.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
+import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { ACTION_UI, displayName, displayTicker, greeting } from "../texts.js";
 
@@ -57,9 +58,6 @@ function NewsSection({ hasStocks }) {
   const minePanel = hasStocks && (
     <section className={`panel ${tab === "mine" ? "" : "hide-narrow"}`} aria-label="Nachrichten zu deinen Werten">
       <div className="panel-head"><h2>Zu deinen Werten</h2></div>
-      {mine?.sources?.length > 0 && (
-        <div className="news-sources">{mine.sources.map((s) => <span key={s} className="src-chip">{s}</span>)}</div>
-      )}
       {!mine ? <Loading text="Suche Nachrichten …" /> : (
         <NewsList items={mine.items} initial={6} showStock
           empty={mine.sources?.length ? "In den letzten Tagen nichts Neues zu deinen Werten." : "Alle Nachrichtenquellen sind ausgeschaltet (Einstellungen → Nachrichten)."} />
@@ -69,11 +67,8 @@ function NewsSection({ hasStocks }) {
   const marketPanel = (
     <section className={`panel ${!hasStocks || tab === "market" ? "" : "hide-narrow"}`} aria-label="Marktnachrichten">
       <div className="panel-head"><h2>Markt &amp; Wirtschaft</h2><Link className="link small" to="/settings#news">Quellen</Link></div>
-      {market?.feeds?.length > 0 && (
-        <div className="news-sources">{market.feeds.map((s) => <span key={s} className="src-chip">{s}</span>)}</div>
-      )}
       {!market ? <Loading text="Lade Marktnachrichten …" /> : (
-        <NewsList items={market.items} initial={8} empty="Keine Marktnachrichten. Quellen lassen sich in den Einstellungen eintragen." />
+        <NewsList items={market.items} initial={6} empty="Keine Marktnachrichten. Quellen lassen sich in den Einstellungen eintragen." />
       )}
     </section>
   );
@@ -122,7 +117,10 @@ function DepotStrip({ data }) {
   );
 }
 
-function StockCard({ e, pro }) {
+function StockCard({ e, pro, q }) {
+  const live = q && q.currency === e.currency ? q : null;
+  const price = live ? live.price : e.analysis.last_close;
+  const change = live && live.change_pct != null ? live.change_pct : e.analysis.change_pct_1d;
   const held = e.holding?.shares > 0;
   const ui = ACTION_UI[e.action];
   const to = `/chart/${encodeURIComponent(e.symbol)}`;
@@ -136,8 +134,8 @@ function StockCard({ e, pro }) {
         <ActionBadge action={e.action} held={held} />
       </header>
       <div className="rec-price">
-        <strong>{money(e.analysis.last_close, e.currency)}</strong>
-        <span className={tone(e.analysis.change_pct_1d)}>{pct(e.analysis.change_pct_1d)}</span>
+        <strong>{money(price, e.currency)}</strong>
+        <span className={tone(change)}>{pct(change)}</span>
         <span className="muted small">heute</span>
       </div>
 
@@ -211,6 +209,7 @@ export default function Home() {
     }
   }
 
+  const quotes = useLiveQuotes(report ? report.entries.map((x) => x.symbol) : []);
   const entries = report ? [...report.entries].sort((a, b) => (b.holding?.shares > 0) - (a.holding?.shares > 0) || ORDER[a.action] - ORDER[b.action] || Math.abs(b.combined_score) - Math.abs(a.combined_score)) : [];
   const chances = entries.filter((e) => e.action === "Kaufen prüfen" && !(e.holding?.shares > 0)).length;
   const warnings = entries.filter((e) => e.holding?.advice?.level === "bad").length;
@@ -252,7 +251,7 @@ export default function Home() {
       )}
 
       <div className="card-grid">
-        {entries.map((e) => <StockCard key={e.symbol} e={e} pro={mode === "pro"} />)}
+        {entries.map((e) => <StockCard key={e.symbol} e={e} pro={mode === "pro"} q={quotes[e.symbol]} />)}
       </div>
       {report && Object.entries(report.errors).map(([sym, err]) => <p key={sym} className="error small">{sym}: {err}</p>)}
 

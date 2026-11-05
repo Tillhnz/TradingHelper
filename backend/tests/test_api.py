@@ -217,3 +217,22 @@ def test_paper_endpoints(client):
     assert client.get("/api/paper/backtest", headers=h).json()["status"] in ("idle", "done", "error", "running")
     assert client.post("/api/paper/reset", headers=h).json() == {"ok": True}
     assert client.get("/api/paper", headers=h).json()["capital"] == 5000
+
+
+def test_quotes_and_trailing_position(client, monkeypatch):
+    h = _login(client)
+    monkeypatch.setattr(market, "live", lambda s, c=None: {"symbol": s, "price": 101.5, "currency": "USD", "change_pct": 1.2})
+    r = client.get("/api/quotes?symbols=AAPL,msft", headers=h).json()
+    assert [q["symbol"] for q in r] == ["AAPL", "MSFT"] and r[0]["price"] == 101.5
+    p = client.post("/api/positions", json={"symbol": "AAPL", "quantity": 1, "buy_price": 100, "buy_date": "2026-01-02",
+                                            "stop": 90, "target": 150, "trail_pct": 6, "create_alerts": True}, headers=h).json()
+    kinds = sorted(client.get("/api/alerts", headers=h).json(), key=lambda a: a["kind"])
+    assert [a["kind"] for a in kinds] == ["price_above"]  # kein fester Stopp-Alarm bei mitlaufendem Stopp
+    # Ziel ändern verschiebt den passenden Kursalarm mit
+    client.patch(f"/api/positions/{p['id']}", json={"target": 160}, headers=h)
+    assert client.get("/api/alerts", headers=h).json()[0]["params"]["value"] == 160
+    a = client.get("/api/analysis/AAPL", headers=h).json()
+    assert a["recommendation"]["trail_pct"] >= 2
+    hold = client.get("/api/holdings/AAPL", headers=h).json()["items"][0]
+    assert hold["trail_pct"] == 6 and hold["stop"] >= 90
+    assert client.patch(f"/api/positions/{p['id']}", json={"trail_pct": 0}, headers=h).json()["trail_pct"] is None
