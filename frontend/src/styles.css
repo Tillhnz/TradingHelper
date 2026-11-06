@@ -833,7 +833,10 @@ h1 { font-size: 2.4rem; }
 .tool span { display: inline-block; width: 1.1em; text-align: center; color: var(--mute); }
 .tool.on { border-color: var(--celeste); background: rgba(111, 211, 195, 0.12); color: var(--celeste); }
 .tool.on span { color: var(--celeste); }
-.ws-help { margin: 0 0 0.6rem; color: var(--amber); }
+.ws-panel { position: relative; }
+.ws-help { position: absolute; z-index: 5; left: 50%; top: 0.6rem; transform: translateX(-50%); margin: 0; color: var(--ink);
+  background: var(--amber); border-radius: 999px; padding: 0.25rem 0.8rem; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.ws-help .link { color: var(--ink); font-weight: 600; text-decoration: underline; }
 .ws-panel { padding: 0.5rem; }
 .ws-chart { display: flex; flex-direction: column; gap: 4px; }
 .ws-chart.drawing .ws-main { cursor: crosshair; }

@@ -190,7 +190,11 @@ await page.mouse.click(wsBox.x + wsBox.width * 0.6, wsBox.y + wsBox.height * 0.3
 await page.waitForTimeout(500);
 await page.getByRole("button", { name: /Trendlinie/ }).click();
 await page.mouse.click(wsBox.x + wsBox.width * 0.2, wsBox.y + wsBox.height * 0.75);
+await page.waitForTimeout(400);
+console.log("trend after 1st click", await page.locator(".ws-help").textContent().catch(() => "-"));
 await page.mouse.click(wsBox.x + wsBox.width * 0.7, wsBox.y + wsBox.height * 0.45);
+await page.waitForTimeout(400);
+console.log("trend after 2nd click", await page.locator(".ws-help").textContent().catch(() => "-"), await page.locator(".ws-list li").count());
 await page.getByLabel("Kennlinie hinzufügen").selectOption("rsi");
 await page.getByRole("button", { name: /Bewegen/ }).click();
 await page.waitForTimeout(2500);

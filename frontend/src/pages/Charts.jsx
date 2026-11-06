@@ -208,11 +208,15 @@ function Workspace({ symbol }) {
           </button>
         ))}
       </div>
-      {tool && <p className="ws-help small">{pending ? "Jetzt den zweiten Punkt anklicken." : help} <button className="link small" onClick={() => pickTool(null)}>Fertig</button></p>}
       {msg && <p className="ok small" role="status">{msg}</p>}
       <ErrorText error={layout && error} />
 
       <section className="panel chart-panel ws-panel">
+        {tool && (
+          <p className="ws-help small" role="status">
+            {pending ? "Jetzt den zweiten Punkt anklicken." : help} <button className="link small" onClick={() => pickTool(null)}>Fertig</button>
+          </p>
+        )}
         {!rows ? <Loading text="Lade Kurse …" /> : (
           <WorkspaceChart rows={rows} type={layout.type} intraday={intraday} indicators={indicators} drawings={drawings}
             tool={tool} pending={pending} selected={selected} onPoint={onPoint} />
