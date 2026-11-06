@@ -94,7 +94,8 @@ CREATE TABLE IF NOT EXISTS positions (
     sell_fees REAL NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     trail_pct REAL,
-    watch_state TEXT NOT NULL DEFAULT ''
+    watch_state TEXT NOT NULL DEFAULT '',
+    buy_time TEXT
 );
 CREATE TABLE IF NOT EXISTS paper_state (
     user_id INTEGER NOT NULL DEFAULT 1,
@@ -128,6 +129,23 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     pl REAL,
     pl_pct REAL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paper_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    limit_price REAL,
+    stop REAL,
+    target REAL,
+    ref_price REAL,
+    reason TEXT NOT NULL DEFAULT '',
+    day TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    done_at TEXT
 );
 CREATE TABLE IF NOT EXISTS paper_equity (
     user_id INTEGER NOT NULL DEFAULT 1,
@@ -221,6 +239,7 @@ class Storage:
             ("alerts", "currency", "TEXT NOT NULL DEFAULT ''"),
             ("positions", "trail_pct", "REAL"),
             ("positions", "watch_state", "TEXT NOT NULL DEFAULT ''"),
+            ("positions", "buy_time", "TEXT"),
             ("users", "is_admin", "INTEGER NOT NULL DEFAULT 0"),
         ]:
             if col not in cls._cols(c, table):
@@ -385,7 +404,7 @@ class Storage:
             if not row or row["is_admin"]:
                 return False
             for t in ("watchlist", "alerts", "positions", "paper_state", "paper_positions", "paper_trades", "paper_equity",
-                      "alert_log", "user_settings", "chart_layouts", "reports"):
+                      "paper_orders", "alert_log", "user_settings", "chart_layouts", "reports"):
                 c.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM users WHERE id=?", (user_id,))
             return True
@@ -499,7 +518,7 @@ class Storage:
 
     # --- Positionen (erfasste Käufe) -----------------------------------------
     POSITION_FIELDS = ("symbol", "quantity", "buy_price", "buy_date", "fees", "currency", "stop", "target", "note",
-                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state")
+                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state", "buy_time")
 
     def positions(self, symbol: str | None = None, open_only: bool = False) -> list[dict]:
         q, args = "SELECT * FROM positions WHERE user_id=?", [self.uid]
@@ -575,6 +594,26 @@ class Storage:
             return [dict(r) for r in c.execute("SELECT * FROM paper_trades WHERE user_id=? ORDER BY id DESC LIMIT ?",
                                                (self.uid, limit))]
 
+    def add_paper_order(self, o: dict) -> int:
+        cols = ("symbol", "side", "kind", "limit_price", "stop", "target", "ref_price", "reason", "day")
+        with self._conn() as c:
+            return int(c.execute(f"INSERT INTO paper_orders(user_id, {', '.join(cols)}, created_at) "
+                                 f"VALUES (?, {', '.join('?' * len(cols))}, ?)",
+                                 (self.uid, *[o.get(k) for k in cols], now_iso())).lastrowid)
+
+    def paper_orders(self, status: str | None = None, limit: int = 100) -> list[dict]:
+        q, args = "SELECT * FROM paper_orders WHERE user_id=?", [self.uid]
+        if status:
+            q += " AND status=?"
+            args.append(status)
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
+
+    def close_paper_order(self, order_id: int, status: str, note: str = "") -> None:
+        with self._conn() as c:
+            c.execute("UPDATE paper_orders SET status=?, note=?, done_at=? WHERE id=? AND user_id=?",
+                      (status, note, now_iso(), order_id, self.uid))
+
     def set_paper_equity(self, day: str, equity: float, cash: float) -> None:
         with self._conn() as c:
             c.execute("INSERT OR REPLACE INTO paper_equity(user_id, day, equity, cash) VALUES (?,?,?,?)",
@@ -587,6 +626,6 @@ class Storage:
 
     def reset_paper(self) -> None:
         with self._conn() as c:
-            for t in ("paper_positions", "paper_trades", "paper_equity"):
+            for t in ("paper_positions", "paper_trades", "paper_equity", "paper_orders"):
                 c.execute(f"DELETE FROM {t} WHERE user_id=?", (self.uid,))
             c.execute("DELETE FROM paper_state WHERE user_id=? AND key != 'backtest'", (self.uid,))

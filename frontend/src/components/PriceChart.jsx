@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart, CrosshairMode, LineStyle } from "lightweight-charts";
+import { money, pct, signedMoney } from "../fmt.js";
+import { barIndex, buyTimestamp, PositionBox, sellTimestamp } from "./positionBox.js";
 
 export const COLORS = {
   bg: "#111b26", text: "#8d9eb0", grid: "#1a2735", line: "#263749",
@@ -67,7 +69,6 @@ function snap(rows, t) {
   return hit ? hit.time : null;
 }
 
-const dayStart = (iso) => Math.floor(new Date(`${iso}T00:00:00Z`).getTime() / 1000);
 const shortDate = (iso) => { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y.slice(2)}`; };
 
 /** Sperre gegen versehentliches Verschieben beim Scrollen der Seite (v. a. am Handy). */
@@ -90,7 +91,8 @@ export function LockButton({ locked, onToggle }) {
  * und MACD. Overlays: Signal-Marker, Linien des Einstiegsplans und eigene Käufe mit Gewinn-/Verlustzone.
  * Standardmäßig gesperrt, damit Wischen die Seite scrollt und nicht den Chart verschiebt.
  */
-export default function PriceChart({ rows, simple = false, type, live = null, intraday = false, showSma = true, showBb = false, events = [], planLines = [], positions = [] }) {
+export default function PriceChart({ rows, simple = false, type, live = null, intraday = false, showSma = true, showBb = false, events = [], planLines = [], positions = [], currency = null }) {
+  const boxesRef = useRef([]);
   const kind = type || (simple ? "area" : "candles");
   const seriesRef = useRef(null);
   const dataRef = useRef({ data: [], last: -1, ohlc: false });
@@ -149,62 +151,48 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
       }
     }
 
-    // Eigene Käufe wie beim Positions-Werkzeug von TradingView: rote Fläche Kauf → Stopp, grüne Fläche Kauf → Ziel,
-    // dazu die Kurslinie ab Kauf grün über bzw. rot unter dem Kaufkurs.
+    // Eigene Käufe wie beim Positions-Werkzeug von TradingView: ab dem Kaufzeitpunkt grüne Box bis zum Ziel, rote bis
+    // zum Stopp, dazu der aktuelle Gewinn/Verlust als kräftige Fläche zwischen Kaufkurs und aktuellem Kurs.
     const markers = [];
     const open = positions.filter((p) => !p.sell_date);
-    // Leere Zeitpunkte nach rechts, damit die Zonen offener Positionen auch bei einem Kauf von heute sichtbar sind
+    // Leere Zeitpunkte nach rechts, damit die Box offener Positionen auch bei einem Kauf von heute Platz hat
     let future = [];
-    if (open.length && rows.length > 1 && !intraday) {
+    if (open.length && rows.length > 1) {
       const step = rows[rows.length - 1].time - rows[rows.length - 2].time;
-      // etwa ein Siebtel der sichtbaren Breite, damit die Zonen klar zu sehen sind
       const n = Math.max(12, Math.round(Math.min(rows.length, 160) * 0.15));
       future = Array.from({ length: n }, (_, i) => rows[rows.length - 1].time + step * (i + 1));
       const data = [...rows.map(toPoint), ...future.map((time) => ({ time }))];
       priceSeries.setData(data);
       dataRef.current = { data, last: rows.length - 1, ohlc };
     }
+    const times = rows.map((r) => r.time);
+    const lastClose = rows[rows.length - 1].close;
+    const boxes = [];
     positions.forEach((p) => {
-      // Im Tagesverlauf nur Linien: Zonen und Kaufpfeile alter Käufe würden die Skala sprengen
-      if (intraday) {
-        if (p.sell_date) return;
-        priceSeries.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: `Kauf ${shortDate(p.buy_date)}` });
-        if (p.stop) priceSeries.createPriceLine({ price: p.stop, color: COLORS.down, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "Stopp" });
-        if (p.target) priceSeries.createPriceLine({ price: p.target, color: COLORS.up, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "Ziel" });
-        return;
-      }
-      // Tageskerzen liegen je nach Börse auf Mitternacht Ortszeit (gettex: 23 Uhr UTC am Vortag), daher ±12 h Spielraum
-      const from = dayStart(p.buy_date) - 12 * 3600;
-      const to = p.sell_date ? dayStart(p.sell_date) + 12 * 3600 : Infinity;
-      let seg = rows.filter((r) => r.time >= from && r.time <= to);
-      if (!seg.length && !p.sell_date && rows.length) seg = rows.slice(-1); // Kauf nach der letzten Kerze
-      if (!seg.length || !p.buy_price) return;
-      const band = (level, color) => {
-        const s2 = main.addBaselineSeries({
-          baseValue: { type: "price", price: p.buy_price },
-          topLineColor: "rgba(0,0,0,0)", bottomLineColor: "rgba(0,0,0,0)", lineWidth: 1,
-          topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
-          priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-        });
-        s2.setData([...seg.map((r) => r.time), ...future].map((time) => ({ time, value: level })));
-      };
-      if (!p.sell_date && p.stop) band(p.stop, "rgba(255, 107, 107, 0.22)");
-      if (!p.sell_date && p.target) band(p.target, "rgba(111, 211, 195, 0.20)");
-      const area = main.addBaselineSeries({
-        baseValue: { type: "price", price: p.buy_price },
-        topLineColor: COLORS.up, topFillColor1: "rgba(111, 211, 195, 0.30)", topFillColor2: "rgba(111, 211, 195, 0.05)",
-        bottomLineColor: COLORS.down, bottomFillColor1: "rgba(255, 107, 107, 0.05)", bottomFillColor2: "rgba(255, 107, 107, 0.30)",
-        lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      if (!p.buy_price) return;
+      const start = buyTimestamp(p);
+      const end = sellTimestamp(p);
+      if (start > times[times.length - 1] + 86400 * 3 || (end && end < times[0])) return; // außerhalb des Zeitraums
+      const box = new PositionBox({
+        times, start, end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
+        price: end ? p.sell_price : lastClose, qty: p.quantity, fees: p.fees || 0,
+        fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
+        label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)} · ${shortDate(p.buy_date)}${p.buy_time ? ` ${p.buy_time}` : ""}`,
       });
-      area.setData(seg.map((r) => ({ time: r.time, value: r.close })));
-      area.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `Kauf ${p.quantity}× · ${shortDate(p.buy_date)}` });
-      if (!p.sell_date) {
-        if (p.stop) area.createPriceLine({ price: p.stop, color: COLORS.down, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "Stopp" });
-        if (p.target) area.createPriceLine({ price: p.target, color: COLORS.up, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "Ziel" });
+      priceSeries.attachPrimitive(box);
+      if (!end) boxes.push(box);
+      // Achsenbeschriftungen ohne Linie (die Box zeigt die Bereiche)
+      priceSeries.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineVisible: false, axisLabelVisible: true, title: "" });
+      if (!end && p.stop) priceSeries.createPriceLine({ price: p.stop, color: COLORS.down, lineVisible: false, axisLabelVisible: true, title: "" });
+      if (!end && p.target) priceSeries.createPriceLine({ price: p.target, color: COLORS.up, lineVisible: false, axisLabelVisible: true, title: "" });
+      const i0 = barIndex(times, start);
+      if (i0 >= 0) markers.push({ time: times[i0], position: "belowBar", color: COLORS.amber, shape: "arrowUp", text: "Kauf", size: 2 });
+      if (end) {
+        const i1 = barIndex(times, end);
+        if (i1 >= 0) markers.push({ time: times[i1], position: "aboveBar", color: COLORS.amber, shape: "arrowDown", text: "Verkauf", size: 2 });
       }
-      markers.push({ time: seg[0].time, position: "belowBar", color: COLORS.amber, shape: "arrowUp", text: `Kauf ${shortDate(p.buy_date)}`, size: 2 });
-      if (p.sell_date) markers.push({ time: seg[seg.length - 1].time, position: "aboveBar", color: COLORS.amber, shape: "arrowDown", text: `Verkauf ${shortDate(p.sell_date)}`, size: 2 });
     });
+    boxesRef.current = boxes;
     const hasPositions = markers.length > 0;
 
     // Vergangene Entscheidungspunkte: nur die jüngsten, damit der Chart ruhig bleibt; bei eigenen Käufen noch weniger
@@ -257,7 +245,7 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
     }
 
     return () => { charts.forEach((c) => c.remove()); chartsRef.current = []; seriesRef.current = null; };
-  }, [rows, simple, kind, intraday, showSma, showBb, events, planLines, positions]);
+  }, [rows, simple, kind, intraday, showSma, showBb, events, planLines, positions, currency]);
 
   // Live-Kurs: letzte Kerze bzw. letzten Punkt aktualisieren, ohne den Chart neu aufzubauen
   useEffect(() => {
@@ -271,6 +259,7 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
     if ((ohlc ? cur.close : cur.value) === live.price) return;
     data[last] = next;
     try { s.setData(data); } catch { /* Chart wurde gerade ersetzt */ }
+    boxesRef.current.forEach((b) => b.update({ price: live.price }));
   }, [live]);
 
   return (

@@ -45,13 +45,18 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
     for job in sched.get_jobs():
         job.remove()
     tz = settings.timezone
+    # Morgen- und Nachmittagsbericht; direkt danach handelt das Schattendepot (oder platziert Orders)
     if settings.report_enabled:
-        hh, mm = settings.report_time.split(":")
-        sched.add_job(
-            lambda: _each_user(storage, settings, report.send_report, "Morgenreport"),
-            CronTrigger(day_of_week=_days(settings.report_weekends), hour=int(hh), minute=int(mm), timezone=tz),
-            id="morning_report", max_instances=1, coalesce=True, misfire_grace_time=1800,
-        )
+        for kind, at in (("morning", settings.report_time), ("afternoon", settings.report_time_pm)):
+            if not at:
+                continue
+            hh, mm = at.split(":")
+            sched.add_job(
+                lambda kind=kind: _each_user(storage, settings, lambda st, cfg: _report_and_trade(st, cfg, kind),
+                                             "Bericht"),
+                CronTrigger(day_of_week=_days(settings.report_weekends), hour=int(hh), minute=int(mm), timezone=tz),
+                id=f"{kind}_report", max_instances=1, coalesce=True, misfire_grace_time=1800,
+            )
     if settings.alerts_enabled:
         sched.add_job(
             lambda: _each_user(storage, settings, _check, "Alarmprüfung"),
@@ -60,12 +65,11 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
                         minute=f"*/{settings.alert_interval_minutes}", timezone=tz),
             id="alert_check", max_instances=1, coalesce=True,
         )
-    # Läuft immer; ob ein Nutzer sein Schattendepot handeln lässt, entscheidet er selbst (paper_enabled)
-    hh, mm = settings.paper_time.split(":")
+    # Platzierte Orders des Schattendepots während der Handelszeit prüfen (unabhängig von den Alarmen)
     sched.add_job(
-        lambda: _each_user(storage, settings, _paper, "Schattendepot"),
-        CronTrigger(day_of_week="mon-fri", hour=int(hh), minute=int(mm), timezone=tz),
-        id="paper_run", max_instances=1, coalesce=True, misfire_grace_time=3600,
+        lambda: _each_user(storage, settings, _paper_orders, "Schattendepot-Orders"),
+        CronTrigger(day_of_week="mon-fri", hour="8-21", minute="*/10", timezone=tz),
+        id="paper_orders", max_instances=1, coalesce=True,
     )
     # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
     sched.add_job(
@@ -121,6 +125,18 @@ def _check(storage: Storage, settings: Settings) -> None:
             log.info("%d Depot-Hinweis(e) verschickt", len(sent))
     except Exception:  # noqa: BLE001
         log.exception("Depot-Prüfung fehlgeschlagen")
+
+
+def _report_and_trade(storage: Storage, settings: Settings, kind: str) -> None:
+    try:
+        report.send_report(storage, settings, kind)
+    finally:
+        _paper(storage, settings)
+
+
+def _paper_orders(storage: Storage, settings: Settings) -> None:
+    if settings.paper_enabled:
+        paper.check_orders(storage, settings)
 
 
 def _paper(storage: Storage, settings: Settings) -> None:

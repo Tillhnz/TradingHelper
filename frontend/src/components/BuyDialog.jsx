@@ -9,6 +9,7 @@ const today = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
+const nowTime = () => new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
 const n = (v) => (v === "" || v === null || v === undefined ? null : Number(String(v).replace(",", ".")));
 
 /** Grafik Stopp → Kauf → Ziel: rote Verlust- und grüne Gewinnzone, Markierung beim aktuellen Kurs. */
@@ -48,7 +49,7 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
   const [meta, setMeta] = useState(info);
   const shownCcy = meta.currency && meta.currency !== meta.native_currency ? meta.currency : "";
   const [form, setForm] = useState({
-    quantity: defaults.quantity ?? "", buy_price: defaults.price ?? "", buy_date: today(), fees: "",
+    quantity: defaults.quantity ?? "", buy_price: defaults.price ?? "", buy_date: today(), buy_time: nowTime(), fees: "",
     currency: shownCcy, stop: defaults.stop ?? "", target: defaults.target ?? "", note: "", create_alerts: true,
     trail: !!defaults.trail_pct, trail_pct: defaults.trail_pct ?? "",
   });
@@ -56,6 +57,8 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
   const [depot, setDepot] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Schnellkauf: Kurs und Uhrzeit von jetzt sind übernommen, Details nur bei Bedarf aufklappen
+  const [details, setDetails] = useState(!defaults.price);
 
   useEffect(() => {
     api.get("/settings").then((r) => setDepot(Number(r.fields.portfolio_size?.value || 0))).catch(() => {});
@@ -111,7 +114,8 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
     setError("");
     try {
       const body = {
-        symbol, quantity: qty, buy_price: price, buy_date: form.buy_date, fees, currency: form.currency || "",
+        symbol, quantity: qty, buy_price: price, buy_date: form.buy_date, buy_time: form.buy_time || null, fees,
+        currency: form.currency || "",
         stop: stop || null, target: target || null, note: form.note, create_alerts: form.create_alerts && !!(stop || target),
         trail_pct: tpct || null,
       };
@@ -134,10 +138,25 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
       ) : (
         <form onSubmit={save}>
           {(meta.name || meta.exchange) && <p className="muted small">{[meta.name, meta.exchange].filter(Boolean).join(" · ")}</p>}
-          <div className="form-grid">
-            <label>Stückzahl<input inputMode="decimal" value={form.quantity} onChange={set("quantity")} required autoFocus /></label>
+          <div className="quick-buy">
+            <div className="quick-now">
+              <span className="muted small">Gekauft zu</span>
+              <strong>{price ? money(price, ccy) : "–"}</strong>
+              <span className="muted small">am {form.buy_date.split("-").reverse().join(".")}{form.buy_time ? ` um ${form.buy_time} Uhr` : ""}</span>
+            </div>
+            <label className="quick-qty">Stückzahl<input inputMode="decimal" value={form.quantity} onChange={set("quantity")} required autoFocus /></label>
+          </div>
+          {!details && (
+            <p className="small muted quick-sum">
+              {stop ? <>Stopp {money(stop, ccy)}{form.trail && tpct ? ` (läuft ${String(tpct).replace(".", ",")} % mit)` : ""}</> : "Kein Stopp"}
+              {" · "}{target ? `Ziel ${money(target, ccy)}` : "kein Ziel"}
+              {" · "}<button type="button" className="link small" onClick={() => setDetails(true)}>Kurs, Zeit, Stopp oder Ziel ändern</button>
+            </p>
+          )}
+          <div className={`form-grid ${details ? "" : "collapsed"}`}>
             <label>Kaufkurs <span className="hint">je Stück, in {ccy || "Punkten"}</span><input inputMode="decimal" value={form.buy_price} onChange={set("buy_price")} required /></label>
             <label>Kaufdatum<input type="date" value={form.buy_date} max={today()} onChange={set("buy_date")} required /></label>
+            <label>Uhrzeit <span className="hint">optional</span><input type="time" value={form.buy_time} onChange={set("buy_time")} /></label>
             <label>Gebühren <span className="hint">optional</span><input inputMode="decimal" value={form.fees} onChange={set("fees")} placeholder="0" /></label>
             {meta.native_currency && (
               <label>
@@ -190,7 +209,7 @@ export default function BuyDialog({ symbol: fixedSymbol, info = {}, defaults = {
           </label>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="actions">
-            <button className="btn primary" disabled={busy}>{busy ? "Speichere …" : "Kauf speichern"}</button>
+            <button className="btn primary" disabled={busy}>{busy ? "Speichere …" : "✓ Kauf eintragen"}</button>
             <button type="button" className="btn" onClick={onClose}>Abbrechen</button>
             {!fixedSymbol && <button type="button" className="link small" onClick={() => setSymbol("")}>Anderen Wert wählen</button>}
           </div>

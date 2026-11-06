@@ -452,24 +452,127 @@ def start_live(storage, settings, histories: dict[str, pd.DataFrame] | None = No
     return _state(storage)
 
 
-def run_live(storage, settings, push: bool | None = None) -> dict:
-    """Ein Handelslauf. Gibt die neuen Orders und Fehler zurück."""
-    with _LIVE_LOCK:
-        st = start_live(storage, settings)
-        currency = None if st.get("currency") in (None, "native") else st["currency"]
-        profile = analysis.profile_from(settings)
-        book = Book(float(st["capital"]), float(settings.paper_fee))
-        book.cash = float(st["cash"])
-        book.pos = {p["symbol"]: p for p in storage.paper_positions()}
-        day = today()
-        for t in storage.paper_trades(200):
-            if t["side"] == "sell" and t["day"] == day:
-                book.sold_on.setdefault(t["symbol"], day)
-        n_before = len(book.trades)
-        names = {w["symbol"]: w.get("name") or w.get("ticker") or w["symbol"] for w in storage.watchlist()}
-        symbols = list(dict.fromkeys(list(names) + list(book.pos)))
+LIMIT_SLACK = 0.01  # Kauf-Limit: höchstens 1 % über dem letzten Schlusskurs (keine Kurslücken hinterherkaufen)
 
-        errors, sigs, bars, prices = {}, {}, {}, {}
+
+def market_open(symbol: str, quote: dict | None) -> bool:
+    """Wird gerade gehandelt? gettex: Mo–Fr 8–22 Uhr. Sonst: frischer Kurs (höchstens 20 Minuten alt)."""
+    now = datetime.now(BERLIN)
+    if symbol.upper().endswith(".GTX"):
+        return now.weekday() < 5 and 8 <= now.hour < 22
+    t = (quote or {}).get("time")
+    return bool(t) and now.timestamp() - t < 20 * 60 + 60 * ((quote or {}).get("delay_min") or 0)
+
+
+def _load(storage, settings):
+    st = start_live(storage, settings)
+    currency = None if st.get("currency") in (None, "native") else st["currency"]
+    book = Book(float(st["capital"]), float(settings.paper_fee))
+    book.cash = float(st["cash"])
+    book.pos = {p["symbol"]: p for p in storage.paper_positions()}
+    day = today()
+    for t in storage.paper_trades(200):
+        if t["side"] == "sell" and t["day"] == day:
+            book.sold_on.setdefault(t["symbol"], day)
+    names = {w["symbol"]: w.get("name") or w.get("ticker") or w["symbol"] for w in storage.watchlist()}
+    return currency, book, names
+
+
+def _quote(sym: str, currency: str | None) -> dict | None:
+    try:
+        q = market.live(sym, currency)
+        return q if q.get("price") else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _persist(storage, settings, book: Book, n_before: int, names: dict, push: bool | None) -> list[dict]:
+    new = book.trades[n_before:]
+    stored = {p["symbol"] for p in storage.paper_positions()}
+    for sym in stored - set(book.pos):
+        storage.remove_paper_position(sym)
+    for p in book.pos.values():
+        storage.save_paper_position(p)
+    for t in new:
+        storage.add_paper_trade(t)
+    storage.set_paper_state(cash=round(book.cash, 2))
+    if new and (settings.paper_notify if push is None else push):
+        lines = []
+        for t in new:
+            verb = "Kauf" if t["side"] == "buy" else "Verkauf"
+            res = f" ({t['pl']:+.2f}, {t['pl_pct']:+.1f} %)".replace(".", ",") if t["pl"] is not None else ""
+            lines.append(f"**{verb} {names.get(t['symbol'], t['symbol'])}**: {t['shares']:g} × "
+                         f"{t['price']:.2f}".replace(".", ",") + f"{res} – {t['reason']}")
+        notify.send(settings, "Schattendepot", "\n".join(lines), tags=["robot"], path="/depot/schatten")
+    return new
+
+
+def _buy_now(book: Book, sym: str, day: str, price: float, ref: float, stop: float | None, target: float | None,
+             reason: str, profile, equity: float) -> dict | None:
+    """Kauf zum aktuellen Kurs; Stopp und Ziel behalten ihren Abstand zum Kurs, auf den sich das Signal bezog."""
+    shift = price - ref if ref else 0
+    return book.buy(sym, day, price, stop + shift if stop is not None else None,
+                    target + shift if target is not None else None, reason, profile, equity)
+
+
+def check_orders(storage, settings, push: bool | None = None) -> dict:
+    """Offene Orders und Stopps/Ziele mit Live-Kursen prüfen (läuft im Handelsverlauf alle paar Minuten)."""
+    with _LIVE_LOCK:
+        if "started" not in _state(storage):
+            return {"trades": [], "orders": 0}
+        currency, book, names = _load(storage, settings)
+        profile = analysis.profile_from(settings)
+        n_before = len(book.trades)
+        day = today()
+        orders = storage.paper_orders(status="open")
+        syms = {o["symbol"] for o in orders} | set(book.pos)
+        quotes = {s: _quote(s, currency) for s in syms}
+        prices = {s: q["price"] for s, q in quotes.items() if q}
+        for o in orders:
+            sym, q = o["symbol"], quotes.get(o["symbol"])
+            if o["side"] == "buy" and o["day"] < day:
+                storage.close_paper_order(o["id"], "cancelled", "Tag vorbei, Limit nicht erreicht")
+                continue
+            if not q or not market_open(sym, q):
+                continue
+            if o["side"] == "sell":
+                if sym in book.pos:
+                    book.sell(sym, day, q["price"], o["reason"])
+                    storage.close_paper_order(o["id"], "filled", f"zu {q['price']:.2f}".replace(".", ","))
+                else:
+                    storage.close_paper_order(o["id"], "cancelled", "nicht mehr im Depot")
+            elif q["price"] <= (o["limit_price"] or 0):
+                t = _buy_now(book, sym, day, q["price"], o["ref_price"], o["stop"], o["target"], o["reason"], profile,
+                             book.value(prices))
+                storage.close_paper_order(o["id"], "filled" if t else "cancelled",
+                                          f"zu {q['price']:.2f}".replace(".", ",") if t else "zu wenig freies Geld")
+        # Stopp- und Zielorders der offenen Positionen
+        for sym in list(book.pos):
+            q = quotes.get(sym)
+            if not q or not market_open(sym, q):
+                continue
+            p = book.pos[sym]
+            ex = check_exit(p, None, q["price"], q["price"])
+            if ex:
+                book.sell(sym, day, q["price"], ex[1] + " (Order)")
+        new = _persist(storage, settings, book, n_before, names, push)
+        return {"trades": new, "orders": len(storage.paper_orders(status="open"))}
+
+
+def run_live(storage, settings, push: bool | None = None) -> dict:
+    """Ein Handelslauf (zu den Berichtszeiten). Ist der Markt offen, wird sofort zum aktuellen Kurs gehandelt;
+    sonst werden Orders platziert: Kauf-Limit knapp über dem letzten Schlusskurs (gilt bis Handelsende),
+    Verkauf zur Eröffnung. Stopp und Ziel jeder Position wirken wie Stop- bzw. Limit-Orders."""
+    check_orders(storage, settings, push)
+    with _LIVE_LOCK:
+        currency, book, names = _load(storage, settings)
+        profile = analysis.profile_from(settings)
+        day = today()
+        n_before = len(book.trades)
+        symbols = list(dict.fromkeys(list(names) + list(book.pos)))
+        open_orders = storage.paper_orders(status="open")
+
+        errors, sigs, bars, prices, quotes = {}, {}, {}, {}, {}
         period = "2y" if profile.period == "2y" else "1y"
         for sym in symbols:
             try:
@@ -480,10 +583,14 @@ def run_live(storage, settings, push: bool | None = None) -> dict:
                 sigs[sym] = to_sig(a, rec)
                 bars[sym] = _bars(df)
                 prices[sym] = a.last_close
+                quotes[sym] = _quote(sym, currency)
+                if quotes[sym]:
+                    prices[sym] = quotes[sym]["price"]
             except Exception as exc:  # noqa: BLE001
                 errors[sym] = str(exc)[:160]
 
-        # Stopps und Ziele an den Kerzen seit dem letzten Lauf prüfen, dann Stopp nachziehen und Signale
+        # Stopps und Ziele an den Tageskerzen seit dem letzten Lauf prüfen, dann Stopp nachziehen und Signale
+        new_orders = []
         for sym in list(book.pos):
             p = book.pos[sym]
             if sym not in bars:
@@ -494,42 +601,44 @@ def run_live(storage, settings, push: bool | None = None) -> dict:
                 if ex:
                     book.sell(sym, dd, ex[0], ex[1])
                     break
-            if sym in book.pos:
-                p["checked_day"] = max(bars[sym]) if bars[sym] else day
-                trail(p, sigs[sym], profile)
-                if sigs[sym].action == SELL:
-                    book.sell(sym, day, prices[sym], f"Einschätzung auf Vorsicht gekippt: {sigs[sym].reason}")
+            if sym not in book.pos:
+                continue
+            p["checked_day"] = max(bars[sym]) if bars[sym] else day
+            trail(p, sigs[sym], profile)
+            if sigs[sym].action == SELL:
+                reason = f"Einschätzung auf Vorsicht gekippt: {sigs[sym].reason}"
+                if market_open(sym, quotes.get(sym)):
+                    book.sell(sym, day, prices[sym], reason)
+                elif not any(o["symbol"] == sym and o["side"] == "sell" for o in open_orders):
+                    new_orders.append({"symbol": sym, "side": "sell", "kind": "open", "reason": reason, "day": day})
 
-        # Käufe, stärkste Signale zuerst
+        # Alte Kauf-Orders durch neue ersetzen
+        for o in open_orders:
+            if o["side"] == "buy":
+                storage.close_paper_order(o["id"], "cancelled", "durch neuen Lauf ersetzt")
         cands = sorted((s for s in sigs if s in names and s not in book.pos and sigs[s].action == BUY),
                        key=lambda s: -sigs[s].score)
         for sym in cands:
             sg = sigs[sym]
-            t = book.buy(sym, day, sg.close, sg.stop, sg.target, sg.reason, profile, book.value(prices))
-            if t:
-                book.pos[sym]["checked_day"] = max(bars[sym]) if bars[sym] else day
+            if book.sold_on.get(sym) == day:
+                continue
+            if market_open(sym, quotes.get(sym)):
+                t = _buy_now(book, sym, day, prices[sym], sg.close, sg.stop, sg.target, sg.reason, profile,
+                             book.value(prices))
+                if t:
+                    book.pos[sym]["checked_day"] = max(bars[sym]) if bars[sym] else day
+            else:
+                new_orders.append({"symbol": sym, "side": "buy", "kind": "limit", "day": day, "ref_price": sg.close,
+                                   "limit_price": round(sg.close * (1 + LIMIT_SLACK), 4), "stop": sg.stop,
+                                   "target": sg.target, "reason": sg.reason})
+        for o in new_orders:
+            storage.add_paper_order(o)
 
-        new = book.trades[n_before:]
-        stored = {p["symbol"] for p in storage.paper_positions()}
-        for sym in stored - set(book.pos):
-            storage.remove_paper_position(sym)
-        for p in book.pos.values():
-            storage.save_paper_position(p)
-        for t in new:
-            storage.add_paper_trade(t)
+        new = _persist(storage, settings, book, n_before, names, push)
         equity = book.value(prices)
-        storage.set_paper_state(cash=round(book.cash, 2), last_run=datetime.now(BERLIN).isoformat(timespec="minutes"))
+        storage.set_paper_state(last_run=datetime.now(BERLIN).isoformat(timespec="minutes"))
         storage.set_paper_equity(day, round(equity, 2), round(book.cash, 2))
-
-        if new and (settings.paper_notify if push is None else push):
-            lines = []
-            for t in new:
-                verb = "Kauf" if t["side"] == "buy" else "Verkauf"
-                res = f" ({t['pl']:+.2f}, {t['pl_pct']:+.1f} %)" if t["pl"] is not None else ""
-                lines.append(f"**{verb} {names.get(t['symbol'], t['symbol'])}**: {t['shares']:g} × {t['price']:.2f}{res}"
-                             f" – {t['reason']}")
-            notify.send(settings, "Schattendepot", "\n".join(lines), tags=["robot"], path="/depot/schatten")
-        return {"trades": new, "errors": errors, "equity": round(equity, 2)}
+        return {"trades": new, "orders": new_orders, "errors": errors, "equity": round(equity, 2)}
 
 
 def view(storage, settings) -> dict:
@@ -583,4 +692,6 @@ def view(storage, settings) -> dict:
         "win_rate": round(sum((t["pl"] or 0) > 0 for t in sells) / len(sells) * 100, 1) if sells else None,
         "trades_count": len(sells), "benchmark_pct": bench,
         "positions": positions, "trades": trades, "curve": curve,
+        "orders": [{**o, "name": names.get(o["symbol"], {}).get("name"), "ticker": names.get(o["symbol"], {}).get("ticker")}
+                   for o in storage.paper_orders(limit=40)],
     }

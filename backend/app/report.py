@@ -163,16 +163,21 @@ def short_text(rep: Report) -> str:
     return "\n".join(parts)
 
 
-def send_report(storage: Storage, settings: Settings) -> Report:
+KINDS = {"morning": "Morgenbericht", "afternoon": "Nachmittagsbericht"}
+
+
+def send_report(storage: Storage, settings: Settings, kind: str = "morning") -> Report:
     """Bericht erstellen, speichern und als kurze Push-Nachricht melden. Antippen öffnet den Bericht auf der Webseite.
     Ohne bekannte Adresse der Oberfläche (app_url) kommt wie früher der ganze Bericht in die Nachricht."""
     rep = build_report(storage, settings)
     if not rep.entries and not rep.errors:
         return rep
-    rid = storage.save_report(rep.to_dict())
+    title = KINDS.get(kind, "Bericht")
+    rid = storage.save_report({**rep.to_dict(), "kind": kind, "title": title})
+    tag = "sunrise" if kind == "morning" else "city_sunset"
     if notify.link(settings):
-        notify.send(settings, "Dein Morgenbericht ist da", short_text(rep) + "\nAntippen für den ganzen Bericht.",
-                    tags=["sunrise"], path=f"/?bericht={rid}")
+        notify.send(settings, f"Dein {title} ist da", short_text(rep) + "\nAntippen für den ganzen Bericht.",
+                    tags=[tag], path=f"/?bericht={rid}")
     else:
-        notify.send(settings, "TradeHelper Morgenreport", rep.to_markdown(), tags=["sunrise"])
+        notify.send(settings, f"TradeHelper {title}", rep.to_markdown(), tags=[tag])
     return rep

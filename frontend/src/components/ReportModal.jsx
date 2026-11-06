@@ -23,7 +23,7 @@ export default function ReportModal({ id, onClose }) {
   const held = entries.filter((e) => e.holding?.shares);
 
   return (
-    <Modal title={rep ? `Morgenbericht · ${rep.created}` : "Morgenbericht"} onClose={onClose} wide>
+    <Modal title={rep ? `${rep.title || "Morgenbericht"} · ${rep.created}` : "Bericht"} onClose={onClose} wide>
       <ErrorText error={error} />
       {!rep && !error && <Loading />}
       {rep && (

@@ -284,16 +284,27 @@ def _meta(symbol: str, target: str | None, settings: Settings) -> dict:
     }
 
 
-def _chart_positions(symbol: str, shown: str | None, st: Storage) -> list[dict]:
-    """Positionen eines Symbols mit Kursen in der Chart-Währung (Kauf/Verkauf zum Tageskurs, Stopp/Ziel aktuell)."""
+def _chart_positions(symbol: str, shown: str | None, st: Storage, settings: Settings | None = None) -> list[dict]:
+    """Positionen eines Symbols mit Kursen in der Chart-Währung (Kauf/Verkauf zum Tageskurs, Stopp/Ziel aktuell).
+    Bei mitlaufendem Stopp steht der heute gültige Stopp drin."""
     out = []
     for pos in st.positions(symbol):
         ccy = portfolio.position_currency(pos)
         conv = (lambda v, day=None, c=ccy: market.convert_price(v, c, shown, day)) if ccy and shown else (lambda v, day=None: v)
+        trail_stop = None
+        if pos.get("trail_pct") and not pos["sell_date"] and settings is not None:
+            try:
+                ev = portfolio.evaluate(pos, analysis.profile_from(settings))
+                if ev.get("trail_stop") and ev.get("display_currency") == (shown or ccy):
+                    trail_stop = ev["trail_stop"]
+            except Exception:  # noqa: BLE001
+                pass
         try:
             out.append({
                 "id": pos["id"], "quantity": pos["quantity"], "buy_date": pos["buy_date"], "sell_date": pos["sell_date"],
-                "buy_price": conv(pos["buy_price"], pos["buy_date"]), "stop": conv(pos["stop"]),
+                "buy_time": pos.get("buy_time"), "fees": pos.get("fees") or 0, "trail_pct": pos.get("trail_pct"),
+                "buy_price": conv(pos["buy_price"], pos["buy_date"]),
+                "stop": max(trail_stop, conv(pos["stop"]) or 0) if trail_stop else conv(pos["stop"]),
                 "target": conv(pos["target"]),
                 "sell_price": conv(pos["sell_price"], pos["sell_date"]) if pos["sell_price"] else None,
                 "converted": bool(ccy and shown and ccy != shown),
@@ -362,7 +373,7 @@ def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str
     if not meta["as_of"] and rows:
         meta["as_of"] = rows[-1]["time"]
     return {"symbol": symbol.upper(), "period": period, "interval": interval, "rows": rows, "events": signal_events,
-            "positions": _chart_positions(symbol, meta["currency"], st), **meta}
+            "positions": _chart_positions(symbol, meta["currency"], st, settings), **meta}
 
 
 @app.get("/api/analysis/{symbol}", dependencies=auth)
@@ -595,6 +606,7 @@ class PositionIn(BaseModel):
     target: float | None = Field(default=None, gt=0)
     note: str = Field(default="", max_length=300)
     trail_pct: float | None = Field(default=None, ge=0.5, le=50)  # mitlaufender Stopp in Prozent
+    buy_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # Uhrzeit des Kaufs (Ortszeit)
     create_alerts: bool = False
 
 
@@ -602,6 +614,7 @@ class PositionPatch(BaseModel):
     quantity: float | None = Field(default=None, gt=0)
     buy_price: float | None = Field(default=None, gt=0)
     buy_date: date | None = None
+    buy_time: str | None = Field(default=None, pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")  # "" = ohne Uhrzeit
     fees: float | None = Field(default=None, ge=0)
     stop: float | None = Field(default=None, ge=0)  # 0 = Stopp entfernen
     target: float | None = Field(default=None, ge=0)
@@ -699,6 +712,8 @@ def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(user
     for key in ("stop", "target", "trail_pct"):
         if data.get(key) == 0:
             data[key] = None
+    if data.get("buy_time") == "":
+        data["buy_time"] = None
     if item.reopen:
         data.update(sell_price=None, sell_date=None, sell_fees=0)
     elif ("sell_price" in data) != ("sell_date" in data) and not current["sell_date"]:
@@ -812,7 +827,10 @@ def report_get(report_id: int, st: Storage = Depends(user_storage)):
 def report_send(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     if not settings.ntfy_topic:
         raise HTTPException(400, "Kein ntfy-Topic hinterlegt (Einstellungen → Benachrichtigungen).")
-    rep = send_report(st, settings)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    hour = datetime.now(ZoneInfo(settings.timezone)).hour
+    rep = send_report(st, settings, "afternoon" if hour >= 12 else "morning")
     return {"sent": True, "entries": len(rep.entries)}
 
 
@@ -853,7 +871,7 @@ def test_notify(settings: Settings = Depends(user_cfg)):
 @app.get("/api/paper", dependencies=auth)
 def paper_view(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     return {**paper.view(st, settings), "enabled": settings.paper_enabled,
-            "next_run": scheduler.next_runs().get("paper_run")}
+            "next_run": min((v for k, v in scheduler.next_runs().items() if k.endswith("_report") and v), default=None)}
 
 
 @app.post("/api/paper/run", dependencies=auth)

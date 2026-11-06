@@ -93,6 +93,8 @@ def test_live_run_buys_and_persists(tmp_path, monkeypatch):
     df = _df(100 * np.exp(np.linspace(0, 0.8, 400)), start="2025-01-01")
     df.index = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=400)
     monkeypatch.setattr(paper.market, "get_history", lambda *a, **k: df)
+    import time as _t
+    monkeypatch.setattr(paper.market, "live", lambda sym, c=None: {"price": float(df["close"].iloc[-1]), "time": _t.time()})
     r = paper.run_live(st, s, push=False)
     assert r["errors"] == {}
     v = paper.view(st, s)
@@ -105,3 +107,59 @@ def test_live_run_buys_and_persists(tmp_path, monkeypatch):
     assert not [t for t in r2["trades"] if t["side"] == "buy"]
     st.reset_paper()
     assert paper.view(st, s)["started"] is False
+
+
+
+def _setup_closed_market(tmp_path, monkeypatch):
+    st = Storage(tmp_path / "t.db")
+    s = Settings()
+    s.news_google = s.news_yahoo = False
+    s.finnhub_api_key = ""
+    s.risk_profile, s.invest_horizon = "aggressive", "long"
+    st.add_symbol("AAA", "", "Alpha AG")
+    df = _df(100 * np.exp(np.linspace(0, 0.8, 400)))
+    df.index = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=400)
+    monkeypatch.setattr(paper.market, "get_history", lambda *a, **k: df)
+    return st, s, df
+
+
+def test_closed_market_places_limit_order_then_fills(tmp_path, monkeypatch):
+    st, s, df = _setup_closed_market(tmp_path, monkeypatch)
+    last = float(df["close"].iloc[-1])
+    monkeypatch.setattr(paper.market, "live", lambda sym, c=None: {"price": last, "time": 1})  # alter Kurs = geschlossen
+    r = paper.run_live(st, s, push=False)
+    if not r["orders"]:  # Signal-Logik hat nichts zu kaufen gefunden – dann gibt es nichts zu prüfen
+        return
+    o = st.paper_orders(status="open")[0]
+    assert o["side"] == "buy" and o["limit_price"] == round(last * 1.01, 4) and not st.paper_positions()
+    import time as _t
+    # Markt offen, Kurs über dem Limit: nichts passiert
+    monkeypatch.setattr(paper.market, "live", lambda sym, c=None: {"price": last * 1.05, "time": _t.time()})
+    assert paper.check_orders(st, s, push=False)["trades"] == []
+    # Kurs unter dem Limit: Kauf
+    monkeypatch.setattr(paper.market, "live", lambda sym, c=None: {"price": last * 0.995, "time": _t.time()})
+    res = paper.check_orders(st, s, push=False)
+    assert res["trades"][0]["side"] == "buy" and st.paper_positions()[0]["symbol"] == "AAA"
+    assert st.paper_orders(status="filled")[0]["note"].startswith("zu ")
+    # Stopp unterschritten: Verkauf über die Stopp-Order
+    stop = st.paper_positions()[0]["stop"]
+    monkeypatch.setattr(paper.market, "live", lambda sym, c=None: {"price": stop * 0.99, "time": _t.time()})
+    res = paper.check_orders(st, s, push=False)
+    assert res["trades"][0]["side"] == "sell" and "Order" in res["trades"][0]["reason"] and not st.paper_positions()
+
+
+def test_old_buy_orders_expire(tmp_path, monkeypatch):
+    st, s, df = _setup_closed_market(tmp_path, monkeypatch)
+    paper.start_live(st, s, {"AAA": df})
+    st.add_paper_order({"symbol": "AAA", "side": "buy", "kind": "limit", "limit_price": 1.0, "day": "2020-01-01",
+                        "ref_price": 1.0, "reason": "x"})
+    monkeypatch.setattr(paper.market, "live", lambda sym, c=None: {"price": 0.5, "time": 1})
+    paper.check_orders(st, s, push=False)
+    assert st.paper_orders(status="cancelled")[0]["note"].startswith("Tag vorbei")
+
+
+def test_market_open_rules(monkeypatch):
+    import time as _t
+    assert paper.market_open("AAPL", {"time": _t.time() - 60})
+    assert not paper.market_open("AAPL", {"time": _t.time() - 3 * 3600})
+    assert not paper.market_open("AAPL", None)

@@ -308,3 +308,16 @@ def test_chart_layouts(client):
     assert client.put("/api/charts/AAPL", json={**layout, "drawings": [{"id": "x", "kind": "hline", "points": [
         {"time": 1, "price": 1}], "color": "red"}]}, headers=h).status_code == 422
     assert client.delete("/api/charts/AAPL", headers=h).json() == {"ok": True}
+
+
+def test_position_buy_time(client):
+    h = _login(client)
+    p = client.post("/api/positions", json={"symbol": "AAPL", "quantity": 2, "buy_price": 100, "buy_date": "2026-01-02",
+                                            "buy_time": "10:13", "stop": 90, "target": 130}, headers=h).json()
+    assert p["buy_time"] == "10:13"
+    assert client.post("/api/positions", json={"symbol": "AAPL", "quantity": 1, "buy_price": 1, "buy_date": "2026-01-02",
+                                                "buy_time": "25:00"}, headers=h).status_code == 422
+    r = client.patch(f"/api/positions/{p['id']}", json={"buy_time": "", "buy_price": 101.5}, headers=h).json()
+    assert r["buy_time"] is None and r["buy_price"] == 101.5
+    hist = client.get("/api/history/AAPL?period=1y", headers=h).json()
+    assert hist["positions"][0]["buy_price"] == 101.5 and "buy_time" in hist["positions"][0]

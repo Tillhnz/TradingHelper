@@ -18,12 +18,11 @@ const GROUPS = [
   {
     id: "paper",
     title: "Schattendepot",
-    intro: "Das Schattendepot handelt die Einschätzungen automatisch mit Spielgeld – einmal pro Handelstag zur eingestellten Uhrzeit. Ein neues Startkapital gilt erst nach dem Zurücksetzen (Depot → Schattendepot).",
+    intro: "Das Schattendepot handelt die Einschätzungen automatisch mit Spielgeld – zu den Berichtszeiten (Zeitplan). Ist die Börse dann zu, legt es Orders an, die im Tagesverlauf ausgeführt werden. Ein neues Startkapital gilt erst nach dem Zurücksetzen (Depot → Schattendepot).",
     fields: {
       paper_enabled: { label: "Schattendepot automatisch handeln lassen", type: "bool" },
       paper_capital: { label: "Startkapital", type: "number", hint: "in Anzeigewährung" },
       paper_fee: { label: "Gebühr pro Order", type: "number", hint: "z. B. 1 bei Neobrokern über gettex" },
-      paper_time: { label: "Handeln um", type: "time", hint: "Mo–Fr; nach Xetra-Schluss sind die Tageskerzen fast vollständig" },
       paper_notify: { label: "Orders als Push-Nachricht melden", type: "bool" },
     },
   },
@@ -53,10 +52,11 @@ const GROUPS = [
   {
     id: "schedule",
     title: "Zeitplan",
-    intro: "Wann der Morgenreport kommt und wann Alarme geprüft werden.",
+    intro: "Wann die Berichte kommen und wann Alarme geprüft werden. Zu den Berichtszeiten handelt auch das Schattendepot.",
     fields: {
-      report_enabled: { label: "Morgenreport senden", type: "bool" },
-      report_time: { label: "Uhrzeit des Reports", type: "time" },
+      report_enabled: { label: "Berichte senden", type: "bool" },
+      report_time: { label: "Morgenbericht um", type: "time" },
+      report_time_pm: { label: "Nachmittagsbericht um", type: "time", hint: "leer = keiner" },
       report_weekends: { label: "Auch am Wochenende", type: "bool" },
       alerts_enabled: { label: "Alarme automatisch prüfen", type: "bool" },
       alert_interval_minutes: { label: "Prüfen alle … Minuten", type: "select", options: [1, 2, 5, 10, 15, 30, 60] },

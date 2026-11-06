@@ -77,6 +77,7 @@ function Workspace({ symbol }) {
   const [layout, setLayout] = useState(null);
   const [rows, setRows] = useState(null);
   const [meta, setMeta] = useState(null);
+  const [positions, setPositions] = useState([]);
   const [error, setError] = useState("");
   const [tool, setTool] = useState(null);
   const [pending, setPending] = useState(null);
@@ -97,7 +98,7 @@ function Workspace({ symbol }) {
     if (!layout) return;
     setRows(null);
     api.get(`/history/${encodeURIComponent(symbol)}?period=${period}&interval=${interval}`)
-      .then((r) => { setRows(r.rows); setMeta(r.meta || r); setError(""); })
+      .then((r) => { setRows(r.rows); setMeta(r.meta || r); setPositions(r.positions || []); setError(""); })
       .catch((e) => setError(e.message));
   }, [symbol, period, interval, !!layout]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -219,7 +220,7 @@ function Workspace({ symbol }) {
         )}
         {!rows ? <Loading text="Lade Kurse …" /> : (
           <WorkspaceChart rows={rows} type={layout.type} intraday={intraday} indicators={indicators} drawings={drawings}
-            tool={tool} pending={pending} selected={selected} onPoint={onPoint} />
+            tool={tool} pending={pending} selected={selected} onPoint={onPoint} positions={positions} currency={meta?.currency} />
         )}
       </section>
 

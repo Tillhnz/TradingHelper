@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { createChart, LineStyle } from "lightweight-charts";
 import { bollinger, ema, indicatorTitle, INDICATORS, macd, rsi, sma } from "../indicators.js";
+import { money, pct, signedMoney } from "../fmt.js";
+import { buyTimestamp, PositionBox, sellTimestamp } from "./positionBox.js";
 import { baseOptions, COLORS } from "./PriceChart.jsx";
 
 export const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -18,7 +20,7 @@ const series = (rows, values) => rows.map((r, i) => (values[i] === null || value
  * - pending: erster Punkt einer Zwei-Punkt-Zeichnung (wird als Markierung gezeigt)
  */
 export default function WorkspaceChart({ rows, type = "candles", intraday = false, indicators = [], drawings = [],
-  tool = null, pending = null, selected = null, onPoint }) {
+  tool = null, pending = null, selected = null, onPoint, positions = [], currency = null }) {
   const mainRef = useRef(null);
   const subRefs = useRef({});
   const state = useRef({ charts: [], main: null, price: null, range: null });
@@ -50,6 +52,19 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     }
     price.setData(rows.map((r) => (ohlc ? { time: r.time, open: r.open, high: r.high, low: r.low, close: r.close }
       : { time: r.time, value: r.close })));
+
+    // Eigene Käufe als Positions-Box (Ziel grün, Stopp rot, aktueller Gewinn/Verlust)
+    const times = rows.map((r) => r.time);
+    for (const p of positions) {
+      if (!p.buy_price) continue;
+      const end = sellTimestamp(p);
+      price.attachPrimitive(new PositionBox({
+        times, start: buyTimestamp(p), end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
+        price: end ? p.sell_price : rows[rows.length - 1].close, qty: p.quantity, fees: p.fees || 0,
+        fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
+        label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)}`,
+      }));
+    }
 
     const charts = [main];
     for (const ind of indicators) {
@@ -132,7 +147,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
 
     state.current = { ...state.current, charts, main, price, lastTime: rows[rows.length - 1].time };
     return () => { el.removeEventListener("click", onClick); charts.forEach((c) => c.remove()); state.current = { ...state.current, charts: [], main: null, price: null }; };
-  }, [rows, type, intraday, indicators]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, type, intraday, indicators, positions, currency]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Zeichnungen: eigene Serien/Linien, werden bei jeder Änderung neu gesetzt
   useEffect(() => {

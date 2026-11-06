@@ -12,7 +12,7 @@ const n = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", "
 export default function EditDialog({ pos, mode, onClose, onSaved }) {
   const [f, setF] = useState(mode === "sell"
     ? { sell_price: pos.price ?? "", sell_date: today(), sell_fees: "" }
-    : { stop: pos.stop_base ?? pos.stop ?? "", trail_pct: pos.trail_pct ?? "", target: pos.target ?? "", note: pos.note ?? "", quantity: pos.quantity, buy_price: pos.buy_price, buy_date: pos.buy_date, fees: pos.fees ?? 0 });
+    : { stop: pos.stop_base ?? pos.stop ?? "", trail_pct: pos.trail_pct ?? "", target: pos.target ?? "", note: pos.note ?? "", quantity: pos.quantity, buy_price: pos.buy_price, buy_date: pos.buy_date, buy_time: pos.buy_time ?? "", fees: pos.fees ?? 0 });
   const [error, setError] = useState("");
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const c = pos.display_currency;
@@ -22,7 +22,7 @@ export default function EditDialog({ pos, mode, onClose, onSaved }) {
     setError("");
     const body = mode === "sell"
       ? { sell_price: n(f.sell_price), sell_date: f.sell_date, sell_fees: n(f.sell_fees) || 0 }
-      : { stop: n(f.stop) ?? 0, trail_pct: n(f.trail_pct) ?? 0, target: n(f.target) ?? 0, note: f.note, quantity: n(f.quantity), buy_price: n(f.buy_price), buy_date: f.buy_date, fees: n(f.fees) || 0 };
+      : { stop: n(f.stop) ?? 0, trail_pct: n(f.trail_pct) ?? 0, target: n(f.target) ?? 0, note: f.note, quantity: n(f.quantity), buy_price: n(f.buy_price), buy_date: f.buy_date, buy_time: f.buy_time || "", fees: n(f.fees) || 0 };
     try {
       await api.patch(`/positions/${pos.id}`, body);
       onSaved();
@@ -53,6 +53,7 @@ export default function EditDialog({ pos, mode, onClose, onSaved }) {
               <label>Stückzahl<input inputMode="decimal" value={f.quantity} onChange={set("quantity")} required /></label>
               <label>Kaufkurs <span className="hint">in {c}</span><input inputMode="decimal" value={f.buy_price} onChange={set("buy_price")} required /></label>
               <label>Kaufdatum<input type="date" value={f.buy_date} max={today()} onChange={set("buy_date")} required /></label>
+              <label>Uhrzeit <span className="hint">optional, für den Tagesverlauf</span><input type="time" value={f.buy_time} onChange={set("buy_time")} /></label>
               <label>Gebühren<input inputMode="decimal" value={f.fees} onChange={set("fees")} /></label>
               <label className="span-all">Notiz<input value={f.note} onChange={set("note")} maxLength={300} /></label>
             </>

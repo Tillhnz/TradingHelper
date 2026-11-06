@@ -238,7 +238,7 @@ export default function Home() {
         </div>
         <div className="actions">
           <button className="btn" onClick={load} disabled={!report && !error}>Aktualisieren</button>
-          <button className="btn" onClick={() => setShowReport("latest")}>Letzter Morgenbericht</button>
+          <button className="btn" onClick={() => setShowReport("latest")}>Letzter Bericht</button>
           <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}>{sending ? "Sende …" : "Aufs Handy schicken"}</button>
         </div>
       </div>

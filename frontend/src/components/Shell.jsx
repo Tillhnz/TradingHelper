@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api.js";
+import WhatsNew from "./WhatsNew.jsx";
 import { useMode } from "../mode.js";
 import GlobalSearch from "./GlobalSearch.jsx";
 
@@ -102,6 +103,7 @@ export default function Shell({ user, onLogout, children }) {
           <span className="compact-only">{user.is_admin && <> · <NavLink to="/admin">Administration</NavLink></>} · <button className="link small" onClick={onLogout}>Abmelden</button></span>
         </footer>
       </main>
+      <WhatsNew version={ver?.version} />
     </div>
   );
 }

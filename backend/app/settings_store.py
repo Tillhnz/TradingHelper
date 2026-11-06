@@ -23,7 +23,6 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "paper_enabled": ("bool", "paper", False),
     "paper_capital": ("int:100:10000000", "paper", False),
     "paper_fee": ("float:0:50", "paper", False),
-    "paper_time": ("time", "paper", False),
     "paper_notify": ("bool", "paper", False),
     "ntfy_url": ("url", "notify", False),
     "ntfy_topic": ("topic", "notify", False),
@@ -35,6 +34,7 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "news_feeds": ("feeds", "news", False),
     "report_enabled": ("bool", "schedule", False),
     "report_time": ("time", "schedule", False),
+    "report_time_pm": ("time_or_empty", "schedule", False),
     "report_weekends": ("bool", "schedule", False),
     "alerts_enabled": ("bool", "schedule", False),
     "alert_interval_minutes": ("choice:1,2,5,10,15,30,60", "schedule", False),
@@ -49,7 +49,7 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
 # Diese Einstellungen hat jeder Nutzer für sich
 USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
              "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency"}
-SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "paper_enabled", "paper_time"}
+SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone"}
 
 
 class SettingError(ValueError):
@@ -96,6 +96,10 @@ def coerce(key: str, raw):
         if len(text) > int(args[0]):
             raise SettingError("Zu lang")
         return text
+    if base == "time_or_empty":
+        if not str(raw if raw is not None else "").strip():
+            return ""
+        base = "time"
     if base == "url_or_empty":
         if not text:
             return ""

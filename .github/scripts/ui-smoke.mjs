@@ -80,6 +80,17 @@ await page.waitForTimeout(2500);
 await page.getByLabel("Stückzahl").fill("10");
 await page.waitForTimeout(800);
 await page.screenshot({ path: "shots/buy-dialog.png" });
+// Schnellkauf speichern und die Kaufbox ansehen
+await page.getByRole("button", { name: /Kauf eintragen/ }).click();
+await page.waitForTimeout(6000);
+await page.screenshot({ path: "shots/chart-box.png" });
+await page.getByRole("button", { name: "1 T", exact: true }).click();
+await page.waitForTimeout(6000);
+await page.screenshot({ path: "shots/chart-box-intraday.png" });
+console.log("quick buy", JSON.stringify(((await api("/positions")).items || []).filter((p) => p.symbol === "IE00B4L5Y983.GTX").map((p) => [p.buy_date, p.buy_time, p.buy_price])));
+await page.goto(`${base}/chart/AAPL`);
+await page.waitForTimeout(8000);
+await page.screenshot({ path: "shots/chart-box-aapl.png" });
 
 // Schattendepot: starten, handeln, Rückblick rechnen
 await page.goto(`${base}/depot/schatten`);
@@ -94,6 +105,7 @@ while (Date.now() - t0 < 300000) {
   if (await page.locator(".verdict-box").count()) break;
   if (await page.locator(".error").count()) break;
 }
+console.log("shadow orders", JSON.stringify((await api("/paper")).orders?.slice(0, 5)));
 console.log("backtest seconds", Math.round((Date.now() - t0) / 1000));
 console.log("shadow", JSON.stringify(await page.evaluate(() => ({
   stats: [...document.querySelectorAll(".stat")].map((e) => e.textContent),
@@ -216,7 +228,7 @@ await page.goto(`${base}/?bericht=latest`);
 await page.waitForTimeout(3000);
 await page.goto(`${base}/`);
 await page.waitForTimeout(6000);
-await page.getByRole("button", { name: "Letzter Morgenbericht" }).click();
+await page.getByRole("button", { name: "Letzter Bericht" }).click();
 await page.waitForTimeout(2500);
 await page.screenshot({ path: "shots/report-modal.png" });
 console.log("report modal", JSON.stringify(await page.evaluate(() => ({

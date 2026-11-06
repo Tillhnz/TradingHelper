@@ -7,6 +7,7 @@ import { Empty, ErrorText, Loading, Stat } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 import { displayName } from "../texts.js";
 
+const ORDER_STATUS = { open: "wartet", filled: "ausgeführt", cancelled: "verfallen" };
 const day = (d) => (d ? new Date(d).toLocaleDateString("de-DE") : "–");
 const shares = (n) => num(n, n % 1 ? 4 : 0);
 
@@ -187,8 +188,9 @@ export default function Shadow() {
     setError("");
     try {
       const r = await api.post("/paper/run");
-      const n = r.trades.length;
-      setMsg(n ? `${n} ${n === 1 ? "Order" : "Orders"} ausgeführt.` : "Alles geprüft – gerade keine Kauf- oder Verkaufssignale.");
+      const n = r.trades.length, o = r.orders?.length || 0;
+      setMsg(n || o ? [n ? `${n} ${n === 1 ? "Order" : "Orders"} ausgeführt` : "", o ? `${o} ${o === 1 ? "Order" : "Orders"} platziert (Börse geschlossen)` : ""].filter(Boolean).join(", ") + "."
+        : "Alles geprüft – gerade keine Kauf- oder Verkaufssignale.");
       await load();
     } catch (e) {
       setError(e.message);
@@ -236,7 +238,7 @@ export default function Shadow() {
           <div className="shadow-bar">
             <span className="muted small grow">
               Läuft seit {day(data.started)}
-              {data.enabled ? <> · handelt automatisch Mo–Fr{data.next_run ? `, nächster Lauf ${dateTime(data.next_run)}` : ""}</> : <> · <strong>automatischer Handel ausgeschaltet</strong></>}
+              {data.enabled ? <> · handelt zu den Berichtszeiten{data.next_run ? `, nächster Lauf ${dateTime(data.next_run)}` : ""}</> : <> · <strong>automatischer Handel ausgeschaltet</strong></>}
               {data.last_run && <> · zuletzt {dateTime(data.last_run)}</>}
             </span>
             <button className="btn small primary" onClick={run} disabled={busy}>{busy ? "Prüfe …" : "Jetzt prüfen und handeln"}</button>
@@ -285,7 +287,25 @@ export default function Shadow() {
             </div>
           ) : <p className="muted">Gerade nichts im Schattendepot – kein Wert deiner Watchlist steht auf „Gute Gelegenheit“.</p>}
 
-          <h2 className="section-title">Orders</h2>
+          {data.orders?.length > 0 && (
+            <>
+              <h2 className="section-title">Platzierte Orders</h2>
+              <p className="muted small">Bei geschlossener Börse legt das Schattendepot Orders an. Sie werden während der Handelszeit alle 10 Minuten geprüft; Kauf-Limits gelten bis Handelsende.</p>
+              <ul className="order-list">
+                {data.orders.slice(0, 12).map((o) => (
+                  <li key={o.id} className={`order-${o.status}`}>
+                    <span className={o.side === "buy" ? "side-buy" : "side-sell"}>{o.side === "buy" ? "Kauf" : "Verkauf"}</span>
+                    <Link className="sym" to={`/chart/${encodeURIComponent(o.symbol)}`}>{displayName(o)}</Link>
+                    <span className="small">{o.side === "buy" ? `Limit ${money(o.limit_price, c)}` : "zur Eröffnung"}</span>
+                    <span className={`order-status small ${o.status}`}>{ORDER_STATUS[o.status]}{o.note ? ` · ${o.note}` : ""}</span>
+                    <span className="muted small">{day(o.day)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <h2 className="section-title">Ausgeführt</h2>
           {data.trades.length ? <TradeTable trades={data.trades} currency={c} /> : <p className="muted">Noch keine Orders.</p>}
         </>
       )}

@@ -217,7 +217,7 @@ export default function ChartPage() {
           ) : meta && <p className={`muted small ${meta.delay_min ? "delayed" : ""}`}><Term name="Verzögerung">{freshness(meta)}</Term>{meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}</p>}
         </div>
         <div className="stock-actions-top">
-          <button className="btn primary" onClick={() => setBuying(true)}>{held ? "Nachkauf erfassen" : "Kauf erfassen"}</button>
+          <button className="btn primary btn-buy" onClick={() => setBuying(true)} title="Kurs und Uhrzeit von jetzt übernehmen">{held ? "+ Nachkauf" : "Kauf"}</button>
           {watched !== null && !held && <button className="btn" onClick={toggleWatch}>{watched ? "✓ Beobachtet" : "☆ Beobachten"}</button>}
           <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>🔔 Alarm</Link>
           <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Linien und Kennlinien selbst einzeichnen">✏️ Zeichnen</Link>
@@ -285,7 +285,7 @@ export default function ChartPage() {
         {rows && (
           <PriceChart key={`${symbol}-${view.interval}-${view.period}-${ccy}-${mode}`} rows={rows} simple={!pro}
             type={chartType || undefined} live={liveBar} intraday={INTRADAY.has(view.interval)}
-            showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} />
+            showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} currency={cur} />
         )}
         <p className="legend small">
           {showEvents && <><span className="arrow pos">▲</span>Kaufsignal <span className="arrow neg">▼</span>Verkaufssignal</>}
