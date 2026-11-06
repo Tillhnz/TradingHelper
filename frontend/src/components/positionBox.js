@@ -44,7 +44,9 @@ function roundRect(ctx, x, y, w, h, r) {
 function pill(ctx, text, x, y, bg, fg, align = "right") {
   ctx.font = "600 11px system-ui, -apple-system, Segoe UI, sans-serif";
   const w = ctx.measureText(text).width + 12;
-  const left = align === "right" ? x - w : x;
+  const maxX = ctx.canvas.width / (window.devicePixelRatio || 1);
+  // immer ganz sichtbar halten (z. B. Kauf von heute ganz rechts im Chart)
+  const left = Math.max(2, Math.min(align === "right" ? x - w : x, maxX - w - 2));
   ctx.fillStyle = bg;
   roundRect(ctx, left, y - 9, w, 18, 5);
   ctx.fill();
