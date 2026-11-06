@@ -37,6 +37,13 @@ page.on("pageerror", (e) => errors.push(`pageerror ${page.url()}: ${e.message}`)
 page.on("console", (m) => { if (m.type() === "error") errors.push(`console ${page.url()}: ${m.text()}`); });
 await page.goto(`${base}/login`);
 await page.evaluate((t) => localStorage.setItem("tradehelper_token", t), token);
+// Neuerungen-Fenster beim ersten Öffnen: fotografieren und schließen
+await page.goto(`${base}/`);
+await page.waitForTimeout(4000);
+await page.screenshot({ path: "shots/whatsnew.png" });
+if (await page.getByRole("button", { name: "Alles klar" }).count()) await page.getByRole("button", { name: "Alles klar" }).click();
+const seenVersion = await page.evaluate(() => localStorage.getItem("tradehelper_seen_version"));
+console.log("whatsnew seen", seenVersion);
 
 for (const [path, name, wait] of [["/", "home", 12000], ["/watchlist", "watchlist", 9000], ["/chart/DE0007164600.GTX", "chart", 9000], ["/depot", "depot", 9000], ["/settings", "settings", 3000]]) {
   await page.goto(base + path);
@@ -118,7 +125,7 @@ await page.screenshot({ path: "shots/shadow.png", fullPage: true });
 
 const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 await mobile.goto(`${base}/login`);
-await mobile.evaluate((t) => localStorage.setItem("tradehelper_token", t), token);
+await mobile.evaluate(([t, v]) => { localStorage.setItem("tradehelper_token", t); localStorage.setItem("tradehelper_seen_version", v); }, [token, seenVersion]);
 await mobile.goto(`${base}/depot`);
 await mobile.waitForTimeout(8000);
 await mobile.screenshot({ path: "shots/mobile-depot.png", fullPage: true });
@@ -157,7 +164,7 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   const pg = await browser.newPage({ viewport: { width: w, height: h } });
   pg.on("pageerror", (e) => errors.push(`pageerror ${tag}: ${e.message}`));
   await pg.goto(`${base}/login`);
-  await pg.evaluate((t) => localStorage.setItem("tradehelper_token", t), token);
+  await pg.evaluate(([t, v]) => { localStorage.setItem("tradehelper_token", t); localStorage.setItem("tradehelper_seen_version", v); }, [token, seenVersion]);
   await pg.goto(`${base}/chart/IE00B4L5Y983.GTX`);
   await pg.waitForTimeout(9000);
   await pg.screenshot({ path: `shots/${tag}-stock.png` });
@@ -246,6 +253,7 @@ const inviteUrl = (await page.locator(".invite-link code").textContent()).trim()
 await page.screenshot({ path: "shots/admin-users.png", fullPage: true });
 console.log("invite", inviteUrl.replace(/[^/]+$/, "…"));
 const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+await ctx2.addInitScript((v) => { try { localStorage.setItem("tradehelper_seen_version", v); } catch { /* egal */ } }, seenVersion);
 const anna = await ctx2.newPage();
 anna.on("pageerror", (e) => errors.push(`pageerror anna ${anna.url()}: ${e.message}`));
 await anna.goto(inviteUrl);
