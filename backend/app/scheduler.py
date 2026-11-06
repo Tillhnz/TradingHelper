@@ -8,7 +8,7 @@ import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from . import alerts, paper, portfolio, report
+from . import alerts, paper, portfolio, report, settings_store
 from .config import Settings
 from .storage import Storage
 
@@ -30,6 +30,17 @@ def _hours(start: int, end: int) -> str:
     return f"{start}-23,0-{end}"  # über Mitternacht, z. B. 15-2 für US-Handel plus Nachbörse
 
 
+def _each_user(storage: Storage, base: Settings, job, label: str) -> None:
+    """Führt einen Job für jeden Nutzer mit seinen Daten und Einstellungen aus. Fehler eines Nutzers stoppen die
+    anderen nicht."""
+    for u in storage.users():
+        st = storage.for_user(u["id"])
+        try:
+            job(st, settings_store.for_user(st, base))
+        except Exception:  # noqa: BLE001
+            log.exception("%s für Nutzer %s fehlgeschlagen", label, u["username"])
+
+
 def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> None:
     for job in sched.get_jobs():
         job.remove()
@@ -37,31 +48,32 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
     if settings.report_enabled:
         hh, mm = settings.report_time.split(":")
         sched.add_job(
-            lambda: report.send_report(storage, settings),
+            lambda: _each_user(storage, settings, report.send_report, "Morgenreport"),
             CronTrigger(day_of_week=_days(settings.report_weekends), hour=int(hh), minute=int(mm), timezone=tz),
             id="morning_report", max_instances=1, coalesce=True, misfire_grace_time=1800,
         )
     if settings.alerts_enabled:
         sched.add_job(
-            lambda: _check(storage, settings),
+            lambda: _each_user(storage, settings, _check, "Alarmprüfung"),
             CronTrigger(day_of_week=_days(settings.alert_weekends),
                         hour=_hours(settings.alert_start_hour, settings.alert_end_hour),
                         minute=f"*/{settings.alert_interval_minutes}", timezone=tz),
             id="alert_check", max_instances=1, coalesce=True,
         )
-    if settings.paper_enabled:
-        hh, mm = settings.paper_time.split(":")
-        sched.add_job(
-            lambda: _paper(storage, settings),
-            CronTrigger(day_of_week="mon-fri", hour=int(hh), minute=int(mm), timezone=tz),
-            id="paper_run", max_instances=1, coalesce=True, misfire_grace_time=3600,
-        )
-        # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
-        sched.add_job(
-            lambda: paper.run_backtest(storage, settings),
-            CronTrigger(day_of_week="sun", hour=4, minute=17, timezone=tz),
-            id="paper_backtest", max_instances=1, coalesce=True, misfire_grace_time=6 * 3600,
-        )
+    # Läuft immer; ob ein Nutzer sein Schattendepot handeln lässt, entscheidet er selbst (paper_enabled)
+    hh, mm = settings.paper_time.split(":")
+    sched.add_job(
+        lambda: _each_user(storage, settings, _paper, "Schattendepot"),
+        CronTrigger(day_of_week="mon-fri", hour=int(hh), minute=int(mm), timezone=tz),
+        id="paper_run", max_instances=1, coalesce=True, misfire_grace_time=3600,
+    )
+    # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
+    sched.add_job(
+        lambda: _each_user(storage, settings, lambda st, cfg: cfg.paper_enabled and paper.run_backtest(st, cfg),
+                           "Rückblick"),
+        CronTrigger(day_of_week="sun", hour=4, minute=17, timezone=tz),
+        id="paper_backtest", max_instances=1, coalesce=True, misfire_grace_time=6 * 3600,
+    )
 
 
 def start(storage: Storage, settings: Settings) -> None:
@@ -112,6 +124,8 @@ def _check(storage: Storage, settings: Settings) -> None:
 
 
 def _paper(storage: Storage, settings: Settings) -> None:
+    if not settings.paper_enabled or not storage.watchlist():
+        return
     try:
         res = paper.run_live(storage, settings)
         log.info("Schattendepot: %d Order(s), Wert %.2f", len(res["trades"]), res["equity"])

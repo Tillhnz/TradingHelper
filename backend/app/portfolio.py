@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from datetime import date
+from urllib.parse import quote
 
 import pandas as pd
 
@@ -167,7 +168,7 @@ def watch(storage, settings, send=None) -> list[str]:
 
     from . import notify
 
-    send = send or (lambda title, text: notify.send(settings, title, text, tags=["dart"]))
+    send = send or (lambda title, text, path="/depot": notify.send(settings, title, text, tags=["dart"], path=path))
     profile = analysis.profile_from(settings)
     sent = []
     for pos in storage.positions(open_only=True):
@@ -196,7 +197,7 @@ def watch(storage, settings, send=None) -> list[str]:
             state["target_sent"] = sugg["suggested_target"]
         if msgs:
             text = "\n".join(msgs)
-            send(f"Depot: {name}", text)
+            send(f"Depot: {name}", text, f"/chart/{quote(pos['symbol'])}")
             storage.update_position(pos["id"], {"watch_state": json.dumps(state)})
             sent.append(text)
     return sent

@@ -143,10 +143,36 @@ def build_report(storage: Storage, settings: Settings) -> Report:
     return Report(created, entries, errors, profile.label)
 
 
+def short_text(rep: Report) -> str:
+    """Kurzfassung für die Push-Benachrichtigung; der ganze Bericht steht auf der Webseite."""
+    buy = [e for e in rep.entries if e.rec.action == analysis.BUY]
+    sell = [e for e in rep.entries if e.rec.action == analysis.SELL]
+    held_act = [e for e in rep.entries if e.holding and e.holding.get("advice", {}).get("level") in ("bad", "warn", "good")
+                and e not in buy and e not in sell]
+    name = lambda e: e.name or e.ticker or e.rec.symbol  # noqa: E731
+    parts = [f"{len(rep.entries)} Werte geprüft: {len(buy)} Gelegenheit{'en' if len(buy) != 1 else ''}, "
+             f"{len(sell)} × Vorsicht."]
+    if buy:
+        parts.append("🟢 " + ", ".join(name(e) for e in buy[:4]))
+    if sell:
+        parts.append("🔴 " + ", ".join(name(e) for e in sell[:4]))
+    for e in held_act[:3]:
+        parts.append(f"💼 {name(e)}: {e.holding['advice']['text']}")
+    if rep.errors:
+        parts.append(f"⚠️ {len(rep.errors)} Wert(e) ohne Daten")
+    return "\n".join(parts)
+
+
 def send_report(storage: Storage, settings: Settings) -> Report:
+    """Bericht erstellen, speichern und als kurze Push-Nachricht melden. Antippen öffnet den Bericht auf der Webseite.
+    Ohne bekannte Adresse der Oberfläche (app_url) kommt wie früher der ganze Bericht in die Nachricht."""
     rep = build_report(storage, settings)
     if not rep.entries and not rep.errors:
-        notify.send(settings, "TradeHelper Morgenreport", "Watchlist ist leer – nichts zu berichten.")
         return rep
-    notify.send(settings, "TradeHelper Morgenreport", rep.to_markdown(), tags=["sunrise"])
+    rid = storage.save_report(rep.to_dict())
+    if notify.link(settings):
+        notify.send(settings, "Dein Morgenbericht ist da", short_text(rep) + "\nAntippen für den ganzen Bericht.",
+                    tags=["sunrise"], path=f"/?bericht={rid}")
+    else:
+        notify.send(settings, "TradeHelper Morgenreport", rep.to_markdown(), tags=["sunrise"])
     return rep

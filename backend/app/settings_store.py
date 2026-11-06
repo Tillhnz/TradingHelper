@@ -1,12 +1,14 @@
 """Einstellungen, die in der Oberfläche geändert werden.
 
-Die Umgebungsvariablen liefern die Startwerte. Was gespeichert wird, steht in der Tabelle app_settings und
-überschreibt sie. Geheimnisse (API-Schlüssel, Token) werden nie an den Browser zurückgegeben; dort steht nur,
-ob ein Wert gesetzt ist.
+Die Umgebungsvariablen liefern die Startwerte. Server-weite Einstellungen (Zeitplan, Nachrichtenquellen, Adresse …)
+stehen in app_settings und dürfen nur vom Admin geändert werden. Persönliche Einstellungen (Strategie, Push-Kanal,
+Anzeigewährung, Schattendepot) stehen je Nutzer in user_settings. Geheimnisse (API-Schlüssel, Token) werden nie an den
+Browser zurückgegeben; dort steht nur, ob ein Wert gesetzt ist.
 """
 
 from __future__ import annotations
 
+import copy
 import re
 from zoneinfo import ZoneInfo
 
@@ -42,7 +44,11 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "alert_cooldown_minutes": ("int:0:10080", "schedule", False),
     "display_currency": ("choice:native,EUR,USD,CHF,GBP", "general", False),
     "timezone": ("tz", "general", False),
+    "app_url": ("url_or_empty", "general", False),
 }
+# Diese Einstellungen hat jeder Nutzer für sich
+USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
+             "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency"}
 SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "paper_enabled", "paper_time"}
 
 
@@ -90,6 +96,10 @@ def coerce(key: str, raw):
         if len(text) > int(args[0]):
             raise SettingError("Zu lang")
         return text
+    if base == "url_or_empty":
+        if not text:
+            return ""
+        base = "url"
     if base == "url":
         if not re.match(r"^https?://[^\s]+$", text) or len(text) > 300:
             raise SettingError("Adresse mit http:// oder https:// erwartet")
@@ -132,20 +142,47 @@ def _serialize(value) -> str:
 
 
 def apply_overrides(storage: Storage, settings: Settings) -> None:
-    for key, value in storage.app_settings().items():
-        if key in FIELDS:
+    """Server-weite Werte übernehmen. Persönliche Werte aus älteren Versionen (damals global) gehen an den Besitzer."""
+    saved = storage.app_settings()
+    owner = storage.admin()
+    for key in [k for k in saved if k in USER_KEYS]:
+        if owner:
+            mine = storage.for_user(owner["id"])
+            if key not in mine.user_settings():
+                mine.set_user_setting(key, saved[key])
+            storage.delete_app_setting(key)
+    for key, value in saved.items():
+        if key in FIELDS and key not in USER_KEYS:
             try:
                 setattr(settings, key, coerce(key, value))
             except SettingError:
                 continue
 
 
-def save(storage: Storage, settings: Settings, values: dict) -> list[str]:
-    """Speichert Änderungen. Geheimnisse: None = behalten, "" = löschen. Gibt geänderte Schlüssel zurück."""
+def for_user(storage: Storage, base: Settings) -> Settings:
+    """Einstellungen eines Nutzers: server-weite Werte plus seine persönlichen."""
+    cfg = copy.copy(base)
+    for key, value in storage.user_settings().items():
+        if key in USER_KEYS:
+            try:
+                setattr(cfg, key, coerce(key, value))
+            except SettingError:
+                continue
+    return cfg
+
+
+def save(storage: Storage, settings: Settings, values: dict, base: Settings | None = None,
+         is_admin: bool = True) -> list[str]:
+    """Speichert Änderungen. Geheimnisse: None = behalten, "" = löschen. Gibt geänderte Schlüssel zurück.
+    settings: die Einstellungen des Nutzers; base: die server-weiten (Standard: dieselben)."""
+    base = base or settings
     clean, errors = {}, {}
     for key, raw in values.items():
         if key not in FIELDS:
             errors[key] = "Unbekannte Einstellung"
+            continue
+        if key not in USER_KEYS and not is_admin:
+            errors[key] = "Nur der Admin kann das ändern"
             continue
         if FIELDS[key][2] and raw is None:
             continue
@@ -156,17 +193,24 @@ def save(storage: Storage, settings: Settings, values: dict) -> list[str]:
     if errors:
         raise SettingError("; ".join(f"{k}: {v}" for k, v in errors.items()))
     for key, value in clean.items():
-        storage.set_app_setting(key, _serialize(value))
+        if key in USER_KEYS:
+            storage.set_user_setting(key, _serialize(value))
+        else:
+            storage.set_app_setting(key, _serialize(value))
+            setattr(base, key, value)
         setattr(settings, key, value)
     return list(clean)
 
 
-def describe(storage: Storage, settings: Settings) -> dict:
-    saved = storage.app_settings()
+def describe(storage: Storage, settings: Settings, is_admin: bool = True) -> dict:
+    saved = {**storage.app_settings(), **storage.user_settings()}
     out = {}
     for key, (kind, group, secret) in FIELDS.items():
+        if key not in USER_KEYS and not is_admin:
+            continue
         value = getattr(settings, key)
-        entry = {"group": group, "secret": secret, "from_ui": key in saved, "type": kind}
+        entry = {"group": group, "secret": secret, "from_ui": key in saved, "type": kind,
+                 "scope": "user" if key in USER_KEYS else "server"}
         if secret:
             entry["set"] = bool(str(value).strip())
         else:

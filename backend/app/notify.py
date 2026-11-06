@@ -11,8 +11,15 @@ from .config import Settings
 log = logging.getLogger(__name__)
 
 
+def link(settings: Settings, path: str = "/") -> str | None:
+    """Adresse in der Oberfläche, die beim Antippen der Benachrichtigung geöffnet wird."""
+    base = (getattr(settings, "app_url", "") or "").rstrip("/")
+    return f"{base}{path if path.startswith('/') else '/' + path}" if base else None
+
+
 def send(settings: Settings, title: str, message: str, priority: str = "default",
-         tags: list[str] | None = None, click: str | None = None) -> bool:
+         tags: list[str] | None = None, click: str | None = None, path: str = "/") -> bool:
+    """Push über ntfy. Beim Antippen öffnet sich die Oberfläche (app_url + path), sofern die Adresse bekannt ist."""
     if not settings.ntfy_topic:
         log.warning("TH_NTFY_TOPIC nicht gesetzt – Nachricht nur geloggt: %s | %s", title, message)
         return False
@@ -27,6 +34,7 @@ def send(settings: Settings, title: str, message: str, priority: str = "default"
     }
     if tags:
         headers["Tags"] = ",".join(tags)
+    click = click or link(settings, path)
     if click:
         headers["Click"] = click
     if settings.ntfy_token:

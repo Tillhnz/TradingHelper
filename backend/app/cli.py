@@ -12,9 +12,9 @@ def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else ""
     st = Storage(settings.db_path)
     if cmd == "reset-login":
-        n = st.delete_users()
-        print(f"{n} Konto entfernt. Beim nächsten Aufruf der Oberfläche kannst du ein neues anlegen." if n
-              else "Es gab kein Konto.")
+        ok = st.reset_admin_login()
+        print("Anmeldung des Admins zurückgesetzt. Beim nächsten Aufruf der Oberfläche legst du Benutzername und "
+              "Passwort neu fest; alle Daten bleiben erhalten." if ok else "Es gab noch kein Konto.")
         return 0
     print("Befehle: reset-login")
     return 1

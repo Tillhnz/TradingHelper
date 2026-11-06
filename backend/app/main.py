@@ -17,7 +17,8 @@ from datetime import date
 from . import __version__, alerts, analysis, entry, events, indicators, market, news, notify, paper, portfolio, scheduler
 from . import settings_store
 from . import updater_client
-from .config import settings
+from .config import Settings
+from .config import settings as base_settings
 from .report import build_report, send_report
 from .security import create_token, hash_password, read_token, verify_password
 from .storage import Storage
@@ -29,9 +30,10 @@ _storage: Storage | None = None
 
 
 def get_storage() -> Storage:
+    """Datenbank für server-weite Dinge (Anmeldung, Nutzerverwaltung). Nutzerdaten: user_storage."""
     global _storage
-    if _storage is None or _storage.path != str(settings.db_path):
-        _storage = Storage(settings.db_path)
+    if _storage is None or _storage.path != str(base_settings.db_path):
+        _storage = Storage(base_settings.db_path)
     return _storage
 
 
@@ -40,11 +42,12 @@ async def lifespan(app: FastAPI):
     try:
         st = get_storage()
     except Exception:
-        log.exception("Datenbank %s lässt sich nicht öffnen. Ist der Ordner beschreibbar (Benutzer 10001)?", settings.db_path)
+        log.exception("Datenbank %s lässt sich nicht öffnen. Ist der Ordner beschreibbar (Benutzer 10001)?",
+                      base_settings.db_path)
         raise
-    settings_store.apply_overrides(st, settings)
-    if settings.scheduler_enabled:
-        scheduler.start(st, settings)
+    settings_store.apply_overrides(st, base_settings)
+    if base_settings.scheduler_enabled:
+        scheduler.start(st, base_settings)
     yield
     scheduler.stop()
 
@@ -59,16 +62,33 @@ def current_user(authorization: str | None = Header(default=None), st: Storage =
     unauthorized = HTTPException(401, "Nicht angemeldet")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise unauthorized
-    data = read_token(authorization[7:], settings.secret_key)
+    data = read_token(authorization[7:], base_settings.secret_key)
     if not data:
         raise unauthorized
     user = st.get_user(user_id=int(data["sub"]))
-    if not user or user["token_version"] != data.get("tv"):
+    if not user or user["token_version"] != data.get("tv") or not user["password_hash"]:
         raise unauthorized
     return user
 
 
+def user_storage(user: dict = Depends(current_user)) -> Storage:
+    """Datenbank, gebunden an den angemeldeten Nutzer: er sieht nur seine eigenen Daten."""
+    return get_storage().for_user(user["id"])
+
+
+def user_cfg(st: Storage = Depends(user_storage)) -> Settings:
+    """Einstellungen des angemeldeten Nutzers (server-weite plus persönliche)."""
+    return settings_store.for_user(st, base_settings)
+
+
+def require_admin(user: dict = Depends(current_user)) -> dict:
+    if not user.get("is_admin"):
+        raise HTTPException(403, "Nur der Admin darf das.")
+    return user
+
+
 auth = [Depends(current_user)]
+admin_only = [Depends(require_admin)]
 
 _fails: dict[str, list[float]] = {}
 
@@ -108,32 +128,109 @@ def health(st: Storage = Depends(get_storage)):
 
 @app.get("/api/auth/status")
 def auth_status(st: Storage = Depends(get_storage)):
-    return {"setup_required": st.user_count() == 0}
+    admin = st.admin()
+    # Einrichtung nötig: noch kein Konto, oder die Admin-Anmeldung wurde im Terminal zurückgesetzt
+    return {"setup_required": st.user_count() == 0 or (admin is not None and not admin["password_hash"])}
 
 
 @app.post("/api/auth/setup")
 def auth_setup(data: Credentials, st: Storage = Depends(get_storage)):
-    if st.user_count() > 0:
+    admin = st.admin()
+    if st.user_count() > 0 and not (admin and not admin["password_hash"]):
         raise HTTPException(409, "Es gibt bereits ein Konto. Bitte anmelden.")
     if len(data.password) < 8:
         raise HTTPException(422, "Das Passwort braucht mindestens 8 Zeichen.")
+    if admin:  # nach reset-login: Zugangsdaten neu setzen, Daten bleiben
+        other = st.get_user(username=data.username.strip())
+        if other and other["id"] != admin["id"]:
+            raise HTTPException(409, "Diesen Benutzernamen gibt es schon.")
+        st.set_password(admin["id"], hash_password(data.password), username=data.username.strip())
+        fresh = st.get_user(user_id=admin["id"])
+        return {"token": create_token(fresh["id"], fresh["token_version"], base_settings.secret_key)}
     uid = st.create_user(data.username.strip(), hash_password(data.password))
-    return {"token": create_token(uid, 0, settings.secret_key)}
+    return {"token": create_token(uid, 0, base_settings.secret_key)}
+
+
+class Registration(Credentials):
+    token: str = Field(min_length=10, max_length=100)
+
+
+@app.get("/api/auth/invite/{token}")
+def invite_check(token: str, request: Request, st: Storage = Depends(get_storage)):
+    _rate_limit(request)
+    inv = st.check_invite(token)
+    if not inv:
+        _fail(request)
+        raise HTTPException(404, "Diese Einladung ist ungültig, schon benutzt oder abgelaufen.")
+    owner = st.get_user(user_id=inv["created_by"])
+    return {"valid": True, "invited_by": owner["username"] if owner else None, "expires_at": inv["expires_at"]}
+
+
+@app.post("/api/auth/register")
+def register(data: Registration, request: Request, st: Storage = Depends(get_storage)):
+    """Konto über einen Einladungslink anlegen. Neue Nutzer haben eigene Daten und keine Admin-Rechte."""
+    _rate_limit(request)
+    if not st.check_invite(data.token):
+        _fail(request)
+        raise HTTPException(404, "Diese Einladung ist ungültig, schon benutzt oder abgelaufen.")
+    if len(data.password) < 8:
+        raise HTTPException(422, "Das Passwort braucht mindestens 8 Zeichen.")
+    if st.get_user(username=data.username.strip()):
+        raise HTTPException(409, "Diesen Benutzernamen gibt es schon.")
+    uid = st.create_user(data.username.strip(), hash_password(data.password), is_admin=False)
+    if not st.use_invite(data.token, uid):  # gleichzeitig benutzt
+        st.delete_user(uid)
+        raise HTTPException(409, "Diese Einladung wurde gerade schon benutzt.")
+    return {"token": create_token(uid, 0, base_settings.secret_key)}
 
 
 @app.post("/api/auth/login")
 def auth_login(data: Credentials, request: Request, st: Storage = Depends(get_storage)):
     _rate_limit(request)
     user = st.get_user(username=data.username.strip())
-    if not user or not verify_password(data.password, user["password_hash"]):
+    if not user or not user["password_hash"] or not verify_password(data.password, user["password_hash"]):
         _fail(request)
         raise HTTPException(401, "Benutzername oder Passwort falsch.")
-    return {"token": create_token(user["id"], user["token_version"], settings.secret_key)}
+    return {"token": create_token(user["id"], user["token_version"], base_settings.secret_key)}
 
 
 @app.get("/api/me")
 def me(user: dict = Depends(current_user)):
-    return {"id": user["id"], "username": user["username"]}
+    return {"id": user["id"], "username": user["username"], "is_admin": bool(user["is_admin"])}
+
+
+# ---------- Nutzer und Einladungen (nur Admin) ----------
+
+class InviteIn(BaseModel):
+    note: str = Field(default="", max_length=80)
+    days: int = Field(default=7, ge=1, le=60)
+
+
+@app.get("/api/users", dependencies=admin_only)
+def users_list(st: Storage = Depends(get_storage)):
+    return {"users": st.users(), "invites": st.invites()}
+
+
+@app.post("/api/users/invites", status_code=201)
+def invite_create(item: InviteIn, user: dict = Depends(require_admin), st: Storage = Depends(get_storage)):
+    """Einladungscode einmalig zurückgeben; die Oberfläche baut daraus den Link."""
+    token = st.create_invite(user["id"], item.note.strip(), item.days)
+    return {"token": token, "path": f"/einladung/{token}", "days": item.days}
+
+
+@app.delete("/api/users/invites/{invite_id}", dependencies=admin_only)
+def invite_delete(invite_id: int, st: Storage = Depends(get_storage)):
+    if not st.delete_invite(invite_id):
+        raise HTTPException(404, "Einladung nicht gefunden")
+    return {"ok": True}
+
+
+@app.delete("/api/users/{user_id}", dependencies=admin_only)
+def user_delete(user_id: int, st: Storage = Depends(get_storage)):
+    """Nutzer mit allen seinen Daten löschen. Der Admin selbst kann nicht gelöscht werden."""
+    if not st.delete_user(user_id):
+        raise HTTPException(404, "Nutzer nicht gefunden oder Admin")
+    return {"ok": True}
 
 
 @app.post("/api/auth/password")
@@ -142,12 +239,12 @@ def change_password(data: PasswordChange, user: dict = Depends(current_user), st
         raise HTTPException(403, "Das aktuelle Passwort stimmt nicht.")
     st.set_password(user["id"], hash_password(data.new))
     fresh = st.get_user(user_id=user["id"])
-    return {"token": create_token(fresh["id"], fresh["token_version"], settings.secret_key)}
+    return {"token": create_token(fresh["id"], fresh["token_version"], base_settings.secret_key)}
 
 
 # ---------- Kurse und Analyse ----------
 
-def _target(currency: str | None) -> str | None:
+def _target(currency: str | None, settings: Settings) -> str | None:
     """Gewünschte Anzeigewährung: Parameter, sonst Einstellung. None = Handelswährung."""
     c = currency or settings.display_currency or "native"
     if c == "native":
@@ -174,7 +271,7 @@ def _history(symbol: str, period: str, interval: str, target: str | None = None)
         raise HTTPException(404, str(exc)) from exc
 
 
-def _meta(symbol: str, target: str | None) -> dict:
+def _meta(symbol: str, target: str | None, settings: Settings) -> dict:
     info = _info(symbol)
     t = market.last_trade_time(symbol)
     return {
@@ -223,9 +320,9 @@ def quote(symbol: str):
 
 
 @app.get("/api/quotes", dependencies=auth)
-def quotes(symbols: str, currency: str | None = None):
+def quotes(symbols: str, currency: str | None = None, settings: Settings = Depends(user_cfg)):
     """Aktuelle Kurse mehrerer Werte für die Live-Anzeige (wird von der Oberfläche alle paar Sekunden abgefragt)."""
-    target = _target(currency)
+    target = _target(currency, settings)
     syms = [x.strip().upper() for x in symbols.split(",") if x.strip()][:40]
 
     def one(sym):
@@ -250,8 +347,8 @@ def search(q: str):
 
 @app.get("/api/history/{symbol}", dependencies=auth)
 def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str | None = None,
-            st: Storage = Depends(get_storage)):
-    target = _target(currency)
+            st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
+    target = _target(currency, settings)
     df = indicators.add_all(_history(symbol, period, interval, target))
     signal_events = events.signal_events(df, analysis.profile_from(settings))
     times = [int(ts.timestamp()) for ts in df.index]
@@ -261,7 +358,7 @@ def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str
         row = {"time": int(t)}
         row.update({c: _num(v) for c, v in zip(cols, values, strict=True)})
         rows.append(row)
-    meta = _meta(symbol, target)
+    meta = _meta(symbol, target, settings)
     if not meta["as_of"] and rows:
         meta["as_of"] = rows[-1]["time"]
     return {"symbol": symbol.upper(), "period": period, "interval": interval, "rows": rows, "events": signal_events,
@@ -270,16 +367,16 @@ def history(symbol: str, period: str = "1y", interval: str = "1d", currency: str
 
 @app.get("/api/analysis/{symbol}", dependencies=auth)
 def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_news: bool = True,
-            currency: str | None = None):
+            currency: str | None = None, settings: Settings = Depends(user_cfg)):
     """Ohne period wird der Zeitraum der Anlagestrategie genommen (gleiche Einschätzung wie im Report)."""
-    target = _target(currency)
+    target = _target(currency, settings)
     profile = analysis.profile_from(settings)
     df = _history(symbol, period or profile.period, interval, target)
     try:
         a = analysis.analyze(symbol, df, profile)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    meta = _meta(symbol, target)
+    meta = _meta(symbol, target, settings)
     items = news.collect(symbol, settings, meta.get("name")) if with_news else []
     rec = analysis.recommend(a, news.aggregate_sentiment(items))
     return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
@@ -287,14 +384,14 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
 
 
 @app.get("/api/news/market", dependencies=auth)
-def get_market_news(limit: int = 30):
+def get_market_news(limit: int = 30, settings: Settings = Depends(user_cfg)):
     """Allgemeine Wirtschafts- und Börsennachrichten aus den eingestellten Feeds (Startseite)."""
     items = news.market_news(settings, limit=max(1, min(limit, 100)))
     return {"feeds": [n for n, _ in news.parse_feed_list(settings.news_feeds)], "items": [i.to_dict() for i in items]}
 
 
 @app.get("/api/news/watchlist", dependencies=auth)
-def get_watchlist_news(limit: int = 20, per_symbol: int = 4, st: Storage = Depends(get_storage)):
+def get_watchlist_news(limit: int = 20, per_symbol: int = 4, st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     """Neueste Meldungen zu allen beobachteten und gehaltenen Werten, mit Name des Werts."""
     _sync_watchlist(st)
     rows = st.watchlist()[:40]
@@ -314,7 +411,7 @@ def get_watchlist_news(limit: int = 20, per_symbol: int = 4, st: Storage = Depen
 
 
 @app.get("/api/news/{symbol}", dependencies=auth)
-def get_news(symbol: str, limit: int = 25):
+def get_news(symbol: str, limit: int = 25, settings: Settings = Depends(user_cfg)):
     items = news.collect(symbol, settings, _info(symbol).get("name"), limit=max(1, min(limit, 50)))
     return {"symbol": symbol.upper(), "sources": news.sources(settings),
             "sentiment": news.aggregate_sentiment(items), "items": [i.to_dict() for i in items]}
@@ -330,7 +427,7 @@ def _sync_watchlist(st: Storage) -> None:
         st.add_symbol(sym, "", info.get("name"), info.get("exchange"), info.get("currency"), info.get("ticker"))
 
 
-def _holdings_by_symbol(st: Storage) -> dict[str, dict]:
+def _holdings_by_symbol(st: Storage, settings: Settings) -> dict[str, dict]:
     profile = analysis.profile_from(settings)
     groups: dict[str, list] = {}
     for p in st.positions():
@@ -343,16 +440,16 @@ class WatchlistIn(BaseModel):
 
 
 @app.get("/api/watchlist", dependencies=auth)
-def watchlist(st: Storage = Depends(get_storage)):
+def watchlist(st: Storage = Depends(user_storage)):
     return st.watchlist()
 
 
 @app.get("/api/watchlist/overview", dependencies=auth)
-def watchlist_overview(st: Storage = Depends(get_storage)):
+def watchlist_overview(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     """Kurs, Tagesänderung und technische Einschätzung je Wert (ohne News, damit es schnell bleibt)."""
     _sync_watchlist(st)
-    holdings = _holdings_by_symbol(st)
-    target = _target(None)
+    holdings = _holdings_by_symbol(st, settings)
+    target = _target(None, settings)
     profile = analysis.profile_from(settings)
     out = []
     for w in st.watchlist():
@@ -379,7 +476,7 @@ def watchlist_overview(st: Storage = Depends(get_storage)):
 
 
 @app.post("/api/watchlist", dependencies=auth, status_code=201)
-def watchlist_add(item: WatchlistIn, st: Storage = Depends(get_storage)):
+def watchlist_add(item: WatchlistIn, st: Storage = Depends(user_storage)):
     sym = item.symbol.strip().upper()
     try:
         info = market.symbol_info(sym)
@@ -390,14 +487,14 @@ def watchlist_add(item: WatchlistIn, st: Storage = Depends(get_storage)):
 
 
 @app.patch("/api/watchlist/{symbol}", dependencies=auth)
-def watchlist_note(symbol: str, item: WatchlistIn, st: Storage = Depends(get_storage)):
+def watchlist_note(symbol: str, item: WatchlistIn, st: Storage = Depends(user_storage)):
     if not st.update_note(symbol, item.note):
         raise HTTPException(404, f"{symbol} ist nicht in der Watchlist")
     return {"ok": True}
 
 
 @app.delete("/api/watchlist/{symbol}", dependencies=auth)
-def watchlist_remove(symbol: str, st: Storage = Depends(get_storage)):
+def watchlist_remove(symbol: str, st: Storage = Depends(user_storage)):
     if st.positions(symbol, open_only=True):
         raise HTTPException(409, f"{symbol.upper()} ist im Depot und bleibt deshalb in der Watchlist.")
     if not st.remove_symbol(symbol):
@@ -424,13 +521,13 @@ INTERVALS = ["5m", "15m", "30m", "1h", "1d", "1wk"]
 
 
 @app.get("/api/alerts/kinds", dependencies=auth)
-def alert_kinds():
+def alert_kinds(settings: Settings = Depends(user_cfg)):
     return {"intervals": INTERVALS, "currencies": market.CURRENCIES, "display_currency": settings.display_currency,
             "kinds": [{"name": k.name, "description": k.description, "params": k.params} for k in alerts.KINDS.values()]}
 
 
 @app.get("/api/alerts", dependencies=auth)
-def alert_list(st: Storage = Depends(get_storage)):
+def alert_list(st: Storage = Depends(user_storage)):
     out = []
     for a in st.alerts():
         d = a.to_dict()
@@ -442,7 +539,7 @@ def alert_list(st: Storage = Depends(get_storage)):
 
 
 @app.post("/api/alerts", dependencies=auth, status_code=201)
-def alert_add(item: AlertIn, st: Storage = Depends(get_storage)):
+def alert_add(item: AlertIn, st: Storage = Depends(user_storage)):
     if item.interval not in INTERVALS:
         raise HTTPException(422, f"Intervall muss eines von {', '.join(INTERVALS)} sein")
     if item.interval in market.INTRADAY and market.intraday_limit(item.symbol):
@@ -458,26 +555,26 @@ def alert_add(item: AlertIn, st: Storage = Depends(get_storage)):
 
 
 @app.patch("/api/alerts/{alert_id}", dependencies=auth)
-def alert_toggle(alert_id: int, data: AlertPatch, st: Storage = Depends(get_storage)):
+def alert_toggle(alert_id: int, data: AlertPatch, st: Storage = Depends(user_storage)):
     if not st.set_alert_active(alert_id, data.active):
         raise HTTPException(404, "Alarm nicht gefunden")
     return st.get_alert(alert_id).to_dict()
 
 
 @app.delete("/api/alerts/{alert_id}", dependencies=auth)
-def alert_remove(alert_id: int, st: Storage = Depends(get_storage)):
+def alert_remove(alert_id: int, st: Storage = Depends(user_storage)):
     if not st.remove_alert(alert_id):
         raise HTTPException(404, "Alarm nicht gefunden")
     return {"removed": alert_id}
 
 
 @app.post("/api/alerts/check", dependencies=auth)
-def alert_check(send: bool = True, st: Storage = Depends(get_storage)):
+def alert_check(send: bool = True, st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     return {"fired": alerts.check_all(st, settings, send=send)}
 
 
 @app.get("/api/alerts/log", dependencies=auth)
-def alert_log(limit: int = 50, st: Storage = Depends(get_storage)):
+def alert_log(limit: int = 50, st: Storage = Depends(user_storage)):
     rows = st.alert_log(min(limit, 500))
     for r in rows:
         info = _info(r["symbol"])
@@ -528,15 +625,15 @@ def _check_position(d: dict) -> None:
         raise HTTPException(422, "Verkauf liegt vor dem Kauf")
 
 
-def _total_currency() -> str:
+def _total_currency(settings: Settings) -> str:
     return settings.display_currency if settings.display_currency in market.CURRENCIES else "EUR"
 
 
 @app.get("/api/positions", dependencies=auth)
-def positions_list(st: Storage = Depends(get_storage)):
+def positions_list(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     profile = analysis.profile_from(settings)
     items = [portfolio.evaluate(p, profile) for p in st.positions()]
-    total_ccy = _total_currency()
+    total_ccy = _total_currency(settings)
     totals = {"currency": total_ccy, "invested": 0.0, "value": 0.0, "pl": 0.0, "realized": 0.0}
     for it in items:
         ccy = it["display_currency"]
@@ -556,7 +653,7 @@ def positions_list(st: Storage = Depends(get_storage)):
 
 
 @app.get("/api/holdings/{symbol}", dependencies=auth)
-def holding(symbol: str, st: Storage = Depends(get_storage)):
+def holding(symbol: str, st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     """Alles, was du von einem Wert besitzt oder besessen hast: Käufe mit Auswertung und Zusammenfassung."""
     profile = analysis.profile_from(settings)
     items = [portfolio.evaluate(p, profile) for p in st.positions(symbol)]
@@ -564,12 +661,12 @@ def holding(symbol: str, st: Storage = Depends(get_storage)):
 
 
 @app.get("/api/positions/history", dependencies=auth)
-def positions_history(st: Storage = Depends(get_storage)):
-    return portfolio.history(st.positions(), _total_currency())
+def positions_history(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
+    return portfolio.history(st.positions(), _total_currency(settings))
 
 
 @app.post("/api/positions", dependencies=auth, status_code=201)
-def position_add(item: PositionIn, st: Storage = Depends(get_storage)):
+def position_add(item: PositionIn, st: Storage = Depends(user_storage)):
     data = item.model_dump()
     create_alerts = data.pop("create_alerts")
     data["symbol"] = data["symbol"].strip().upper()
@@ -591,7 +688,7 @@ def position_add(item: PositionIn, st: Storage = Depends(get_storage)):
 
 
 @app.patch("/api/positions/{pos_id}", dependencies=auth)
-def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(get_storage)):
+def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(user_storage)):
     current = st.get_position(pos_id)
     if not current:
         raise HTTPException(404, "Position nicht gefunden")
@@ -623,22 +720,96 @@ def _move_alerts(st: Storage, old: dict, new: dict) -> None:
 
 
 @app.delete("/api/positions/{pos_id}", dependencies=auth)
-def position_remove(pos_id: int, st: Storage = Depends(get_storage)):
+def position_remove(pos_id: int, st: Storage = Depends(user_storage)):
     if not st.remove_position(pos_id):
         raise HTTPException(404, "Position nicht gefunden")
     return {"removed": pos_id}
 
 
+# ---------- Chart-Arbeitsplatz ----------
+
+class ChartPoint(BaseModel):
+    time: int
+    price: float
+
+
+class Drawing(BaseModel):
+    id: str = Field(max_length=40)
+    kind: str = Field(pattern="^(hline|trend|ray|fib)$")
+    points: list[ChartPoint] = Field(min_length=1, max_length=2)
+    color: str = Field(default="#f2b84b", pattern="^#[0-9a-fA-F]{6}$")
+    label: str = Field(default="", max_length=60)
+
+
+class Indicator(BaseModel):
+    id: str = Field(max_length=40)
+    kind: str = Field(pattern="^(sma|ema|bb|rsi|macd|volume)$")
+    params: dict[str, float] = Field(default_factory=dict)
+    color: str = Field(default="#6fd3c3", pattern="^#[0-9a-fA-F]{6}$")
+
+
+class ChartLayout(BaseModel):
+    type: str = Field(default="candles", pattern="^(area|line|candles|bars)$")
+    period: str = Field(default="6mo", max_length=5)
+    interval: str = Field(default="1d", max_length=4)
+    indicators: list[Indicator] = Field(default_factory=list, max_length=12)
+    drawings: list[Drawing] = Field(default_factory=list, max_length=80)
+
+
+@app.get("/api/charts", dependencies=auth)
+def charts_list(st: Storage = Depends(user_storage)):
+    names = {w["symbol"]: w for w in st.watchlist()}
+    return [{**c, "name": names.get(c["symbol"], {}).get("name"), "ticker": names.get(c["symbol"], {}).get("ticker")}
+            for c in st.chart_layouts()]
+
+
+@app.get("/api/charts/{symbol}", dependencies=auth)
+def chart_get(symbol: str, st: Storage = Depends(user_storage)):
+    """Gespeicherte Zeichnungen und Kennlinien eines Werts (oder eine leere Vorlage)."""
+    return st.chart_layout(symbol) or {**ChartLayout(indicators=[
+        Indicator(id="sma50", kind="sma", params={"period": 50}, color="#f2b84b"),
+        Indicator(id="sma200", kind="sma", params={"period": 200}, color="#8d9eb0"),
+        Indicator(id="vol", kind="volume")]).model_dump(), "updated_at": None}
+
+
+@app.put("/api/charts/{symbol}", dependencies=auth)
+def chart_save(symbol: str, layout: ChartLayout, st: Storage = Depends(user_storage)):
+    st.save_chart_layout(symbol, layout.model_dump())
+    return st.chart_layout(symbol)
+
+
+@app.delete("/api/charts/{symbol}", dependencies=auth)
+def chart_delete(symbol: str, st: Storage = Depends(user_storage)):
+    st.delete_chart_layout(symbol)
+    return {"ok": True}
+
+
 # ---------- Morgenreport ----------
 
 @app.get("/api/report", dependencies=auth)
-def report(st: Storage = Depends(get_storage)):
+def report(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     _sync_watchlist(st)
     return build_report(st, settings).to_dict()
 
 
+@app.get("/api/reports/latest", dependencies=auth)
+def report_latest(st: Storage = Depends(user_storage)):
+    rep = st.get_report()
+    if not rep:
+        raise HTTPException(404, "Noch kein Morgenbericht verschickt.")
+    return rep
+
+
+@app.get("/api/reports/{report_id}", dependencies=auth)
+def report_get(report_id: int, st: Storage = Depends(user_storage)):
+    rep = st.get_report(report_id)
+    if not rep:
+        raise HTTPException(404, "Bericht nicht gefunden.")
+    return rep
+
+
 @app.post("/api/report/send", dependencies=auth)
-def report_send(st: Storage = Depends(get_storage)):
+def report_send(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     if not settings.ntfy_topic:
         raise HTTPException(400, "Kein ntfy-Topic hinterlegt (Einstellungen → Benachrichtigungen).")
     rep = send_report(st, settings)
@@ -647,24 +818,29 @@ def report_send(st: Storage = Depends(get_storage)):
 
 # ---------- Einstellungen ----------
 
-@app.get("/api/settings", dependencies=auth)
-def get_settings_route(st: Storage = Depends(get_storage)):
-    return {"fields": settings_store.describe(st, settings), "next_runs": scheduler.next_runs()}
+@app.get("/api/settings")
+def get_settings_route(user: dict = Depends(current_user), st: Storage = Depends(user_storage),
+                       settings: Settings = Depends(user_cfg)):
+    admin = bool(user["is_admin"])
+    return {"fields": settings_store.describe(st, settings, admin), "next_runs": scheduler.next_runs(), "is_admin": admin}
 
 
-@app.put("/api/settings", dependencies=auth)
-def save_settings(values: dict, st: Storage = Depends(get_storage)):
+@app.put("/api/settings")
+def save_settings(values: dict, user: dict = Depends(current_user), st: Storage = Depends(user_storage),
+                  settings: Settings = Depends(user_cfg)):
+    admin = bool(user["is_admin"])
     try:
-        changed = settings_store.save(st, settings, values)
+        changed = settings_store.save(st, settings, values, base_settings, admin)
     except settings_store.SettingError as exc:
         raise HTTPException(422, str(exc)) from exc
     if set(changed) & settings_store.SCHEDULE_KEYS:
-        scheduler.replan(st, settings)
-    return {"changed": changed, "fields": settings_store.describe(st, settings), "next_runs": scheduler.next_runs()}
+        scheduler.replan(get_storage(), base_settings)
+    return {"changed": changed, "fields": settings_store.describe(st, settings, admin), "next_runs": scheduler.next_runs(),
+            "is_admin": admin}
 
 
 @app.post("/api/settings/test-notify", dependencies=auth)
-def test_notify():
+def test_notify(settings: Settings = Depends(user_cfg)):
     if not settings.ntfy_topic:
         raise HTTPException(400, "Bitte zuerst ein ntfy-Topic eintragen und speichern.")
     if not notify.send(settings, "TradeHelper Test", "Benachrichtigungen funktionieren ✅", tags=["white_check_mark"]):
@@ -675,13 +851,13 @@ def test_notify():
 # ---------- Schattendepot ----------
 
 @app.get("/api/paper", dependencies=auth)
-def paper_view(st: Storage = Depends(get_storage)):
+def paper_view(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     return {**paper.view(st, settings), "enabled": settings.paper_enabled,
             "next_run": scheduler.next_runs().get("paper_run")}
 
 
 @app.post("/api/paper/run", dependencies=auth)
-def paper_run(st: Storage = Depends(get_storage)):
+def paper_run(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     """Startet das Schattendepot (falls nötig) und handelt sofort nach den aktuellen Einschätzungen."""
     if not st.watchlist():
         raise HTTPException(400, "Die Watchlist ist leer – erst Werte hinzufügen.")
@@ -689,29 +865,29 @@ def paper_run(st: Storage = Depends(get_storage)):
 
 
 @app.post("/api/paper/reset", dependencies=auth)
-def paper_reset(st: Storage = Depends(get_storage)):
+def paper_reset(st: Storage = Depends(user_storage)):
     """Alles löschen und mit dem eingestellten Startkapital neu beginnen (der Rückblick bleibt)."""
     st.reset_paper()
     return {"ok": True}
 
 
 @app.get("/api/paper/backtest", dependencies=auth)
-def paper_backtest(st: Storage = Depends(get_storage)):
-    return {**paper.backtest_status(), "result": paper.last_backtest(st)}
+def paper_backtest(st: Storage = Depends(user_storage)):
+    return {**paper.backtest_status(st.uid), "result": paper.last_backtest(st)}
 
 
 @app.post("/api/paper/backtest", dependencies=auth)
-def paper_backtest_start(st: Storage = Depends(get_storage)):
+def paper_backtest_start(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     if not st.watchlist():
         raise HTTPException(400, "Die Watchlist ist leer – erst Werte hinzufügen.")
     paper.start_backtest(st, settings)
-    return paper.backtest_status()
+    return paper.backtest_status(st.uid)
 
 
 # ---------- Administration ----------
 
-@app.get("/api/admin/status", dependencies=auth)
-def admin_status(st: Storage = Depends(get_storage)):
+@app.get("/api/admin/status", dependencies=admin_only)
+def admin_status(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     checks = [
         {"label": "Benachrichtigungen (ntfy)", "ok": bool(settings.ntfy_topic),
          "text": f"{settings.ntfy_url}/{settings.ntfy_topic}" if settings.ntfy_topic else "kein Topic hinterlegt"},
@@ -733,26 +909,26 @@ def admin_status(st: Storage = Depends(get_storage)):
         "version": __version__,
         "checks": checks,
         "next_runs": scheduler.next_runs(),
-        "counts": {"watchlist": len(st.watchlist()), "alerts": len(st.alerts(active_only=True))},
+        "counts": {"watchlist": len(st.watchlist()), "alerts": len(st.alerts(active_only=True)), "users": st.user_count()},
     }
 
 
-@app.get("/api/admin/update", dependencies=auth)
+@app.get("/api/admin/update", dependencies=admin_only)
 def update_status(check: bool = False):
     return updater_client.call("GET", "/status" + ("?check=1" if check else ""), timeout=120 if check else 30)
 
 
-@app.post("/api/admin/update", dependencies=auth, status_code=202)
+@app.post("/api/admin/update", dependencies=admin_only, status_code=202)
 def start_update():
     return updater_client.call("POST", "/update")
 
 
-@app.get("/api/admin/backups", dependencies=auth)
+@app.get("/api/admin/backups", dependencies=admin_only)
 def list_backups():
     return updater_client.call("GET", "/backups")
 
 
-@app.post("/api/admin/backups", dependencies=auth, status_code=201)
+@app.post("/api/admin/backups", dependencies=admin_only, status_code=201)
 def create_backup():
     return updater_client.call("POST", "/backups", timeout=120)
 

@@ -38,7 +38,35 @@ def test_settings_save_and_override(tmp_path):
 
     fresh = Settings(data_dir=tmp_path)
     settings_store.apply_overrides(st, fresh)
-    assert fresh.report_time == "06:45" and fresh.ntfy_topic == "mein-topic"
+    assert fresh.report_time == "06:45" and fresh.ntfy_topic == ""  # Push-Kanal ist persönlich
+    mine = settings_store.for_user(st, fresh)
+    assert mine.ntfy_topic == "mein-topic" and mine.risk_profile == "conservative" and mine.report_time == "06:45"
+    other = settings_store.for_user(st.for_user(2), fresh)
+    assert other.ntfy_topic == "" and other.risk_profile == fresh.risk_profile
+
+
+def test_settings_user_scope_and_admin_only(tmp_path):
+    st = Storage(tmp_path / "t.db")
+    base = Settings(data_dir=tmp_path)
+    anna = st.for_user(2)
+    cfg = settings_store.for_user(anna, base)
+    settings_store.save(anna, cfg, {"risk_profile": "aggressive"}, base, is_admin=False)
+    assert cfg.risk_profile == "aggressive" and base.risk_profile != "aggressive"
+    with pytest.raises(settings_store.SettingError):
+        settings_store.save(anna, cfg, {"report_time": "05:00"}, base, is_admin=False)
+    desc = settings_store.describe(anna, cfg, is_admin=False)
+    assert "report_time" not in desc and desc["risk_profile"]["scope"] == "user"
+
+
+def test_old_global_user_settings_move_to_owner(tmp_path):
+    st = Storage(tmp_path / "t.db")
+    st.create_user("till", "h")
+    st.set_app_setting("risk_profile", "aggressive")
+    st.set_app_setting("report_time", "06:00")
+    base = Settings(data_dir=tmp_path)
+    settings_store.apply_overrides(st, base)
+    assert "risk_profile" not in st.app_settings() and st.user_settings() == {"risk_profile": "aggressive"}
+    assert base.report_time == "06:00"
 
 
 def test_settings_secrets_hidden_and_kept(tmp_path):
@@ -46,7 +74,8 @@ def test_settings_secrets_hidden_and_kept(tmp_path):
     s = Settings(data_dir=tmp_path)
     settings_store.save(st, s, {"finnhub_api_key": "abc"})
     desc = settings_store.describe(st, s)
-    assert desc["finnhub_api_key"] == {"group": "news", "secret": True, "from_ui": True, "type": "str:100", "set": True}
+    assert desc["finnhub_api_key"] == {"group": "news", "secret": True, "from_ui": True, "type": "str:100", "set": True,
+                                       "scope": "server"}
     settings_store.save(st, s, {"finnhub_api_key": None})  # None = behalten
     assert s.finnhub_api_key == "abc"
     settings_store.save(st, s, {"finnhub_api_key": ""})  # leer = löschen
@@ -70,4 +99,4 @@ def test_user_storage(tmp_path):
     assert st.get_user(username="TILL")["id"] == uid
     st.set_password(uid, "neu")
     assert st.get_user(user_id=uid)["token_version"] == 1
-    assert st.delete_users() == 1
+    assert st.users()[0]["is_admin"] == 1

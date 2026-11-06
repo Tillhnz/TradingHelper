@@ -169,7 +169,7 @@ def test_watch_notifies_once(fake_market, tmp_path):
     st.add_position({"symbol": "BBB", "quantity": 10, "buy_price": 50.0, "buy_date": fake_market.isoformat(),
                      "stop": 42.0, "currency": ""})
     got = []
-    send = lambda title, text: got.append(text)  # noqa: E731
+    send = lambda title, text, path=None: got.append(text)  # noqa: E731
     portfolio.watch(st, Settings(), send)
     assert len(got) == 1 and "Stopp" in got[0]
     portfolio.watch(st, Settings(), send)

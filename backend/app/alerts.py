@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
+from urllib.parse import quote
 
 import pandas as pd
 
@@ -253,5 +254,5 @@ def check_all(storage: Storage, settings: Settings, send: bool = True) -> list[d
             name = label(alert.symbol)
             when = {"1d": "Tageskurs", "1wk": "Wochenkurs"}.get(alert.interval, alert.interval)
             notify.send(settings, f"Alarm: {name}", f"**{name}**: {msg} ({when})",
-                        priority="high", tags=["chart_with_upwards_trend"])
+                        priority="high", tags=["chart_with_upwards_trend"], path=f"/chart/{quote(alert.symbol)}")
     return fired

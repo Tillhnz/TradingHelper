@@ -236,3 +236,75 @@ def test_quotes_and_trailing_position(client, monkeypatch):
     hold = client.get("/api/holdings/AAPL", headers=h).json()["items"][0]
     assert hold["trail_pct"] == 6 and hold["stop"] >= 90
     assert client.patch(f"/api/positions/{p['id']}", json={"trail_pct": 0}, headers=h).json()["trail_pct"] is None
+
+
+def test_invite_and_isolated_users(client):
+    h = _login(client)
+    assert client.get("/api/me", headers=h).json()["is_admin"] is True
+    client.post("/api/watchlist", json={"symbol": "AAPL"}, headers=h)
+    client.put("/api/settings", json={"risk_profile": "aggressive", "report_time": "06:30"}, headers=h)
+    inv = client.post("/api/users/invites", json={"note": "Anna"}, headers=h).json()
+    assert inv["path"].startswith("/einladung/")
+    assert client.get(f"/api/auth/invite/{inv['token']}").json()["invited_by"] == "till"
+    r = client.post("/api/auth/register", json={"token": inv["token"], "username": "anna", "password": "annas-pass1"})
+    assert r.status_code == 200
+    ha = {"Authorization": f"Bearer {r.json()['token']}"}
+    # Einladung nur einmal
+    assert client.post("/api/auth/register", json={"token": inv["token"], "username": "bob",
+                                                   "password": "bobs-pass12"}).status_code == 404
+    # eigene, leere Daten und eigene Strategie
+    assert client.get("/api/watchlist", headers=ha).json() == []
+    sa = client.get("/api/settings", headers=ha).json()
+    assert sa["is_admin"] is False and "report_time" not in sa["fields"]
+    assert sa["fields"]["risk_profile"]["value"] != "aggressive"
+    assert client.put("/api/settings", json={"report_time": "05:00"}, headers=ha).status_code == 422
+    assert client.put("/api/settings", json={"risk_profile": "conservative"}, headers=ha).status_code == 200
+    assert client.get("/api/settings", headers=h).json()["fields"]["risk_profile"]["value"] == "aggressive"
+    client.post("/api/watchlist", json={"symbol": "MSFT"}, headers=ha)
+    assert [w["symbol"] for w in client.get("/api/watchlist", headers=h).json()] == ["AAPL"]
+    pos = client.post("/api/positions", json={"symbol": "AAPL", "quantity": 1, "buy_price": 100,
+                                              "buy_date": "2026-01-02"}, headers=h).json()
+    assert client.delete(f"/api/positions/{pos['id']}", headers=ha).status_code == 404
+    # nur der Admin verwaltet Nutzer und Updates
+    assert client.get("/api/users", headers=ha).status_code == 403
+    assert client.get("/api/admin/status", headers=ha).status_code == 403
+    users = client.get("/api/users", headers=h).json()
+    assert [u["username"] for u in users["users"]] == ["till", "anna"] and users["invites"][0]["used_by_name"] == "anna"
+    anna = users["users"][1]["id"]
+    assert client.delete(f"/api/users/{anna}", headers=h).status_code == 200
+    assert client.get("/api/me", headers=ha).status_code == 401
+
+
+def test_report_push_is_short_and_links_to_site(client, monkeypatch):
+    from app import notify
+    sent = []
+    monkeypatch.setattr(notify.requests, "post", lambda url, data, headers, timeout: sent.append((url, data, headers)) or
+                        type("R", (), {"raise_for_status": lambda self: None})())
+    h = _login(client)
+    client.post("/api/watchlist", json={"symbol": "AAPL"}, headers=h)
+    client.put("/api/settings", json={"ntfy_topic": "test", "app_url": "http://th.local:8080/"}, headers=h)
+    assert client.post("/api/report/send", headers=h).status_code == 200
+    url, body, headers = sent[-1]
+    assert headers["Click"].startswith("http://th.local:8080/?bericht=")
+    assert b"Werte gepr" in body and b"Score" not in body  # kurz, keine Details
+    rid = int(headers["Click"].rsplit("=", 1)[1])
+    rep = client.get(f"/api/reports/{rid}", headers=h).json()
+    assert rep["entries"][0]["symbol"] == "AAPL" and client.get("/api/reports/latest", headers=h).json()["id"] == rid
+
+
+def test_chart_layouts(client):
+    h = _login(client)
+    d = client.get("/api/charts/AAPL", headers=h).json()
+    assert d["updated_at"] is None and [i["kind"] for i in d["indicators"]] == ["sma", "sma", "volume"]
+    layout = {"type": "line", "period": "1y", "interval": "1d",
+              "indicators": [{"id": "r", "kind": "rsi", "params": {"period": 14}, "color": "#ffffff"}],
+              "drawings": [{"id": "a", "kind": "hline", "points": [{"time": 1, "price": 180.5}], "label": "Widerstand"},
+                           {"id": "b", "kind": "trend", "points": [{"time": 1, "price": 1}, {"time": 2, "price": 2}]}]}
+    r = client.put("/api/charts/aapl", json=layout, headers=h)
+    assert r.status_code == 200 and r.json()["drawings"][0]["label"] == "Widerstand"
+    assert client.get("/api/charts", headers=h).json()[0]["symbol"] == "AAPL"
+    bad = {**layout, "drawings": [{"id": "x", "kind": "kreis", "points": [{"time": 1, "price": 1}]}]}
+    assert client.put("/api/charts/AAPL", json=bad, headers=h).status_code == 422
+    assert client.put("/api/charts/AAPL", json={**layout, "drawings": [{"id": "x", "kind": "hline", "points": [
+        {"time": 1, "price": 1}], "color": "red"}]}, headers=h).status_code == 422
+    assert client.delete("/api/charts/AAPL", headers=h).json() == {"ok": True}

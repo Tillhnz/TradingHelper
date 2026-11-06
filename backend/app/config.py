@@ -47,6 +47,7 @@ class Settings:
     news_google: bool = field(default_factory=lambda: _bool(_env("news_google", "true")))
     news_yahoo: bool = field(default_factory=lambda: _bool(_env("news_yahoo", "true")))
     news_feeds: str = field(default_factory=lambda: _env("news_feeds", DEFAULT_FEEDS))
+    app_url: str = field(default_factory=lambda: _env("app_url", ""))  # Adresse der Oberfläche für Push-Links
     ntfy_url: str = field(default_factory=lambda: _env("ntfy_url", "https://ntfy.sh"))
     ntfy_topic: str = field(default_factory=lambda: _env("ntfy_topic", ""))
     ntfy_token: str = field(default_factory=lambda: _env("ntfy_token", ""))

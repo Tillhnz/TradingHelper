@@ -350,12 +350,16 @@ def backtest(histories: dict[str, pd.DataFrame], capital: float, fee: float, cur
 
 # ---------- Hintergrund-Rückblick ----------
 
-_BT = {"status": "idle", "progress": 0.0, "error": None}
-_BT_LOCK = threading.Lock()
+_BTS: dict[int, dict] = {}  # Fortschritt je Nutzer
+_BT_LOCK = threading.Lock()  # immer nur ein Rückblick gleichzeitig (schont CPU und Kursquellen)
 
 
-def backtest_status() -> dict:
-    return dict(_BT)
+def _bt(uid: int) -> dict:
+    return _BTS.setdefault(uid, {"status": "idle", "progress": 0.0, "error": None})
+
+
+def backtest_status(uid: int = 1) -> dict:
+    return dict(_bt(uid))
 
 
 def _target(settings) -> str | None:
@@ -365,8 +369,8 @@ def _target(settings) -> str | None:
 
 def run_backtest(storage, settings) -> None:
     """Lädt fünf Jahre Kurse aller Watchlist-Werte und rechnet den Rückblick. Ergebnis in paper_state."""
-    if not _BT_LOCK.acquire(blocking=False):
-        return
+    _BT = _bt(storage.uid)
+    _BT_LOCK.acquire()  # wartet, falls gerade ein anderer Nutzer rechnet
     try:
         _BT.update(status="running", progress=0.0, error=None)
         target = _target(settings)
@@ -401,6 +405,7 @@ def run_backtest(storage, settings) -> None:
 
 
 def start_backtest(storage, settings) -> bool:
+    _BT = _bt(storage.uid)
     if _BT["status"] == "running":
         return False
     _BT.update(status="running", progress=0.0, error=None)
@@ -523,7 +528,7 @@ def run_live(storage, settings, push: bool | None = None) -> dict:
                 res = f" ({t['pl']:+.2f}, {t['pl_pct']:+.1f} %)" if t["pl"] is not None else ""
                 lines.append(f"**{verb} {names.get(t['symbol'], t['symbol'])}**: {t['shares']:g} × {t['price']:.2f}{res}"
                              f" – {t['reason']}")
-            notify.send(settings, "Schattendepot", "\n".join(lines), tags=["robot"])
+            notify.send(settings, "Schattendepot", "\n".join(lines), tags=["robot"], path="/depot/schatten")
         return {"trades": new, "errors": errors, "equity": round(equity, 2)}
 
 
