@@ -161,7 +161,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
         const hi = b.price, lo = a.price;
         for (const lvl of FIB_LEVELS) {
           addLine({ price: hi - (hi - lo) * lvl, color: d.color, lineWidth: lvl === 0.5 || lvl === 0.618 ? width : 1,
-            lineStyle: lvl === 0 || lvl === 1 ? LineStyle.Solid : LineStyle.Dashed, axisLabelVisible: false,
+            lineStyle: lvl === 0 || lvl === 1 ? LineStyle.Solid : LineStyle.Dashed, axisLabelVisible: true,
             title: `${d.label ? `${d.label} ` : ""}${fmtPct(lvl)}` });
         }
       }
