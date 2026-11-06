@@ -320,4 +320,4 @@ def test_position_buy_time(client):
     r = client.patch(f"/api/positions/{p['id']}", json={"buy_time": "", "buy_price": 101.5}, headers=h).json()
     assert r["buy_time"] is None and r["buy_price"] == 101.5
     hist = client.get("/api/history/AAPL?period=1y", headers=h).json()
-    assert hist["positions"][0]["buy_price"] == 101.5 and "buy_time" in hist["positions"][0]
+    assert hist["positions"][0]["buy_time"] is None and hist["positions"][0]["quantity"] == 2  # Kurse in Anzeigewährung
