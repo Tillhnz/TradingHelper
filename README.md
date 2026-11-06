@@ -40,12 +40,14 @@ curl -fsSL https://raw.githubusercontent.com/Tillhnz/tradinghelper/main/install.
 
 | Bereich | Details |
 |---|---|
-| Heute | Einschätzung je Watchlist-Wert: 🟢 Kaufen prüfen · 🟡 Halten · 🔴 Reduzieren prüfen, mit Begründung und Schlagzeile; per Knopf als Push senden |
+| Heute | Einschätzung je Watchlist-Wert: 🟢 Kaufen prüfen · 🟡 Halten · 🔴 Reduzieren prüfen, mit Begründung und Schlagzeile. Der Morgenbericht kommt als kurze Push-Nachricht; Antippen öffnet ihn vollständig als Fenster auf der Webseite |
+| Charts | Eigener Arbeitsplatz je Wert: waagrechte Linien (mit Alarm per Klick), Trendlinien, Strahlen, Fibonacci; Kennlinien SMA, EMA, Bollinger, Volumen, RSI, MACD mit frei wählbaren Perioden und Farben; Kerzen, Balken, Linie oder Fläche; wird je Nutzer automatisch gespeichert |
+| Nutzer | Weitere Personen per Einladungslink (einmalig, 7 Tage gültig). Jeder hat eigene Watchlist, Käufe, Alarme, Schattendepot, Strategie, Anzeigewährung und Push-Kanal. Nur der erste Nutzer (Admin) sieht Administration, Zeitplan, Nachrichtenquellen und Updates |
 | Watchlist | Kurs, Tagesänderung, 30-Tage-Verlauf, RSI, Einschätzung |
 | Chart | Kerzen mit Volumen, SMA 20/50/200, Bollinger, Unterstützung/Widerstand, RSI- und MACD-Fenster; Tag, Woche, Stunde, 15 Minuten |
 | Analyse | SMA, EMA, RSI, MACD, Bollinger, Stochastik, ADX, ATR, OBV, Volumen → Einzelsignale und Score; News-Stimmung aus Google News, Yahoo Finance und Finnhub (zusammengeführt, ohne Duplikate) |
 | Alarme | 16 Bedingungen: Kurs über/unter, Kreuzungen, RSI-Schwellen, MACD-Kreuz, Golden/Death Cross, Kurs kreuzt MA, Bollinger-Ausbruch, Volumenspitze, neue Hochs/Tiefs, Tagesbewegung; beliebiges Kerzenintervall, Pause nach Auslösung, einmalig |
-| Einstellungen | ntfy, Nachrichtenquellen und Marktfeeds, Zeitplan von Report und Alarmprüfung, Zeitzone – alles ohne Neustart |
+| Einstellungen | ntfy (Antippen einer Nachricht öffnet TradeHelper; die Adresse wird beim ersten Aufruf übernommen), Nachrichtenquellen und Marktfeeds, Zeitplan von Report und Alarmprüfung, Zeitzone – alles ohne Neustart |
 | Administration | Zustand der Dienste, **Update per Knopf** (mit Sicherung vorher und automatischem Zurückrollen), Sicherungen |
 
 | Depot | Käufe erfassen (im Chart vorbelegt mit Kurs, Stopp, Ziel und Stückzahl aus dem Einstiegsplan), Gewinn/Verlust je Position und als Verlauf, Hinweise „Stopp erreicht“, „Ziel erreicht“, „Stopp nachziehen“; im Chart grüne Gewinn- und rote Verlustzone ab Kaufkurs |
@@ -73,7 +75,7 @@ cd ~/tradinghelper
 ./install.sh update        # neueste Version
 ./install.sh backup        # Sicherung nach backups/
 ./install.sh restore backups/tradehelper-….db.gz
-./install.sh reset-login   # Passwort vergessen: Konto neu anlegen (Daten bleiben)
+./install.sh reset-login   # Admin-Passwort vergessen: Zugangsdaten neu festlegen (alle Daten bleiben)
 ./install.sh logs
 ```
 
