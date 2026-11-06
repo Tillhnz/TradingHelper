@@ -185,12 +185,12 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
 await page.goto(`${base}/charts/DE0007164600.GTX`);
 await page.waitForTimeout(7000);
 await page.getByRole("button", { name: /Waagrechte Linie/ }).click();
-const box = await page.locator(".ws-main").boundingBox();
-await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.35);
+const wsBox = await page.locator(".ws-main").boundingBox();
+await page.mouse.click(wsBox.x + wsBox.width * 0.6, wsBox.y + wsBox.height * 0.35);
 await page.waitForTimeout(500);
 await page.getByRole("button", { name: /Trendlinie/ }).click();
-await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.75);
-await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.45);
+await page.mouse.click(wsBox.x + wsBox.width * 0.2, wsBox.y + wsBox.height * 0.75);
+await page.mouse.click(wsBox.x + wsBox.width * 0.7, wsBox.y + wsBox.height * 0.45);
 await page.getByLabel("Kennlinie hinzufügen").selectOption("rsi");
 await page.getByRole("button", { name: /Bewegen/ }).click();
 await page.waitForTimeout(2500);
