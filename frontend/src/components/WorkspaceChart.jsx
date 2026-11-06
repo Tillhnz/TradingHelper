@@ -114,6 +114,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     // derselbe Punkt aber nur einmal
     let last = { x: null, y: null, at: 0 };
     const handle = (param) => {
+      (window.__wsClicks ||= []).push({ tool: toolRef.current, point: param.point, time: param.time });
       if (!toolRef.current || !param.point) return;
       const now = Date.now();
       if (param.point.x === last.x && param.point.y === last.y && now - last.at < 700) return;
