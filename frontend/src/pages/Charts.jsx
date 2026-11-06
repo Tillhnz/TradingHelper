@@ -97,7 +97,7 @@ function Workspace({ symbol }) {
     if (!layout) return;
     setRows(null);
     api.get(`/history/${encodeURIComponent(symbol)}?period=${period}&interval=${interval}`)
-      .then((r) => { setRows(r.rows); setMeta(r.meta); setError(""); })
+      .then((r) => { setRows(r.rows); setMeta(r.meta || r); setError(""); })
       .catch((e) => setError(e.message));
   }, [symbol, period, interval, !!layout]); // eslint-disable-line react-hooks/exhaustive-deps
 

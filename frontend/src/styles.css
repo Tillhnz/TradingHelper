@@ -857,3 +857,4 @@ h1 { font-size: 2.4rem; }
   .ws-lists { grid-template-columns: 1fr; }
   .ws-main { height: 52vh; }
 }
+.ws-toolbar select { width: auto; flex: 0 1 auto; }

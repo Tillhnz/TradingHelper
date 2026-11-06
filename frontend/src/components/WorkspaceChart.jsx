@@ -104,7 +104,11 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       syncing = false;
       if (c === main) state.current.range = range;
     }));
+    // Startansicht: alle Kurse; die Unterfenster folgen dem Hauptchart
     if (state.current.range) main.timeScale().setVisibleLogicalRange(state.current.range);
+    else main.timeScale().fitContent();
+    const r0 = main.timeScale().getVisibleLogicalRange();
+    if (r0) charts.slice(1).forEach((c) => c.timeScale().setVisibleLogicalRange(r0));
 
     main.subscribeClick((param) => {
       if (!toolRef.current || !param.point) return;
