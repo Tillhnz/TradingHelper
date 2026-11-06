@@ -220,6 +220,7 @@ export default function ChartPage() {
           <button className="btn primary" onClick={() => setBuying(true)}>{held ? "Nachkauf erfassen" : "Kauf erfassen"}</button>
           {watched !== null && !held && <button className="btn" onClick={toggleWatch}>{watched ? "✓ Beobachtet" : "☆ Beobachten"}</button>}
           <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>🔔 Alarm</Link>
+          <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Linien und Kennlinien selbst einzeichnen">✏️ Zeichnen</Link>
         </div>
       </div>
       {msg && <p className="ok" role="status">{msg}</p>}

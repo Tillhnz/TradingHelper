@@ -181,5 +181,75 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   await pg.close();
 }
 
+// Chart-Arbeitsplatz: Linie setzen, Trendlinie, RSI dazu
+await page.goto(`${base}/charts/DE0007164600.GTX`);
+await page.waitForTimeout(7000);
+await page.getByRole("button", { name: /Waagrechte Linie/ }).click();
+const box = await page.locator(".ws-main").boundingBox();
+await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.35);
+await page.waitForTimeout(500);
+await page.getByRole("button", { name: /Trendlinie/ }).click();
+await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.75);
+await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.45);
+await page.getByLabel("Kennlinie hinzufügen").selectOption("rsi");
+await page.getByRole("button", { name: /Bewegen/ }).click();
+await page.waitForTimeout(2500);
+await page.screenshot({ path: "shots/workspace.png", fullPage: true });
+const layout = await api("/charts/DE0007164600.GTX");
+console.log("workspace layout", JSON.stringify({ drawings: layout.drawings?.map((d) => d.kind), indicators: layout.indicators?.map((i) => i.kind) }));
+await page.goto(`${base}/charts`);
+await page.waitForTimeout(2500);
+await page.screenshot({ path: "shots/charts-picker.png" });
+
+// Morgenbericht: verschicken (Test-Topic) und als Pop-up öffnen
+const putSettings = (body) => fetch(`${base}/api/settings`, { method: "PUT", headers: H, body: JSON.stringify(body) }).then(json);
+await putSettings({ ntfy_topic: `th-ci-${Date.now()}`, app_url: "http://tradehelper.test" });
+console.log("report send", JSON.stringify(await api("/report/send", {})));
+await page.goto(`${base}/?bericht=latest`);
+await page.waitForTimeout(3000);
+await page.goto(`${base}/`);
+await page.waitForTimeout(6000);
+await page.getByRole("button", { name: "Letzter Morgenbericht" }).click();
+await page.waitForTimeout(2500);
+await page.screenshot({ path: "shots/report-modal.png" });
+console.log("report modal", JSON.stringify(await page.evaluate(() => ({
+  title: document.querySelector(".modal h2")?.textContent, items: document.querySelectorAll(".report-item").length,
+}))));
+await page.keyboard.press("Escape");
+
+// Einladung: Link in der Administration erstellen, zweiten Nutzer anlegen, getrennte Daten prüfen
+await page.goto(`${base}/admin`);
+await page.waitForTimeout(2500);
+await page.getByLabel(/Für wen/).fill("Anna");
+await page.getByRole("button", { name: "Einladungslink erstellen" }).click();
+await page.waitForTimeout(1500);
+const inviteUrl = (await page.locator(".invite-link code").textContent()).trim();
+await page.screenshot({ path: "shots/admin-users.png", fullPage: true });
+console.log("invite", inviteUrl.replace(/[^/]+$/, "…"));
+const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+const anna = await ctx2.newPage();
+anna.on("pageerror", (e) => errors.push(`pageerror anna ${anna.url()}: ${e.message}`));
+await anna.goto(inviteUrl);
+await anna.waitForTimeout(2000);
+await anna.screenshot({ path: "shots/mobile-register.png" });
+await anna.getByLabel("Benutzername").fill("anna");
+await anna.getByLabel(/^Passwort/).first().fill("annas-pass1");
+await anna.getByLabel("Passwort wiederholen").fill("annas-pass1");
+await anna.getByRole("button", { name: "Konto anlegen" }).click();
+await anna.waitForTimeout(5000);
+await anna.screenshot({ path: "shots/mobile-anna-home.png", fullPage: true });
+await anna.goto(`${base}/watchlist`);
+await anna.waitForTimeout(3000);
+console.log("anna", JSON.stringify(await anna.evaluate(async () => {
+  const t = localStorage.getItem("tradehelper_token");
+  const get = (p) => fetch(`/api${p}`, { headers: { Authorization: `Bearer ${t}` } }).then((r) => r.json().then((j) => [r.status, j]));
+  return { me: await get("/me"), watchlist: (await get("/watchlist"))[1], admin: (await get("/admin/status"))[0],
+    adminLink: !!document.querySelector('a[href="/admin"]') };
+})));
+await anna.goto(`${base}/settings`);
+await anna.waitForTimeout(2500);
+await anna.screenshot({ path: "shots/mobile-anna-settings.png", fullPage: true });
+await ctx2.close();
+
 console.log("ERRORS", JSON.stringify(errors, null, 2));
 await browser.close();

@@ -3,7 +3,7 @@ import { api } from "../api.js";
 import { ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime } from "../fmt.js";
 
-const JOB_LABEL = { morning_report: "Morgenreport", alert_check: "Alarmprüfung" };
+const JOB_LABEL = { morning_report: "Morgenreport", alert_check: "Alarmprüfung", paper_run: "Schattendepot", paper_backtest: "Rückblick" };
 
 function Status() {
   const [st, setSt] = useState(null);
@@ -25,7 +25,7 @@ function Status() {
             ))}
           </ul>
           <p className="muted small">
-            {st.counts.watchlist} Werte in der Watchlist · {st.counts.alerts} aktive Alarme
+            {st.counts.users} {st.counts.users === 1 ? "Nutzer" : "Nutzer"} · deine Watchlist: {st.counts.watchlist} Werte · {st.counts.alerts} aktive Alarme
             {Object.entries(st.next_runs).map(([k, v]) => ` · ${JOB_LABEL[k] || k}: ${dateTime(v)}`)}
           </p>
         </>
@@ -159,10 +159,108 @@ function Backups() {
   );
 }
 
+function Users() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const [link, setLink] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(() => api.get("/users").then(setData).catch((e) => setError(e.message)), []);
+  useEffect(() => { load(); }, [load]);
+
+  async function invite(e) {
+    e.preventDefault();
+    setError("");
+    setCopied(false);
+    try {
+      const r = await api.post("/users/invites", { note, days: 7 });
+      setLink(`${window.location.origin}${r.path}`);
+      setNote("");
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function copy() {
+    try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setCopied(false); }
+  }
+
+  async function share() {
+    try { await navigator.share({ title: "Einladung zu TradeHelper", text: "Hier kannst du dein TradeHelper-Konto anlegen:", url: link }); } catch { /* abgebrochen */ }
+  }
+
+  async function removeUser(u) {
+    if (!window.confirm(`${u.username} mit Watchlist, Depot, Alarmen und Schattendepot endgültig löschen?`)) return;
+    await api.del(`/users/${u.id}`).catch((e) => setError(e.message));
+    load();
+  }
+
+  async function removeInvite(i) {
+    await api.del(`/users/invites/${i.id}`).catch((e) => setError(e.message));
+    load();
+  }
+
+  const open = (data?.invites || []).filter((i) => !i.used_at);
+  return (
+    <section className="panel" id="nutzer">
+      <h2>Nutzer</h2>
+      <p className="muted small">
+        Eingeladene bekommen ein eigenes Konto mit eigener Watchlist, eigenem Depot, eigenen Alarmen, eigenem Schattendepot
+        und eigenen Push-Nachrichten. Updates, Sicherungen, Zeitplan und Nachrichtenquellen bleiben bei dir.
+      </p>
+      <ErrorText error={error} />
+      {!data && !error && <Loading />}
+      {data && (
+        <ul className="user-list">
+          {data.users.map((u) => (
+            <li key={u.id}>
+              <strong>{u.username}</strong>
+              <span className="muted small">{u.is_admin ? "Admin" : `seit ${dateTime(u.created_at)}`}</span>
+              {!u.is_admin && <button className="link danger small" onClick={() => removeUser(u)}>Löschen</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="invite-form" onSubmit={invite}>
+        <label>Für wen? <span className="hint">optional, nur zur Erinnerung</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} placeholder="z. B. Anna" />
+        </label>
+        <button className="btn primary">Einladungslink erstellen</button>
+      </form>
+      {link && (
+        <div className="invite-link">
+          <p className="small">Der Link gilt 7 Tage und funktioniert genau einmal. Er wird nur jetzt angezeigt:</p>
+          <code>{link}</code>
+          <div className="actions">
+            <button className="btn small" onClick={copy}>{copied ? "Kopiert ✓" : "Kopieren"}</button>
+            {navigator.share && <button className="btn small" onClick={share}>Teilen …</button>}
+          </div>
+          {link.includes("localhost") && <p className="muted small">Hinweis: Mit „localhost“ funktioniert der Link nur auf diesem Gerät. Öffne TradeHelper über die Adresse im Netzwerk und erstelle den Link dort.</p>}
+        </div>
+      )}
+      {open.length > 0 && (
+        <>
+          <h3 className="sub-title">Offene Einladungen</h3>
+          <ul className="user-list">
+            {open.map((i) => (
+              <li key={i.id}>
+                <span>{i.note || "ohne Notiz"}</span>
+                <span className="muted small">gültig bis {dateTime(i.expires_at)}</span>
+                <button className="link danger small" onClick={() => removeInvite(i)}>Zurückziehen</button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function Admin() {
   return (
     <>
       <div className="page-head"><h1>Administration</h1></div>
+      <Users />
       <Status />
       <Updates />
       <Backups />

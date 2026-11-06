@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import NewsList from "../components/NewsList.jsx";
+import ReportModal from "../components/ReportModal.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
@@ -179,6 +180,12 @@ export default function Home() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
+  const [params, setParams] = useSearchParams();
+  const [showReport, setShowReport] = useState(() => params.get("bericht"));
+  const closeReport = () => {
+    setShowReport(null);
+    if (params.get("bericht")) { params.delete("bericht"); setParams(params, { replace: true }); }
+  };
 
   const load = useCallback(async () => {
     setError("");
@@ -201,7 +208,7 @@ export default function Home() {
     setMsg("");
     try {
       await api.post("/report/send");
-      setMsg("Zusammenfassung per Push verschickt.");
+      setMsg("Morgenbericht verschickt. Antippen der Nachricht öffnet ihn hier.");
     } catch (e) {
       setMsg(e.message);
     } finally {
@@ -231,10 +238,12 @@ export default function Home() {
         </div>
         <div className="actions">
           <button className="btn" onClick={load} disabled={!report && !error}>Aktualisieren</button>
+          <button className="btn" onClick={() => setShowReport("latest")}>Letzter Morgenbericht</button>
           <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}>{sending ? "Sende …" : "Aufs Handy schicken"}</button>
         </div>
       </div>
       {msg && <p className="note" role="status">{msg}</p>}
+      {showReport && <ReportModal id={showReport === "latest" ? null : showReport} onClose={closeReport} />}
 
       <Onboarding settings={settings} count={report?.entries.length ?? 1} />
       <DepotStrip data={depot} />

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart, CrosshairMode, LineStyle } from "lightweight-charts";
 
-const COLORS = {
+export const COLORS = {
   bg: "#111b26", text: "#8d9eb0", grid: "#1a2735", line: "#263749",
   up: "#6fd3c3", down: "#ff6b6b", amber: "#f2b84b",
   sma20: "#f2b84b", sma50: "#7aa7ff", sma200: "#c792ea",
@@ -39,7 +39,7 @@ export const CHART_TYPES = [
   { id: "bars", label: "Balken" },
 ];
 
-const baseOptions = (locked, intraday) => ({
+export const baseOptions = (locked, intraday) => ({
   autoSize: true,
   localization: {
     locale: "de-DE",

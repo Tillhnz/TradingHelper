@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api, setToken } from "../api.js";
 
 /** Anmeldung. Beim allerersten Aufruf wird hier das (einzige) Konto angelegt. */
 export default function Login({ onLoggedIn }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [setup, setSetup] = useState(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +29,8 @@ export default function Login({ onLoggedIn }) {
       const r = await api.post(setup ? "/auth/setup" : "/auth/login", { username, password });
       setToken(r.token);
       await onLoggedIn();
-      navigate(setup ? "/settings" : "/");
+      // Kam der Aufruf aus einer Push-Nachricht (z. B. /?bericht=12), nach der Anmeldung dorthin
+      navigate(setup ? "/settings" : location.state?.from || "/");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,7 +54,7 @@ export default function Login({ onLoggedIn }) {
       </div>
       <form className="login-form" onSubmit={submit}>
         <h1>{setup ? "Willkommen" : "Anmelden"}</h1>
-        {setup && <p className="muted">Lege dein Konto an. Danach ist die Anmeldung nur noch damit möglich.</p>}
+        {setup && <p className="muted">Lege dein Konto an. Weitere Personen kannst du später unter Administration einladen.</p>}
         <label>
           Benutzername
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoFocus />

@@ -12,6 +12,8 @@ import Depot from "./pages/Depot.jsx";
 import Shadow from "./pages/Shadow.jsx";
 import Settings from "./pages/Settings.jsx";
 import Admin from "./pages/Admin.jsx";
+import Charts from "./pages/Charts.jsx";
+import Register from "./pages/Register.jsx";
 
 export default function App() {
   const navigate = useNavigate();
@@ -50,7 +52,8 @@ export default function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login onLoggedIn={loadUser} />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="/einladung/:token" element={<Register onLoggedIn={loadUser} />} />
+        <Route path="*" element={<Navigate to="/login" replace state={{ from: window.location.pathname + window.location.search }} />} />
       </Routes>
     );
   }
@@ -67,7 +70,9 @@ export default function App() {
         <Route path="/depot" element={<Depot />} />
         <Route path="/depot/schatten" element={<Shadow />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/charts" element={<Charts />} />
+        <Route path="/charts/:symbol" element={<Charts />} />
+        <Route path="/admin" element={user.is_admin ? <Admin /> : <Navigate to="/" replace />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

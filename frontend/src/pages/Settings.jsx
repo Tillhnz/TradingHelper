@@ -73,6 +73,7 @@ const GROUPS = [
     fields: {
       display_currency: { label: "Anzeigewährung", type: "select", options: ["EUR", "USD", "CHF", "GBP", "native"], labels: { native: "Handelswährung des Börsenplatzes", EUR: "Euro (€)", USD: "US-Dollar ($)", CHF: "Schweizer Franken", GBP: "Britisches Pfund" } },
       timezone: { label: "Zeitzone", hint: "z. B. Europe/Berlin" },
+      app_url: { label: "Adresse von TradeHelper", hint: "für Push-Nachrichten: Antippen öffnet diese Seite. Wird beim ersten Aufruf automatisch gesetzt." },
     },
   },
 ];
@@ -276,7 +277,7 @@ export default function Settings() {
       )}
 
       <form onSubmit={save}>
-        {GROUPS.map((g) => (
+        {GROUPS.filter((g) => Object.keys(g.fields).some((k) => fields[k])).map((g) => (
           <section key={g.id} id={g.id} className="panel">
             <h2>{g.title}</h2>
             {g.intro && <p className="muted small">{g.intro}</p>}
