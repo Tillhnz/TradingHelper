@@ -110,13 +110,21 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     const r0 = main.timeScale().getVisibleLogicalRange();
     if (r0) charts.slice(1).forEach((c) => c.timeScale().setVisibleLogicalRange(r0));
 
-    main.subscribeClick((param) => {
+    // Zwei schnelle Klicks hintereinander wertet der Chart als Doppelklick – beide Ereignisse zählen als Punkt,
+    // derselbe Punkt aber nur einmal
+    let last = { x: null, y: null, at: 0 };
+    const handle = (param) => {
       if (!toolRef.current || !param.point) return;
+      const now = Date.now();
+      if (param.point.x === last.x && param.point.y === last.y && now - last.at < 700) return;
+      last = { x: param.point.x, y: param.point.y, at: now };
       const p = price.coordinateToPrice(param.point.y);
       const t = param.time ?? main.timeScale().coordinateToTime(param.point.x);
       if (p === null || t === null || t === undefined) return;
       pointRef.current?.({ time: typeof t === "number" ? t : Math.floor(new Date(`${t.year}-${t.month}-${t.day}`).getTime() / 1000), price: p });
-    });
+    };
+    main.subscribeClick(handle);
+    main.subscribeDblClick?.(handle);
 
     state.current = { ...state.current, charts, main, price, lastTime: rows[rows.length - 1].time };
     return () => { charts.forEach((c) => c.remove()); state.current = { ...state.current, charts: [], main: null, price: null }; };
