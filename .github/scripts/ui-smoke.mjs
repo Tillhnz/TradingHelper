@@ -239,7 +239,7 @@ await page.goto(`${base}/?bericht=latest`);
 await page.waitForTimeout(3000);
 await page.goto(`${base}/`);
 await page.waitForTimeout(6000);
-await page.getByRole("button", { name: "Letzter Bericht" }).click();
+await page.getByRole("button", { name: "Bericht", exact: true }).click();
 await page.waitForTimeout(2500);
 await page.screenshot({ path: "shots/report-modal.png" });
 console.log("report modal", JSON.stringify(await page.evaluate(() => ({
