@@ -958,3 +958,8 @@ h1 { font-size: 2.4rem; }
   .toolbar:not(.opts-open) > select, .toolbar:not(.opts-open) > .check { display: none; }
   .toolbar .opts-btn { display: inline-flex; }
 }
+
+.onboard-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem;
+  border: 1px dashed var(--line); border-radius: 12px; }
+.onboard-chip { font-size: 0.85rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: rgba(111, 211, 195, 0.1); color: var(--celeste); text-decoration: none; }
+.onboard-line .link { margin-left: auto; }

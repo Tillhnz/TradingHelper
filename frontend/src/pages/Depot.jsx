@@ -87,7 +87,7 @@ export default function Depot() {
                   const change = q && q.currency === g.currency && q.change_pct != null ? q.change_pct : g.day_change_pct;
                   return (
                     <AssetRow key={g.symbol} symbol={g.symbol} name={displayName(g)} action={g.action} held error={g.error}
-                      meta={<>{num(g.shares, g.shares % 1 ? 3 : 0)} Stück{g.lots > 1 ? ` · ${g.lots} Käufe` : ""}{change != null && <> · <span className={tone(change)}>{pct(change)} heute</span></>}</>}
+                      meta={<>{num(g.shares, g.shares % 1 ? 3 : 0)} St.{change != null && <> · <span className={tone(change)}>{pct(change)}</span></>}</>}
                       top={nums.top} bottom={nums.bottom} hint={actionHint(g.advice)} />
                   );
                 })}

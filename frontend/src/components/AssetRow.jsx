@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
-import { ACTION_UI, HELD_UI } from "../texts.js";
+import { ACTION_UI } from "../texts.js";
+
+const HELD_SHORT = { "Kaufen prüfen": "Nachkauf?", "Halten / beobachten": "Halten", "Reduzieren prüfen": "Verkauf prüfen" };
+// Winzige Beträge (Rundung) als 0 zeigen statt „−0,0000 €“
+const clean = (v, digits = 2) => (v == null ? v : Math.abs(v) < 0.5 * 10 ** -digits ? 0 : Math.round(v * 10 ** digits) / 10 ** digits);
 
 /**
  * Eine kompakte Zeile pro Wert – überall gleich: links Name und das Wichtigste in einer Zeile, rechts zwei Zahlen,
@@ -12,7 +16,7 @@ import { ACTION_UI, HELD_UI } from "../texts.js";
  */
 export default function AssetRow({ symbol, name, meta, top, bottom, action, held = false, hint, error }) {
   const ui = ACTION_UI[action];
-  const label = held ? HELD_UI[action]?.label : ui?.short;
+  const label = held ? HELD_SHORT[action] : ui?.short;
   return (
     <li className={`asset-row ${ui?.tone || ""} ${held ? "held" : ""}`}>
       <Link to={`/chart/${encodeURIComponent(symbol)}`} className="asset-link">
@@ -44,7 +48,7 @@ export function heldNums(h, fallbackCcy) {
   const c = h.currency || fallbackCcy;
   return {
     top: { text: h.value != null ? money(h.value, c) : `${num(h.shares, h.shares % 1 ? 3 : 0)} Stück` },
-    bottom: h.pl != null ? { text: `${signedMoney(h.pl, c)} · ${pct(h.pl_pct, 1)}`, tone: tone(h.pl) } : null,
+    bottom: h.pl != null ? { text: `${signedMoney(clean(h.pl), c)} · ${pct(clean(h.pl_pct, 1), 1)}`, tone: tone(clean(h.pl)) } : null,
   };
 }
 
@@ -52,7 +56,7 @@ export function heldNums(h, fallbackCcy) {
 export function priceNums(price, change, currency) {
   return {
     top: { text: money(price, currency) },
-    bottom: change != null ? { text: `${pct(change)} heute`, tone: tone(change) } : null,
+    bottom: change != null ? { text: `${pct(clean(change))} heute`, tone: tone(clean(change)) } : null,
   };
 }
 

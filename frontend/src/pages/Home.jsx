@@ -23,24 +23,14 @@ function Onboarding({ settings, count }) {
     { done: settings.fields.ntfy_topic?.value, title: "Push aufs Handy", text: "ntfy-App installieren und das Topic in den Einstellungen eintragen.", to: "/settings", cta: "Einrichten" },
     { done: settings.fields.invest_horizon?.from_ui, title: "Strategie festlegen", text: "Anlagehorizont und Risikobereitschaft wählen – danach richten sich alle Empfehlungen.", to: "/settings", cta: "Festlegen" },
   ];
-  const open = steps.filter((s) => !s.done).length;
-  if (!open) return null;
+  const open = steps.filter((s) => !s.done);
+  if (!open.length) return null;
   return (
-    <section className="panel onboarding">
-      <div className="panel-head">
-        <h2>Erste Schritte <span className="muted small">{steps.length - open} von {steps.length} erledigt</span></h2>
-        <button className="link small" onClick={() => { try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* egal */ } setHidden(true); }}>Ausblenden</button>
-      </div>
-      <ol className="steps">
-        {steps.map((s) => (
-          <li key={s.title} className={s.done ? "done" : ""}>
-            <span className="step-dot" aria-hidden="true">{s.done ? "✓" : ""}</span>
-            <div><strong>{s.title}</strong><p className="muted small">{s.text}</p></div>
-            {!s.done && <Link className="btn small" to={s.to}>{s.cta}</Link>}
-          </li>
-        ))}
-      </ol>
-    </section>
+    <div className="onboard-line">
+      <span className="muted small">Noch {open.length} {open.length === 1 ? "Schritt" : "Schritte"} zum Einrichten:</span>
+      {open.map((s) => <Link key={s.title} to={s.to} className="onboard-chip" title={s.text}>{s.title} →</Link>)}
+      <button className="link small" onClick={() => { try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* egal */ } setHidden(true); }} aria-label="Ausblenden">✕</button>
+    </div>
   );
 }
 
@@ -125,7 +115,7 @@ function rowFor(e, q, pro) {
     ? { ...h, value: h.shares * price, pl: h.shares * price - h.invested, pl_pct: (h.shares * price / h.invested - 1) * 100 } : h;
   const nums = hv ? heldNums(hv, e.currency) : priceNums(price, change, e.currency);
   const meta = hv
-    ? <>{num(h.shares, h.shares % 1 ? 3 : 0)} Stück · <span className={tone(change)}>{pct(change)} heute</span></>
+    ? <>{num(h.shares, h.shares % 1 ? 3 : 0)} St. · <span className={tone(change)}>{pct(change)}</span></>
     : <>{displayTicker(e)}{pro ? ` · Score ${signed(e.combined_score)}` : ""}</>;
   let hint = h ? actionHint(h.advice) : null;
   if (!h && e.action === "Kaufen prüfen") hint = { level: "good", text: e.reasons[0] };

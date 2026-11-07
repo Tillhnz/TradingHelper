@@ -28,6 +28,7 @@ export const CURRENCY_LABEL = {
 
 export function pct(v, digits = 2) {
   if (v === null || v === undefined || Number.isNaN(v)) return "–";
+  v = Math.round(v * 10 ** digits) / 10 ** digits || 0; // kein „−0,0 %“
   return `${v > 0 ? "+" : ""}${nf(digits).format(v)} %`;
 }
 
@@ -45,7 +46,7 @@ export function dateTime(iso) {
 
 export function tone(v) {
   if (v === null || v === undefined) return "";
-  return v > 0 ? "pos" : v < 0 ? "neg" : "";
+  return v > 0.004 ? "pos" : v < -0.004 ? "neg" : "";
 }
 
 export const ACTION_TONE = {
@@ -54,4 +55,10 @@ export const ACTION_TONE = {
   "Reduzieren prüfen": "sell",
 };
 
-export const signedMoney = (v, c) => (v == null ? "–" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${money(Math.abs(v), c)}`);
+/** Gewinn/Verlust mit Vorzeichen, immer auf Cent gerundet („−0,0000 €“ wird zu „0,00 €“). */
+export const signedMoney = (v, c) => {
+  if (v == null || Number.isNaN(v)) return "–";
+  const r = Math.round(v * 100) / 100 || 0;
+  const n = `${nf(2).format(Math.abs(r))}${c ? ` ${SYMBOL[c] || c}` : ""}`;
+  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${n}`;
+};
