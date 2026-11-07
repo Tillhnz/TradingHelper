@@ -6,6 +6,7 @@ import { barIndex, buyTimestamp, PositionBox, sellTimestamp } from "./positionBo
 export const COLORS = {
   bg: "#111b26", text: "#8d9eb0", grid: "#1a2735", line: "#263749",
   up: "#6fd3c3", down: "#ff6b6b", amber: "#f2b84b",
+  buySig: "#38bdf8", sellSig: "#e879f9",
   sma20: "#f2b84b", sma50: "#7aa7ff", sma200: "#c792ea",
   bb: "#5d7389", rsi: "#f2b84b", macd: "#7aa7ff", signal: "#ff9f6b",
 };
@@ -203,8 +204,8 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
       if (t === null || t - e.time > 7 * 86400) return;
       const text = i >= labelFrom ? e.label : "";
       markers.push(e.side === "buy"
-        ? { time: t, position: "belowBar", color: COLORS.up, shape: "arrowUp", text }
-        : { time: t, position: "aboveBar", color: COLORS.down, shape: "arrowDown", text });
+        ? { time: t, position: "belowBar", color: COLORS.buySig, shape: "arrowUp", text, size: 1.5 }
+        : { time: t, position: "aboveBar", color: COLORS.sellSig, shape: "arrowDown", text, size: 1.5 });
     });
     markers.sort((a, b) => a.time - b.time);
     priceSeries.setMarkers(markers);

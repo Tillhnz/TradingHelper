@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: "0.14.1",
+    date: "07.11.2026",
+    title: "Signale besser erkennbar, großer Chart per Klick",
+    items: [
+      "Kauf- und Verkaufssignale im Chart sind jetzt blau und pink – so heben sie sich deutlich von den grünen und roten Kerzen ab.",
+      "Direkt am Chart jedes Werts öffnet „⛶ Groß“ den großen Chart zum Zeichnen und für Indikatoren.",
+    ],
+  },
+  {
     version: "0.14.0",
     date: "07.11.2026",
     title: "Aufgeräumt: kompakte Listen, Details auf Antippen",

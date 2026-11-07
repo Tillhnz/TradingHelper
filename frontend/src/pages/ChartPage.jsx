@@ -221,7 +221,7 @@ export default function ChartPage() {
           <button className="btn primary btn-buy" onClick={() => setBuying(true)} title="Kurs und Uhrzeit von jetzt übernehmen">{held ? "+ Nachkauf" : "Kauf"}</button>
           {watched !== null && !held && <button className="btn" onClick={toggleWatch}>{watched ? "✓ Beobachtet" : "☆ Beobachten"}</button>}
           <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>🔔 Alarm</Link>
-          <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Linien und Kennlinien selbst einzeichnen">✏️ Zeichnen</Link>
+          <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Großer Chart: Linien und Kennlinien selbst einzeichnen">⛶ Großer Chart</Link>
         </div>
       </div>
       {msg && <p className="ok" role="status">{msg}</p>}
@@ -276,6 +276,7 @@ export default function ChartPage() {
             {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
           <button className="opts-btn" onClick={() => setOptsOpen((o) => !o)} aria-expanded={optsOpen}>{optsOpen ? "Fertig" : "Anzeige ▾"}</button>
+          <Link className="big-chart" to={`/charts/${encodeURIComponent(symbol)}`} title="Im großen Chart öffnen (Zeichnen, Indikatoren)">⛶ Groß</Link>
           <span className="toolbar-gap" />
           <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
           <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => { setPlanTouched(true); setShowPlan(e.target.checked); }} /> Einstiegsmarken</label>
@@ -290,7 +291,7 @@ export default function ChartPage() {
             showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} currency={cur} />
         )}
         <p className="legend small">
-          {showEvents && <><span className="arrow pos">▲</span>Kaufsignal <span className="arrow neg">▼</span>Verkaufssignal</>}
+          {showEvents && <><span className="arrow" style={{ color: "#38bdf8" }}>▲</span>Kaufsignal <span className="arrow" style={{ color: "#e879f9" }}>▼</span>Verkaufssignal</>}
           {showPlan && <><span className="dot" style={{ background: "#6fd3c3" }} />Rücksetzer-Einstieg <span className="dot" style={{ background: "#f2b84b" }} />Ausbruch</>}
           {positions.length > 0 && <><span className="swatch gain" />Chance bis Ziel <span className="swatch loss" />Risiko bis Stopp <span className="dot" style={{ background: "#f2b84b" }} />dein Kaufkurs</>}
           {pro && showSma && <><span className="dot" style={{ background: "#f2b84b" }} />SMA 20 <span className="dot" style={{ background: "#7aa7ff" }} />SMA 50 <span className="dot" style={{ background: "#c792ea" }} />SMA 200</>}
