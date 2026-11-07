@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
+import AssetRow from "../components/AssetRow.jsx";
 import DepotTabs from "../components/DepotTabs.jsx";
 import PnlChart from "../components/PnlChart.jsx";
-import { Empty, ErrorText, Loading, Stat } from "../components/ui.jsx";
+import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 import { displayName } from "../texts.js";
 
@@ -238,19 +239,24 @@ export default function Shadow() {
           <div className="shadow-bar">
             <span className="muted small grow">
               Läuft seit {day(data.started)}
-              {data.enabled ? <> · handelt zu den Berichtszeiten{data.next_run ? `, nächster Lauf ${dateTime(data.next_run)}` : ""}</> : <> · <strong>automatischer Handel ausgeschaltet</strong></>}
+              {data.enabled
+                ? <> · handelt mit jedem Bericht{data.trade_times?.length ? ` (${data.trade_times.join(" und ")} Uhr)` : ""}{data.next_run ? `, nächster Lauf ${dateTime(data.next_run)}` : ""}</>
+                : <> · <strong>automatischer Handel ausgeschaltet</strong></>}
               {data.last_run && <> · zuletzt {dateTime(data.last_run)}</>}
             </span>
             <button className="btn small primary" onClick={run} disabled={busy}>{busy ? "Prüfe …" : "Jetzt prüfen und handeln"}</button>
             <Link className="link small" to="/settings#paper">Einstellungen</Link>
           </div>
 
-          <div className="stats stats-wide totals">
-            <Stat label="Depotwert" value={money(data.value, c)} />
-            <Stat label="Gewinn/Verlust" value={<>{signedMoney(data.pl, c)} <span className="small">{pct(data.pl_pct, 1)}</span></>} className={tone(data.pl)} />
-            <Stat label="Kaufen und halten" value={pct(data.benchmark_pct, 1)} className={tone(data.benchmark_pct)} />
-            <Stat label="Freies Geld" value={money(data.cash, c)} />
-            <Stat label="Verkäufe · Treffer" value={`${data.trades_count} · ${data.win_rate == null ? "–" : `${num(data.win_rate, 0)} %`}`} />
+          <div className="hero-total">
+            <span className="label">Wert des Schattendepots</span>
+            <span className="big">{money(data.value, c)}</span>
+            <strong className={tone(data.pl)}>{signedMoney(data.pl, c)} · {pct(data.pl_pct, 1)}</strong>
+            <span className="sub">
+              Kaufen und halten: <span className={tone(data.benchmark_pct)}>{pct(data.benchmark_pct, 1)}</span>
+              {" · "}freies Geld {money(data.cash, c)}
+              {" · "}{data.trades_count} Verkäufe{data.win_rate != null ? `, ${num(data.win_rate, 0)} % mit Gewinn` : ""}
+            </span>
           </div>
 
           {curve.length > 1 ? (
@@ -262,30 +268,17 @@ export default function Shadow() {
             <p className="note small">Der Verlauf erscheint ab dem zweiten Handelstag. Aussagekräftig wird das Schattendepot erst nach einigen Wochen und vielen Orders – für eine schnelle Einschätzung gibt es unten den Rückblick.</p>
           )}
 
-          <h2 className="section-title">Offene Positionen</h2>
+          <div className="list-head"><h2>Offene Positionen</h2><span className="muted small">{data.positions.length}</span></div>
           {data.positions.length ? (
-            <div className="table-wrap">
-              <table className="table compact">
-                <thead><tr><th>Wert</th><th className="num">Kauf</th><th className="num">jetzt</th><th className="num">Ergebnis</th><th className="num hide-sm">Stopp</th><th className="num hide-sm">Ziel</th></tr></thead>
-                <tbody>
-                  {data.positions.map((p) => (
-                    <tr key={p.symbol}>
-                      <td>
-                        <Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{displayName(p)}</Link>
-                        <div className="muted small">{shares(p.shares)} Stück seit {day(p.entry_day)}</div>
-                        <div className="muted small reason">{p.reason}</div>
-                      </td>
-                      <td className="num">{money(p.entry, c)}</td>
-                      <td className="num">{money(p.price, c)}</td>
-                      <td className={`num ${tone(p.pl)}`}>{signedMoney(p.pl, c)}<div className="small">{pct(p.pl_pct, 1)}</div></td>
-                      <td className="num hide-sm neg">{money(p.stop, c)}</td>
-                      <td className="num hide-sm pos">{p.target ? money(p.target, c) : "–"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <p className="muted">Gerade nichts im Schattendepot – kein Wert deiner Watchlist steht auf „Gute Gelegenheit“.</p>}
+            <ul className="asset-list">
+              {data.positions.map((p) => (
+                <AssetRow key={p.symbol} symbol={p.symbol} name={displayName(p)}
+                  meta={<>{shares(p.shares)} Stück · seit {day(p.entry_day)} · Kauf {money(p.entry, c)}</>}
+                  top={{ text: money(p.value, c) }} bottom={{ text: `${signedMoney(p.pl, c)} · ${pct(p.pl_pct, 1)}`, tone: tone(p.pl) }}
+                  hint={{ level: "info", text: `Stopp ${money(p.stop, c)}${p.target ? ` · Ziel ${money(p.target, c)}` : ""}` }} />
+              ))}
+            </ul>
+          ) : <p className="calm-note">Gerade nichts im Schattendepot – kein Wert deiner Watchlist steht auf „Gute Gelegenheit“.</p>}
 
           {data.orders?.length > 0 && (
             <>

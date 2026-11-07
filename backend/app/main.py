@@ -662,7 +662,19 @@ def positions_list(st: Storage = Depends(user_storage), settings: Settings = Dep
     totals["pl"] = totals["value"] - totals["invested"]
     totals["pl_pct"] = round(totals["pl"] / totals["invested"] * 100, 2) if totals["invested"] else None
     totals = {k: round(v, 2) if isinstance(v, float) else v for k, v in totals.items()}
-    return {"items": items, "totals": totals}
+    # Ein Eintrag je Wert (alle Käufe zusammengefasst) für die kompakte Depot-Übersicht
+    by_sym: dict[str, list[dict]] = {}
+    for it in items:
+        by_sym.setdefault(it["symbol"], []).append(it)
+    groups = []
+    for sym, its in by_sym.items():
+        summ = portfolio.summarize(its, its[-1].get("action"))
+        first = its[-1]
+        groups.append({"symbol": sym, "name": first.get("name"), "ticker": first.get("ticker"),
+                       "action": first.get("action"), "day_change_pct": first.get("day_change_pct"), "error": next((i.get("error") for i in its if i.get("error")), None),
+                       **(summ or {})})
+    groups.sort(key=lambda g: (not g.get("shares"), -(g.get("value") or 0)))
+    return {"items": items, "totals": totals, "groups": groups}
 
 
 @app.get("/api/holdings/{symbol}", dependencies=auth)
@@ -870,7 +882,8 @@ def test_notify(settings: Settings = Depends(user_cfg)):
 
 @app.get("/api/paper", dependencies=auth)
 def paper_view(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
-    return {**paper.view(st, settings), "enabled": settings.paper_enabled,
+    times = [t for t in (settings.report_time, settings.report_time_pm) if t] if settings.report_enabled else []
+    return {**paper.view(st, settings), "enabled": settings.paper_enabled, "trade_times": times,
             "next_run": min((v for k, v in scheduler.next_runs().items() if k.endswith("_report") and v), default=None)}
 
 

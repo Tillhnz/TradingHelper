@@ -3,12 +3,12 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import NewsList from "../components/NewsList.jsx";
 import ReportModal from "../components/ReportModal.jsx";
-import Term from "../components/Term.jsx";
-import { ActionBadge, ErrorText, Levels, Loading } from "../components/ui.jsx";
+import AssetRow, { actionHint, heldNums, priceNums } from "../components/AssetRow.jsx";
+import { ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
-import { ACTION_UI, displayName, displayTicker, greeting } from "../texts.js";
+import { displayName, displayTicker, greeting } from "../texts.js";
 
 const ORDER = { "Kaufen prüfen": 0, "Reduzieren prüfen": 1, "Halten / beobachten": 2 };
 const DISMISS_KEY = "tradehelper_onboarding_done";
@@ -92,82 +92,45 @@ function NewsSection({ hasStocks }) {
   );
 }
 
-function ShadowStrip({ data }) {
-  if (!data?.started) return null;
+function SummaryTiles({ depot, shadow }) {
+  const t = depot?.totals;
+  const hasDepot = depot?.items?.some((p) => !p.closed);
+  if (!hasDepot && !shadow?.started) return null;
   return (
-    <Link to="/depot/schatten" className="shadow-strip">
-      <span className="muted small">🤖 Schattendepot</span>
-      <strong className={tone(data.pl)}>{signedMoney(data.pl, data.currency)} ({pct(data.pl_pct, 1)})</strong>
-      <span className="muted small">{data.positions.length} {data.positions.length === 1 ? "Position" : "Positionen"} · Kaufen und halten {pct(data.benchmark_pct, 1)}</span>
-      <span className="go small">ansehen →</span>
-    </Link>
+    <div className="summary-tiles">
+      {hasDepot && (
+        <Link to="/depot" className="summary-tile">
+          <span className="muted small">Mein Depot</span>
+          <strong>{money(t.value, t.currency)}</strong>
+          <span className={`small ${tone(t.pl)}`}>{signedMoney(t.pl, t.currency)} · {pct(t.pl_pct, 1)}</span>
+        </Link>
+      )}
+      {shadow?.started && (
+        <Link to="/depot/schatten" className="summary-tile">
+          <span className="muted small">Schattendepot</span>
+          <strong>{money(shadow.value, shadow.currency)}</strong>
+          <span className={`small ${tone(shadow.pl)}`}>{signedMoney(shadow.pl, shadow.currency)} · {pct(shadow.pl_pct, 1)}</span>
+        </Link>
+      )}
+    </div>
   );
 }
 
-function DepotStrip({ data }) {
-  if (!data?.items?.length) return null;
-  const t = data.totals;
-  const open = data.items.filter((p) => !p.closed).length;
-  return (
-    <Link to="/depot" className="depot-strip">
-      <div><span className="muted small">Mein Depot</span><strong>{money(t.value, t.currency)}</strong></div>
-      <div><span className="muted small">Gewinn/Verlust</span><strong className={tone(t.pl)}>{signedMoney(t.pl, t.currency)} <span className="small">{pct(t.pl_pct, 1)}</span></strong></div>
-      <div className="hide-sm"><span className="muted small">Positionen</span><strong>{open}</strong></div>
-      <span className="depot-strip-go">Zum Depot →</span>
-    </Link>
-  );
-}
-
-function StockCard({ e, pro, q }) {
+function rowFor(e, q, pro) {
   const live = q && q.currency === e.currency ? q : null;
   const price = live ? live.price : e.analysis.last_close;
   const change = live && live.change_pct != null ? live.change_pct : e.analysis.change_pct_1d;
-  const held = e.holding?.shares > 0;
-  const ui = ACTION_UI[e.action];
-  const to = `/chart/${encodeURIComponent(e.symbol)}`;
-  return (
-    <article className={`rec-card ${ui?.tone || ""}`}>
-      <header>
-        <Link to={to} className="rec-title">
-          <strong>{displayName(e)}</strong>
-          <span className="muted small">{displayTicker(e)}{e.exchange ? ` · ${e.exchange}` : ""}</span>
-        </Link>
-        <ActionBadge action={e.action} held={held} />
-      </header>
-      <div className="rec-price">
-        <strong>{money(price, e.currency)}</strong>
-        <span className={tone(change)}>{pct(change)}</span>
-        <span className="muted small">heute</span>
-      </div>
-
-      {held && (
-        <Link to={to} className="home-holding">
-          <span>💼 Du hast {num(e.holding.shares, e.holding.shares % 1 ? 3 : 0)} Stück</span>
-          {e.holding.pl != null && <strong className={tone(e.holding.pl)}>{signedMoney(e.holding.pl, e.holding.currency)} ({pct(e.holding.pl_pct, 1)})</strong>}
-          {e.holding.advice && <span className={`advice-inline ${e.holding.advice.level}`}>{e.holding.advice.text}</span>}
-        </Link>
-      )}
-
-      {pro ? (
-        <>
-          <div className="score-bar" aria-label={`Score ${signed(e.combined_score)}`}><span style={{ left: `${((e.combined_score + 1) / 2) * 100}%` }} /></div>
-          <p className="muted small"><Term name="Score">Score</Term> {signed(e.combined_score)} · Technik {signed(e.technical_score)}{e.sentiment !== null && ` · News ${signed(e.sentiment)}`}</p>
-          <ul className="reasons">{e.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-          {!held && <Levels rec={e} currency={e.currency} />}
-        </>
-      ) : (
-        <p className="rec-why"><span className="muted">Warum?</span> {e.reasons[0]}</p>
-      )}
-
-      {!held && e.entry && (
-        <p className="next-step small"><span className="muted">Nächster Schritt:</span> {e.entry.summary}</p>
-      )}
-      {e.news[0] && pro && (
-        <a className="headline small" href={e.news[0].url} target="_blank" rel="noreferrer noopener">{e.news[0].headline}</a>
-      )}
-      <Link to={to} className="card-more">Details ansehen →</Link>
-    </article>
-  );
+  const h = e.holding?.shares > 0 ? e.holding : null;
+  const hv = h && live && h.invested && h.currency === e.currency
+    ? { ...h, value: h.shares * price, pl: h.shares * price - h.invested, pl_pct: (h.shares * price / h.invested - 1) * 100 } : h;
+  const nums = hv ? heldNums(hv, e.currency) : priceNums(price, change, e.currency);
+  const meta = hv
+    ? <>{num(h.shares, h.shares % 1 ? 3 : 0)} Stück · <span className={tone(change)}>{pct(change)} heute</span></>
+    : <>{displayTicker(e)}{pro ? ` · Score ${signed(e.combined_score)}` : ""}</>;
+  let hint = h ? actionHint(h.advice) : null;
+  if (!h && e.action === "Kaufen prüfen") hint = { level: "good", text: e.reasons[0] };
+  if (!h && e.action === "Reduzieren prüfen") hint = { level: "warn", text: e.reasons[0] };
+  return { meta, nums, hint, held: !!h };
 }
 
 export default function Home() {
@@ -180,6 +143,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const [params, setParams] = useSearchParams();
   const [showReport, setShowReport] = useState(() => params.get("bericht"));
   const closeReport = () => {
@@ -208,7 +172,7 @@ export default function Home() {
     setMsg("");
     try {
       await api.post("/report/send");
-      setMsg("Morgenbericht verschickt. Antippen der Nachricht öffnet ihn hier.");
+      setMsg("Bericht verschickt. Antippen der Nachricht öffnet ihn hier.");
     } catch (e) {
       setMsg(e.message);
     } finally {
@@ -217,16 +181,26 @@ export default function Home() {
   }
 
   const quotes = useLiveQuotes(report ? report.entries.map((x) => x.symbol) : []);
-  const entries = report ? [...report.entries].sort((a, b) => (b.holding?.shares > 0) - (a.holding?.shares > 0) || ORDER[a.action] - ORDER[b.action] || Math.abs(b.combined_score) - Math.abs(a.combined_score)) : [];
+  const pro = mode === "pro";
+  const entries = report ? [...report.entries].sort((a, b) => ORDER[a.action] - ORDER[b.action]
+    || (b.holding?.shares > 0) - (a.holding?.shares > 0) || Math.abs(b.combined_score) - Math.abs(a.combined_score)) : [];
+  const rows = entries.map((e) => ({ e, ...rowFor(e, quotes[e.symbol], pro) }));
+  const important = rows.filter((r) => r.hint);
+  const rest = rows.filter((r) => !r.hint);
+  const restShown = showAll ? rest : rest.slice(0, 6);
   const chances = entries.filter((e) => e.action === "Kaufen prüfen" && !(e.holding?.shares > 0)).length;
   const warnings = entries.filter((e) => e.holding?.advice?.level === "bad").length;
+  const renderRow = (r) => (
+    <AssetRow key={r.e.symbol} symbol={r.e.symbol} name={displayName(r.e)} meta={r.meta} action={r.e.action} held={r.held}
+      top={r.nums.top} bottom={r.nums.bottom} hint={r.hint} />
+  );
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>{greeting()}</h1>
-          <p className="muted">
+          <p className="muted home-sub">
             {report ? (
               <>
                 {chances ? `${chances} ${chances === 1 ? "Gelegenheit" : "Gelegenheiten"}` : "Keine neue Gelegenheit"}
@@ -237,17 +211,16 @@ export default function Home() {
           </p>
         </div>
         <div className="actions">
-          <button className="btn" onClick={load} disabled={!report && !error}>Aktualisieren</button>
-          <button className="btn" onClick={() => setShowReport("latest")}>Letzter Bericht</button>
-          <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}>{sending ? "Sende …" : "Aufs Handy schicken"}</button>
+          <button className="btn hide-sm" onClick={load} disabled={!report && !error}>Aktualisieren</button>
+          <button className="btn" onClick={() => setShowReport("latest")}>Bericht</button>
+          <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}>{sending ? "Sende …" : "Aufs Handy"}</button>
         </div>
       </div>
       {msg && <p className="note" role="status">{msg}</p>}
       {showReport && <ReportModal id={showReport === "latest" ? null : showReport} onClose={closeReport} />}
 
       <Onboarding settings={settings} count={report?.entries.length ?? 1} />
-      <DepotStrip data={depot} />
-      <ShadowStrip data={shadow} />
+      <SummaryTiles depot={depot} shadow={shadow} />
 
       <ErrorText error={error} />
       {!report && !error && <Loading text="Schaue mir deine Werte und die Nachrichten an …" />}
@@ -259,9 +232,24 @@ export default function Home() {
         </div>
       )}
 
-      <div className="card-grid">
-        {entries.map((e) => <StockCard key={e.symbol} e={e} pro={mode === "pro"} q={quotes[e.symbol]} />)}
-      </div>
+      {report && report.entries.length > 0 && (
+        <>
+          <div className="list-head"><h2>Heute wichtig</h2>{important.length > 0 && <span className="muted small">{important.length}</span>}</div>
+          {important.length ? <ul className="asset-list">{important.map(renderRow)}</ul>
+            : <p className="calm-note">Alles ruhig – bei keinem deiner Werte ist gerade etwas zu tun.</p>}
+          {rest.length > 0 && (
+            <>
+              <div className="list-head"><h2>Alle weiteren Werte</h2><Link className="small" to="/watchlist">Meine Werte →</Link></div>
+              <ul className="asset-list">
+                {restShown.map(renderRow)}
+                {rest.length > restShown.length && (
+                  <li><button className="list-more" onClick={() => setShowAll(true)}>Alle {rest.length} anzeigen</button></li>
+                )}
+              </ul>
+            </>
+          )}
+        </>
+      )}
       {report && Object.entries(report.errors).map(([sym, err]) => <p key={sym} className="error small">{sym}: {err}</p>)}
 
       {report && <NewsSection hasStocks={report.entries.length > 0} />}
@@ -270,7 +258,7 @@ export default function Home() {
         <>
           <h2 className="section-title">Letzte Alarme</h2>
           <ul className="log-list">
-            {log.map((l) => (
+            {log.slice(0, 3).map((l) => (
               <li key={l.id}>
                 <span className="muted small">{dateTime(l.triggered_at)}</span>{" "}
                 <Link to={`/chart/${encodeURIComponent(l.symbol)}`}><strong>{displayName(l)}</strong></Link> {l.message}

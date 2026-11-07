@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import BuyDialog from "../components/BuyDialog.jsx";
 import SymbolSearch from "../components/SymbolSearch.jsx";
-import { ActionBadge, Empty, ErrorText, Loading, Sparkline } from "../components/ui.jsx";
-import { money, num, pct, signedMoney, tone } from "../fmt.js";
+import AssetRow, { actionHint, heldNums, priceNums } from "../components/AssetRow.jsx";
+import { Empty, ErrorText, Loading } from "../components/ui.jsx";
+import { money, num, pct, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { displayName, displayTicker } from "../texts.js";
@@ -22,7 +22,6 @@ export default function Watchlist() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState("");
-  const [buying, setBuying] = useState(null);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("all");
 
@@ -53,16 +52,6 @@ export default function Watchlist() {
     }
   }
 
-  async function remove(r) {
-    if (!window.confirm(`${displayName(r)} nicht mehr beobachten?`)) return;
-    try {
-      await api.del(`/watchlist/${encodeURIComponent(r.symbol)}`);
-      setRows((rs) => rs.filter((x) => x.symbol !== r.symbol));
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
   const quotes = useLiveQuotes((rows || []).map((r) => r.symbol));
   const shown = (rows || []).filter((r) => (filter === "held" ? r.holding : filter === "watch" ? !r.holding
     : filter === "chance" ? r.action === "Kaufen prüfen" : true));
@@ -73,7 +62,7 @@ export default function Watchlist() {
       <div className="page-head">
         <div>
           <h1>Meine Werte</h1>
-          <p className="muted">Alles, was du beobachtest oder besitzt. Diese Werte kommen jeden Morgen in deine Zusammenfassung.</p>
+          <p className="muted">Alles, was du beobachtest oder besitzt. Diese Werte kommen in deine Berichte.</p>
         </div>
         <button className="btn primary" onClick={() => setAdding((a) => !a)}>{adding ? "Schließen" : "+ Wert hinzufügen"}</button>
       </div>
@@ -102,54 +91,31 @@ export default function Watchlist() {
             </div>
             {converted && <span className="muted small">Kurse teils umgerechnet in {rows.find((r) => r.currency)?.currency} · <Link to="/settings">ändern</Link></span>}
           </div>
-          <ul className="stock-list">
+          <ul className="asset-list">
             {shown.map((row) => {
               const q = quotes[row.symbol];
               const r = q && q.currency === row.currency ? { ...row, price: q.price, change_pct: q.change_pct ?? row.change_pct } : row;
-              const to = `/chart/${encodeURIComponent(r.symbol)}`;
+              const h0 = r.holding;
+              const h = h0 && q && q.currency === row.currency && h0.invested && h0.currency === row.currency
+                ? { ...h0, value: h0.shares * q.price, pl: h0.shares * q.price - h0.invested, pl_pct: (h0.shares * q.price / h0.invested - 1) * 100 }
+                : h0;
+              const nums = h?.shares ? heldNums(h, r.currency) : priceNums(r.price, r.change_pct, r.currency);
+              const meta = h?.shares
+                ? <>{num(h.shares, h.shares % 1 ? 3 : 0)} Stück · {money(r.price, r.currency)} <span className={tone(r.change_pct)}>{pct(r.change_pct)}</span></>
+                : <>{displayTicker(r)}{mode === "pro" && r.rsi != null ? ` · RSI ${num(r.rsi, 0)}` : ""}</>;
+              const hint = h?.shares ? actionHint(h.advice)
+                : r.action === "Kaufen prüfen" ? { level: "good", text: "Signale sprechen für einen Einstieg" }
+                : filter === "chance" || mode === "pro" ? (r.entry ? { level: "info", text: r.entry } : null) : null;
               return (
-                <li key={r.symbol} className={`stock-row ${r.holding ? "held" : ""}`}>
-                  <Link to={to} className="stock-main">
-                    <span className="stock-name">{displayName(r)}</span>
-                    <span className="muted small">{displayTicker(r)}{r.exchange ? ` · ${r.exchange}` : ""}{r.note ? ` · „${r.note}“` : ""}</span>
-                    {r.holding && (
-                      <span className={`held-badge ${tone(r.holding.pl)}`}>
-                        💼 {num(r.holding.shares, r.holding.shares % 1 ? 3 : 0)} Stück
-                        {r.holding.pl != null && <> · {signedMoney(r.holding.pl, r.holding.currency)} ({pct(r.holding.pl_pct, 1)})</>}
-                      </span>
-                    )}
-                  </Link>
-                  {r.error ? (
-                    <p className="error small stock-err">{r.error}</p>
-                  ) : (
-                    <>
-                      <Link to={to} className="stock-spark hide-sm" tabIndex={-1} aria-hidden="true"><Sparkline values={r.spark} width={110} height={34} /></Link>
-                      <div className="stock-price">
-                        <strong>{money(r.price, r.currency)}</strong>
-                        <span className={`small ${tone(r.change_pct)}`}>{pct(r.change_pct)}</span>
-                        {mode === "pro" && r.rsi != null && <span className="muted small">RSI {num(r.rsi, 0)}</span>}
-                      </div>
-                      <div className="stock-verdict">
-                        <ActionBadge action={r.action} held={!!r.holding} />
-                        <span className={`small ${r.holding?.advice ? `advice-inline ${r.holding.advice.level}` : "muted"}`}>
-                          {r.holding?.advice ? r.holding.advice.text : r.action !== "Kaufen prüfen" ? r.entry : "Signale sprechen für einen Einstieg"}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                  <div className="stock-actions">
-                    <button className="btn small" onClick={() => setBuying(r.symbol)}>{r.holding ? "Nachkauf" : "Kauf erfassen"}</button>
-                    <Link className="link small" to={`/alerts?symbol=${encodeURIComponent(r.symbol)}`}>Alarm</Link>
-                    {!r.holding && <button className="link danger small" onClick={() => remove(r)}>Entfernen</button>}
-                  </div>
-                </li>
+                <AssetRow key={r.symbol} symbol={r.symbol} name={displayName(r)} meta={meta} action={r.action} held={!!h?.shares}
+                  top={nums.top} bottom={nums.bottom} hint={hint} error={r.error} />
               );
             })}
-            {!shown.length && <li className="muted">Keine Werte in dieser Auswahl.</li>}
+            {!shown.length && <li className="muted asset-empty">Keine Werte in dieser Auswahl.</li>}
           </ul>
+          <p className="muted small list-foot">Antippen öffnet den Wert mit Chart, Einschätzung, Kauf und Alarm.</p>
         </>
       )}
-      {buying && <BuyDialog symbol={buying} onClose={() => setBuying(null)} onSaved={load} />}
     </>
   );
 }

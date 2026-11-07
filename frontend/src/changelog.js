@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: "0.14.0",
+    date: "07.11.2026",
+    title: "Aufgeräumt: kompakte Listen, Details auf Antippen",
+    items: [
+      "Übersicht, Meine Werte und Depot zeigen jeden Wert als eine kompakte Zeile: Name, Kurs oder Wert, Gewinn/Verlust und nur dann ein Hinweis, wenn etwas zu tun ist.",
+      "Die Übersicht beginnt mit „Heute wichtig“ – alles andere steht darunter.",
+      "Im Depot ist jeder Wert eine Zeile, auch bei mehreren Käufen. Antippen öffnet alles: Chart mit Kaufbox, Einschätzung, Käufe, Verkauf, Stopp und Ziel.",
+      "Auf der Seite eines Werts kommt am Handy der Chart zuerst; „Mein Bestand“ ist kompakt, Details klappst du bei Bedarf auf. Chart-Optionen stecken hinter „Anzeige“.",
+      "Das Schattendepot zeigt, wann es handelt: immer mit dem Morgen- und dem Nachmittagsbericht.",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "06.11.2026",
     title: "Kaufbox im Chart, Schnellkauf, zwei Berichte am Tag",

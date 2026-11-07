@@ -883,3 +883,78 @@ h1 { font-size: 2.4rem; }
 .order-list li.order-cancelled { opacity: 0.6; }
 .order-status.open { color: var(--amber); font-weight: 600; }
 .order-status.filled { color: var(--celeste); }
+
+/* ---------- Kompakte Zeilen (Übersicht, Werte, Depot) ---------- */
+.asset-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.asset-list + .asset-list { margin-top: 0.8rem; }
+.asset-row { border-top: 1px solid var(--line); }
+.asset-row:first-child { border-top: 0; }
+.asset-link { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.75rem;
+  padding: 0.8rem 0.9rem 0.8rem 1rem; color: var(--chalk); text-decoration: none; min-height: 3.6rem; }
+.asset-link:hover, .asset-link:focus-visible { background: rgba(255, 255, 255, 0.03); }
+.asset-dot { width: 9px; height: 9px; border-radius: 50%; background: #3a4c60; }
+.asset-dot.buy { background: var(--celeste); box-shadow: 0 0 0 3px rgba(111, 211, 195, 0.18); }
+.asset-dot.hold { background: var(--amber); }
+.asset-dot.sell { background: var(--signal); box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.18); }
+.asset-main { display: flex; flex-direction: column; min-width: 0; gap: 0.15rem; }
+.asset-name { font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.asset-meta { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.asset-tag { font-weight: 600; }
+.asset-tag.buy { color: var(--celeste); }
+.asset-tag.hold { color: var(--amber); }
+.asset-tag.sell { color: var(--signal); }
+.asset-nums { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.asset-nums strong { font-size: 1rem; }
+.asset-go { color: var(--mute); font-size: 1.3rem; line-height: 1; }
+.asset-hint { margin: -0.35rem 0 0; padding: 0 1rem 0.7rem calc(1rem + 9px + 0.75rem); font-size: 0.82rem; color: var(--mute); }
+.asset-hint::before { content: "→ "; }
+.asset-hint.bad { color: var(--signal); }
+.asset-hint.warn { color: var(--amber); }
+.asset-hint.good { color: var(--celeste); }
+.asset-hint.info { color: var(--chalk); opacity: 0.85; }
+.list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 1.6rem 0 0.6rem; }
+.list-head h2 { margin: 0; font-size: 1.15rem; }
+.list-more { display: block; width: 100%; text-align: center; padding: 0.7rem; background: none; border: 0; border-top: 1px solid var(--line);
+  color: var(--celeste); font: inherit; font-size: 0.9rem; cursor: pointer; }
+.calm-note { padding: 0.9rem 1rem; border: 1px dashed var(--line); border-radius: 14px; color: var(--mute); margin: 0; }
+.hero-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1rem; padding: 1rem 1.1rem; border: 1px solid var(--line);
+  border-radius: 14px; background: var(--panel); margin-bottom: 0.8rem; }
+.hero-total .label { width: 100%; font-size: 0.8rem; color: var(--mute); }
+.hero-total .big { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.hero-total .sub { color: var(--mute); font-size: 0.85rem; width: 100%; }
+.toggle-link { background: none; border: 0; padding: 0; color: var(--celeste); font: inherit; font-size: 0.9rem; cursor: pointer; }
+@media (max-width: 700px) {
+  .page-head > div > p.muted { display: none; }
+  .asset-link { padding: 0.75rem 0.7rem 0.75rem 0.8rem; gap: 0.6rem; }
+  .asset-hint { padding-left: calc(0.8rem + 9px + 0.6rem); }
+  .asset-go { display: none; }
+}
+.summary-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.7rem; margin-bottom: 0.4rem; }
+.summary-tile { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.8rem 1rem; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel); color: var(--chalk); text-decoration: none; }
+.summary-tile:hover { border-color: var(--celeste); }
+.summary-tile strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  .home-sub { display: block !important; }
+  .page-head .actions .btn { padding: 0.5rem 0.8rem; }
+}
+
+.holding-line { margin: 0.15rem 0 0; }
+.holding-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin-top: 0.8rem; }
+.holding-actions .toggle-link { margin-left: auto; }
+/* Wert-Seite am Handy: Chart zuerst, dann Einschätzung und Bestand, danach der Rest */
+@media (max-width: 979px) {
+  .stock-layout { display: flex; flex-direction: column; }
+  .stock-side, .stock-main { display: contents; }
+  .stock-main > .chart-panel { order: 1; }
+  .stock-side > .verdict { order: 2; }
+  .stock-side > .holding { order: 3; }
+  .stock-main > * { order: 4; }
+  .stock-main > .chart-panel { order: 1; }
+}
+.toolbar .opts-btn { display: none; background: none; border: 1px solid var(--line); color: var(--chalk); border-radius: 8px;
+  padding: 0.35rem 0.7rem; font: inherit; font-size: 0.85rem; cursor: pointer; }
+@media (max-width: 900px) {
+  .toolbar:not(.opts-open) > select, .toolbar:not(.opts-open) > .check { display: none; }
+  .toolbar .opts-btn { display: inline-flex; }
+}

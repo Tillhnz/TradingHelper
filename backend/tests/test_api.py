@@ -321,3 +321,13 @@ def test_position_buy_time(client):
     assert r["buy_time"] is None and r["buy_price"] == 101.5
     hist = client.get("/api/history/AAPL?period=1y", headers=h).json()
     assert hist["positions"][0]["buy_time"] is None and hist["positions"][0]["quantity"] == 2  # Kurse in Anzeigewährung
+
+
+def test_positions_groups(client):
+    h = _login(client)
+    for q, price in ((2, 100), (3, 110)):
+        client.post("/api/positions", json={"symbol": "AAPL", "quantity": q, "buy_price": price, "buy_date": "2026-01-02"},
+                    headers=h)
+    g = client.get("/api/positions", headers=h).json()["groups"]
+    assert len(g) == 1 and g[0]["symbol"] == "AAPL" and g[0]["shares"] == 5 and g[0]["lots"] == 2
+    assert g[0]["advice"]["text"]

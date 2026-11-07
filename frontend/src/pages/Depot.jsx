@@ -1,73 +1,49 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import BuyDialog, { RiskBar } from "../components/BuyDialog.jsx";
+import AssetRow, { actionHint, heldNums } from "../components/AssetRow.jsx";
+import BuyDialog from "../components/BuyDialog.jsx";
 import DepotTabs from "../components/DepotTabs.jsx";
-import EditDialog from "../components/EditDialog.jsx";
 import PnlChart from "../components/PnlChart.jsx";
-import { ActionBadge, Empty, ErrorText, Loading, Stat } from "../components/ui.jsx";
+import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
-import { displayName, displayTicker } from "../texts.js";
+import { useLiveQuotes } from "../live.js";
+import { displayName } from "../texts.js";
 
 export default function Depot() {
   const [data, setData] = useState(null);
   const [hist, setHist] = useState(null);
   const [error, setError] = useState("");
-  const [dialog, setDialog] = useState(null); // {mode, pos}
+  const [buying, setBuying] = useState(false);
+  const [showChart, setShowChart] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [d, h] = await Promise.all([api.get("/positions"), api.get("/positions/history")]);
-      setData(d);
-      setHist(h);
+      setData(await api.get("/positions"));
       setError("");
     } catch (e) {
       setError(e.message);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (showChart && !hist) api.get("/positions/history").then(setHist).catch(() => {});
+  }, [showChart, hist]);
 
-  async function applyStop(pos, value) {
-    try {
-      await api.patch(`/positions/${pos.id}`, { stop: value });
-      await load();
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
-  async function applyTarget(pos, value) {
-    try {
-      await api.patch(`/positions/${pos.id}`, { target: value });
-      await load();
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
-  async function remove(pos) {
-    if (!window.confirm(`Position ${pos.symbol} vom ${pos.buy_date} löschen?`)) return;
-    await api.del(`/positions/${pos.id}`).catch((e) => setError(e.message));
-    load();
-  }
-
-  async function reopen(pos) {
-    await api.patch(`/positions/${pos.id}`, { reopen: true }).catch((e) => setError(e.message));
-    load();
-  }
-
-  const open = data?.items.filter((p) => !p.closed) || [];
-  const closed = data?.items.filter((p) => p.closed) || [];
+  const groups = data?.groups || [];
+  const open = groups.filter((g) => g.shares > 0);
+  const closed = groups.filter((g) => !g.shares && g.closed_lots);
   const t = data?.totals;
+  const quotes = useLiveQuotes(open.map((g) => g.symbol));
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Depot</h1>
-          <p className="muted">Erfasste Käufe mit Gewinn und Verlust, Hinweisen zu Stopp und Ziel.</p>
+          <p className="muted">Deine Käufe mit Gewinn und Verlust. Antippen öffnet alle Details, Stopp, Ziel und Verkauf.</p>
         </div>
-        <button className="btn primary" onClick={() => setDialog({ mode: "buy" })}>Kauf erfassen</button>
+        <button className="btn primary" onClick={() => setBuying(true)}>Kauf erfassen</button>
       </div>
       <DepotTabs />
       <ErrorText error={error} />
@@ -75,111 +51,70 @@ export default function Depot() {
 
       {data && !data.items.length && (
         <Empty title="Noch keine Käufe erfasst">
-          <p className="muted">Erfasse einen Kauf hier oder direkt im Chart. Danach siehst du Gewinn- und Verlustzone im Chart und hier den Verlauf.</p>
-          <button className="btn primary" onClick={() => setDialog({ mode: "buy" })}>Ersten Kauf erfassen</button>
+          <p className="muted">Öffne einen Wert und tippe auf „Kauf“ – Kurs und Uhrzeit werden übernommen. Danach siehst du hier deinen Gewinn oder Verlust.</p>
+          <button className="btn primary" onClick={() => setBuying(true)}>Ersten Kauf erfassen</button>
         </Empty>
       )}
 
       {data && data.items.length > 0 && (
         <>
-          <div className="stats stats-wide totals">
-            <Stat label="Eingesetzt (offen)" value={money(t.invested, t.currency)} />
-            <Stat label="Aktueller Wert" value={money(t.value, t.currency)} />
-            <Stat label="Gewinn/Verlust offen" value={signedMoney(t.pl, t.currency)} className={tone(t.pl)} />
-            <Stat label="in Prozent" value={pct(t.pl_pct)} className={tone(t.pl_pct)} />
-            <Stat label="Realisiert" value={signedMoney(t.realized, t.currency)} className={tone(t.realized)} />
+          <div className="hero-total">
+            <span className="label">Depotwert</span>
+            <span className="big">{money(t.value, t.currency)}</span>
+            <strong className={tone(t.pl)}>{signedMoney(t.pl, t.currency)} · {pct(t.pl_pct, 1)}</strong>
+            <span className="sub">
+              eingesetzt {money(t.invested, t.currency)}
+              {t.realized ? <> · bereits realisiert <span className={tone(t.realized)}>{signedMoney(t.realized, t.currency)}</span></> : null}
+              {" · "}<button className="toggle-link" onClick={() => setShowChart((v) => !v)}>{showChart ? "Verlauf ausblenden" : "Verlauf zeigen"}</button>
+            </span>
           </div>
 
-          {hist?.points?.length > 1 && (
+          {showChart && (
             <section className="panel chart-panel">
-              <div className="panel-head"><h2>Verlauf Gewinn/Verlust</h2><span className="muted small">in {hist.currency}, offene und realisierte Positionen</span></div>
-              <PnlChart points={hist.points} />
+              {!hist ? <Loading /> : hist.points?.length > 1 ? <PnlChart points={hist.points} /> : <p className="muted small">Noch zu wenig Verlauf.</p>}
             </section>
           )}
 
           {open.length > 0 && (
             <>
-              <h2 className="section-title">Offene Positionen</h2>
-              <div className="positions">
-                {open.map((p) => {
-                  const c = p.display_currency;
+              <div className="list-head"><h2>Im Depot</h2><span className="muted small">{open.length} {open.length === 1 ? "Wert" : "Werte"}</span></div>
+              <ul className="asset-list">
+                {open.map((g) => {
+                  const q = quotes[g.symbol];
+                  const liveOk = q && q.currency === g.currency && g.invested;
+                  const value = liveOk ? g.shares * q.price : g.value;
+                  const nums = heldNums(liveOk ? { ...g, value, pl: value - g.invested, pl_pct: (value / g.invested - 1) * 100 } : g, g.currency);
+                  const change = q && q.currency === g.currency && q.change_pct != null ? q.change_pct : g.day_change_pct;
                   return (
-                    <article key={p.id} className={`position ${p.pl > 0 ? "gain" : p.pl < 0 ? "loss" : ""}`}>
-                      <header>
-                        <Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{displayName(p)}</Link>
-                        <span className="muted small">{displayTicker(p)} · {num(p.quantity, p.quantity % 1 ? 3 : 0)} Stück · seit {new Date(p.buy_date).toLocaleDateString("de-DE")}</span>
-                        <ActionBadge action={p.action} held />
-                      </header>
-                      {p.error ? <p className="error small">{p.error}</p> : (
-                        <>
-                          <div className="position-pl">
-                            <strong className={tone(p.pl)}>{signedMoney(p.pl, c)}</strong>
-                            <span className={tone(p.pl_pct)}>{pct(p.pl_pct)}</span>
-                          </div>
-                          <p className="muted small">Kauf {money(p.buy_price, c)} · jetzt {money(p.price, c)} · Wert {money(p.value, c)}</p>
-                          <RiskBar entry={p.buy_price} stop={p.stop} target={p.target} current={p.price} currency={c} />
-                          {(p.risk_to_stop != null || p.chance_to_target != null) && (
-                            <p className="small riskline">
-                              {p.risk_to_stop != null && <span className="neg">bis Stopp {p.risk_to_stop < 0 ? "unterschritten" : `−${money(p.risk_to_stop, c)}`}</span>}
-                              {p.chance_to_target != null && <span className="pos">bis Ziel {p.chance_to_target <= 0 ? "erreicht" : `+${money(p.chance_to_target, c)}`}</span>}
-                            </p>
-                          )}
-                        </>
-                      )}
-                      {p.hints?.length > 0 && (
-                        <ul className="hints">
-                          {p.hints.map((h) => (
-                            <li key={h.text} className={h.level}>
-                              {h.text}
-                              {h.suggested_stop && <button className="link small" onClick={() => applyStop(p, h.suggested_stop)}>übernehmen</button>}
-                              {h.suggested_target && <button className="link small" onClick={() => applyTarget(p, h.suggested_target)}>Ziel übernehmen</button>}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {p.note && <p className="muted small">„{p.note}“</p>}
-                      <div className="actions">
-                        <button className="btn small" onClick={() => setDialog({ mode: "sell", pos: p })}>Verkauf erfassen</button>
-                        <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: p })}>Bearbeiten</button>
-                        <button className="link danger small" onClick={() => remove(p)}>Löschen</button>
-                      </div>
-                    </article>
+                    <AssetRow key={g.symbol} symbol={g.symbol} name={displayName(g)} action={g.action} held error={g.error}
+                      meta={<>{num(g.shares, g.shares % 1 ? 3 : 0)} Stück{g.lots > 1 ? ` · ${g.lots} Käufe` : ""}{change != null && <> · <span className={tone(change)}>{pct(change)} heute</span></>}</>}
+                      top={nums.top} bottom={nums.bottom} hint={actionHint(g.advice)} />
                   );
                 })}
-              </div>
+              </ul>
             </>
           )}
 
           {closed.length > 0 && (
             <>
-              <h2 className="section-title">Abgeschlossen</h2>
-              <div className="table-wrap">
-                <table className="table">
-                  <thead><tr><th>Wert</th><th className="hide-sm">Zeitraum</th><th className="num">Kauf</th><th className="num">Verkauf</th><th className="num">Ergebnis</th><th /></tr></thead>
-                  <tbody>
-                    {closed.map((p) => (
-                      <tr key={p.id}>
-                        <td><Link className="sym" to={`/chart/${encodeURIComponent(p.symbol)}`}>{displayName(p)}</Link><div className="muted small">{num(p.quantity, p.quantity % 1 ? 3 : 0)} Stück</div></td>
-                        <td className="hide-sm muted small">{new Date(p.buy_date).toLocaleDateString("de-DE")} – {new Date(p.sell_date).toLocaleDateString("de-DE")}</td>
-                        <td className="num">{money(p.buy_price, p.display_currency)}</td>
-                        <td className="num">{money(p.sell_price, p.display_currency)}</td>
-                        <td className={`num ${tone(p.pl)}`}>{signedMoney(p.pl, p.display_currency)}<div className="small">{pct(p.pl_pct)}</div></td>
-                        <td className="row-actions">
-                          <button className="link small" onClick={() => reopen(p)}>Wieder öffnen</button>
-                          <button className="link danger small" onClick={() => remove(p)}>Löschen</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="list-head">
+                <h2>Verkauft</h2>
+                <button className="toggle-link" onClick={() => setShowClosed((v) => !v)}>{showClosed ? "ausblenden" : `${closed.length} anzeigen`}</button>
               </div>
+              {showClosed && (
+                <ul className="asset-list">
+                  {closed.map((g) => (
+                    <AssetRow key={g.symbol} symbol={g.symbol} name={displayName(g)} meta={<>{g.closed_lots} {g.closed_lots === 1 ? "Verkauf" : "Verkäufe"}</>}
+                      top={{ text: signedMoney(g.realized, g.currency), tone: tone(g.realized) }} bottom={{ text: "Ergebnis" }} />
+                  ))}
+                </ul>
+              )}
             </>
           )}
         </>
       )}
 
-      {dialog?.mode === "buy" && <BuyDialog onClose={() => setDialog(null)} onSaved={load} />}
-      {dialog && dialog.mode !== "buy" && <EditDialog pos={dialog.pos} mode={dialog.mode} onClose={() => setDialog(null)} onSaved={load} />}
+      {buying && <BuyDialog onClose={() => setBuying(false)} onSaved={load} />}
     </>
   );
 }

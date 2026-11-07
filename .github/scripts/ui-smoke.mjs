@@ -156,6 +156,7 @@ await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-watchlist.png", fullPage: true });
 await mobile.goto(`${base}/`);
 await mobile.waitForTimeout(12000);
+await mobile.screenshot({ path: "shots/mobile-home.png", fullPage: true });
 const mNews = mobile.locator(".news-grid");
 if (await mNews.count()) { await mNews.scrollIntoViewIfNeeded(); await mobile.screenshot({ path: "shots/mobile-news.png" }); }
 
@@ -168,6 +169,9 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   await pg.goto(`${base}/chart/IE00B4L5Y983.GTX`);
   await pg.waitForTimeout(9000);
   await pg.screenshot({ path: `shots/${tag}-stock.png` });
+  const moreBtn = pg.getByRole("button", { name: /^Details/ });
+  if (await moreBtn.count()) await moreBtn.first().click();
+  await pg.waitForTimeout(400);
   await pg.locator(".lot-actions .btn", { hasText: "Verkauf erfassen" }).first().click();
   await pg.waitForTimeout(1200);
   await pg.screenshot({ path: `shots/${tag}-sell-dialog.png` });

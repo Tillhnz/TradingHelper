@@ -67,6 +67,7 @@ export default function ChartPage() {
   const [buying, setBuying] = useState(false);
   const [tick, setTick] = useState(0);
   const [chartType, setChartType] = useState(loadType);
+  const [optsOpen, setOptsOpen] = useState(false);
   const [holding, setHolding] = useState(null);
   const refreshAll = useCallback(() => setTick((t) => t + 1), []);
 
@@ -249,7 +250,7 @@ export default function ChartPage() {
 
       <div className="stock-main">
       <section className="panel chart-panel">
-        <div className="toolbar">
+        <div className={`toolbar ${optsOpen ? "opts-open" : ""}`}>
           {pro ? (
             <>
               <div className="seg" role="group" aria-label="Kerzen">
@@ -274,6 +275,7 @@ export default function ChartPage() {
           <select value={chartType || (pro ? "candles" : "area")} onChange={(e) => pickType(e.target.value)} aria-label="Darstellung">
             {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
+          <button className="opts-btn" onClick={() => setOptsOpen((o) => !o)} aria-expanded={optsOpen}>{optsOpen ? "Fertig" : "Anzeige ▾"}</button>
           <span className="toolbar-gap" />
           <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
           <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => { setPlanTouched(true); setShowPlan(e.target.checked); }} /> Einstiegsmarken</label>

@@ -43,11 +43,13 @@ function RiskChance({ s, c }) {
 export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
   const [dialog, setDialog] = useState(null);
   const [error, setError] = useState("");
+  const [more, setMore] = useState(false);
   if (!holding?.items?.length) return null;
   const s = holding.summary;
   const c = s.currency;
   const open = holding.items.filter((p) => !p.closed);
   const closed = holding.items.filter((p) => p.closed);
+  const hintCount = open.reduce((n, p) => n + (p.hints || []).filter((h) => h.suggested_stop || h.suggested_target || h.level === "bad").length, 0);
 
   async function act(fn) {
     setError("");
@@ -69,7 +71,7 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
     <section className={`panel holding ${s.pl > 0 ? "gain" : s.pl < 0 ? "loss" : ""}`}>
       <div className="panel-head">
         <h2>Mein Bestand</h2>
-        <button className="btn small primary" onClick={onBuyMore}>{s.shares ? "Nachkauf erfassen" : "Kauf erfassen"}</button>
+        <button className="btn small primary" onClick={onBuyMore}>{s.shares ? "+ Nachkauf" : "Kauf"}</button>
       </div>
 
       {s.shares > 0 ? (
@@ -79,26 +81,36 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
               <strong className={tone(s.pl)}>{signedMoney(s.pl, c)}</strong>
               <span className={tone(s.pl_pct)}>{pct(s.pl_pct)}</span>
             </div>
-            {s.advice && <p className={`advice ${s.advice.level}`}>{s.advice.text}</p>}
+            <p className="muted small holding-line">{qty(s.shares)} Stück · Ø {money(s.avg_price, c)} · Wert {money(s.value, c)}</p>
+            {s.advice && !/kein Handlungsbedarf/.test(s.advice.text) && <p className={`advice ${s.advice.level}`}>{s.advice.text}</p>}
           </div>
-          <RiskChance s={s} c={c} />
           {s.avg_price && <RiskBar entry={s.avg_price} stop={s.stop} target={s.target} current={s.price} currency={c} />}
-          <div className="stats stats-wide">
-            <div className="stat"><span className="stat-label">Bestand</span><strong className="stat-value">{qty(s.shares)} Stück</strong></div>
-            <div className="stat"><span className="stat-label">{s.lots > 1 ? "Erster Kauf" : "Gekauft am"}</span><strong className="stat-value">{date(s.since)}</strong>
-              {s.lots > 1 && <span className="small muted">{s.lots} Käufe</span>}</div>
-            <div className="stat"><span className="stat-label">Ø Kaufkurs</span><strong className="stat-value">{money(s.avg_price, c)}</strong></div>
-            <div className="stat"><span className="stat-label">Aktuell</span><strong className="stat-value">{money(s.price, c)}</strong></div>
-            <div className="stat"><span className="stat-label">Eingesetzt</span><strong className="stat-value">{money(s.invested, c)}</strong></div>
-            <div className="stat"><span className="stat-label">Wert</span><strong className="stat-value">{money(s.value, c)}</strong></div>
-            {s.closed_lots > 0 && <div className={`stat ${tone(s.realized)}`}><span className="stat-label">Realisiert</span><strong className="stat-value">{signedMoney(s.realized, c)}</strong></div>}
+          <div className="holding-actions">
+            {open.length === 1 && <button className="btn small" onClick={() => setDialog({ mode: "sell", pos: open[0] })}>Verkaufen</button>}
+            {open.length === 1 && <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: open[0] })}>Stopp/Ziel ändern</button>}
+            <button className="toggle-link" onClick={() => setMore((m) => !m)} aria-expanded={more}>
+              {more ? "Weniger anzeigen" : `Details${open.length > 1 ? ` · ${open.length} Käufe` : ""}${hintCount ? ` · ${hintCount} ${hintCount === 1 ? "Hinweis" : "Hinweise"}` : ""}`}
+            </button>
           </div>
-          {s.mixed_currency && <p className="muted small">Käufe in verschiedenen Währungen – Summen siehe einzelne Käufe.</p>}
+          {more && (
+            <>
+              <RiskChance s={s} c={c} />
+              <div className="stats stats-wide">
+                <div className="stat"><span className="stat-label">{s.lots > 1 ? "Erster Kauf" : "Gekauft am"}</span><strong className="stat-value">{date(s.since)}</strong>
+                  {s.lots > 1 && <span className="small muted">{s.lots} Käufe</span>}</div>
+                <div className="stat"><span className="stat-label">Aktuell</span><strong className="stat-value">{money(s.price, c)}</strong></div>
+                <div className="stat"><span className="stat-label">Eingesetzt</span><strong className="stat-value">{money(s.invested, c)}</strong></div>
+                {s.closed_lots > 0 && <div className={`stat ${tone(s.realized)}`}><span className="stat-label">Realisiert</span><strong className="stat-value">{signedMoney(s.realized, c)}</strong></div>}
+              </div>
+              {s.mixed_currency && <p className="muted small">Käufe in verschiedenen Währungen – Summen siehe einzelne Käufe.</p>}
+            </>
+          )}
         </>
       ) : (
         <p className="muted">Kein offener Bestand. Realisiert: <strong className={tone(s.realized)}>{signedMoney(s.realized, c)}</strong></p>
       )}
 
+      {(more || !s.shares) && <>
       <h3 className="sub-title lots-title">Deine Käufe</h3>
       <ul className="lots">
         {open.map((p) => (
@@ -151,6 +163,7 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
           </li>
         ))}
       </ul>
+      </>}
       {error && <p className="error" role="alert">{error}</p>}
       {dialog && <EditDialog pos={dialog.pos} mode={dialog.mode} onClose={() => setDialog(null)} onSaved={onChanged} />}
     </section>
