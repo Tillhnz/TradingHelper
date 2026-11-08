@@ -638,8 +638,8 @@ h1 { font-size: 2.4rem; }
   .stock-side .lot { grid-template-columns: minmax(0, 1fr) auto; }
   .stock-side .lot-actions .btn { flex: 1 1 auto; text-align: center; }
   .stock-main .analysis-grid { grid-template-columns: 1fr 1fr; }
-  .stock-head { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "id actions quote"; align-items: end; }
-  .stock-actions-top { justify-content: flex-end; }
+  /* Knöpfe in eigener Zeile unter Name und Kurs, damit lange Namen nicht zusammengedrückt werden */
+  .stock-head { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "id quote" "actions actions"; align-items: end; }
 }
 
 /* Große Bildschirme: mehr Breite nutzen */
