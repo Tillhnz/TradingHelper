@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Stack starten
         run: |
           printf 'SECRET_KEY=ci-secret\nPROJECT_DIR=%s\n' "$PWD" > .env
           mkdir -p data && sudo chown 10001:10001 data
           docker compose up -d --build
           for i in $(seq 1 60); do curl -fsS localhost:8080/api/health && break; sleep 3; done
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Browser-Test
@@ -32,7 +32,7 @@ jobs:
       - name: Protokolle
         if: always()
         run: docker compose logs --tail 80 backend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots
