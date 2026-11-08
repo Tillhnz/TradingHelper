@@ -3,6 +3,17 @@
 
 export const CHANGELOG = [
   {
+    version: "0.15.0",
+    date: "08.11.2026",
+    title: "Verkauf mit einem Tipp, Bestand in Blöcken",
+    items: [
+      "Neben „Kauf“ gibt es jetzt „Verkauf“: Kurs und Uhrzeit von jetzt sind schon eingetragen, anpassen kannst du sie bei Bedarf.",
+      "Unter „Mein Bestand“ steht jeder Kauf als eigener Block mit Stückzahl, Kaufkurs, Stopp, Ziel und Gewinn/Verlust – und einem eigenen „Verkauf“-Knopf.",
+      "Verkauft wird immer ein ganzer Block. Hast du mehrere, wählst du im Verkauf, welchen.",
+      "Verkaufte Blöcke findest du darunter eingeklappt; ein Verkauf lässt sich dort auch zurücknehmen.",
+    ],
+  },
+  {
     version: "0.14.1",
     date: "07.11.2026",
     title: "Signale besser erkennbar, großer Chart per Klick",

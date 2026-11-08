@@ -302,7 +302,7 @@ def _chart_positions(symbol: str, shown: str | None, st: Storage, settings: Sett
         try:
             out.append({
                 "id": pos["id"], "quantity": pos["quantity"], "buy_date": pos["buy_date"], "sell_date": pos["sell_date"],
-                "buy_time": pos.get("buy_time"), "fees": pos.get("fees") or 0, "trail_pct": pos.get("trail_pct"),
+                "buy_time": pos.get("buy_time"), "sell_time": pos.get("sell_time"), "fees": pos.get("fees") or 0, "trail_pct": pos.get("trail_pct"),
                 "buy_price": conv(pos["buy_price"], pos["buy_date"]),
                 "stop": max(trail_stop, conv(pos["stop"]) or 0) if trail_stop else conv(pos["stop"]),
                 "target": conv(pos["target"]),
@@ -622,6 +622,7 @@ class PositionPatch(BaseModel):
     sell_price: float | None = Field(default=None, gt=0)
     sell_date: date | None = None
     sell_fees: float | None = Field(default=None, ge=0)
+    sell_time: str | None = Field(default=None, pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")  # Uhrzeit des Verkaufs
     trail_pct: float | None = Field(default=None, ge=0, le=50)  # 0 = nicht mitlaufen lassen
     reopen: bool = False
 
@@ -724,10 +725,11 @@ def position_update(pos_id: int, item: PositionPatch, st: Storage = Depends(user
     for key in ("stop", "target", "trail_pct"):
         if data.get(key) == 0:
             data[key] = None
-    if data.get("buy_time") == "":
-        data["buy_time"] = None
+    for key in ("buy_time", "sell_time"):
+        if data.get(key) == "":
+            data[key] = None
     if item.reopen:
-        data.update(sell_price=None, sell_date=None, sell_fees=0)
+        data.update(sell_price=None, sell_date=None, sell_fees=0, sell_time=None)
     elif ("sell_price" in data) != ("sell_date" in data) and not current["sell_date"]:
         raise HTTPException(422, "Für einen Verkauf bitte Kurs und Datum angeben")
     _check_position({**current, **data})

@@ -28,7 +28,8 @@ export function buyTimestamp(p) {
 export function sellTimestamp(p) {
   if (!p.sell_date) return null;
   const [y, m, d] = String(p.sell_date).split("-").map(Number);
-  return Math.floor(new Date(y, m - 1, d, 12, 0).getTime() / 1000);
+  const [hh, mm] = p.sell_time ? p.sell_time.split(":").map(Number) : [12, 0];
+  return Math.floor(new Date(y, m - 1, d, hh, mm).getTime() / 1000);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

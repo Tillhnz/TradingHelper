@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import BuyDialog from "../components/BuyDialog.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
 import HoldingPanel from "../components/HoldingPanel.jsx";
+import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
 import PriceChart, { CHART_TYPES } from "../components/PriceChart.jsx";
 import Term from "../components/Term.jsx";
@@ -65,6 +66,7 @@ export default function ChartPage() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [buying, setBuying] = useState(false);
+  const [selling, setSelling] = useState(null);
   const [tick, setTick] = useState(0);
   const [chartType, setChartType] = useState(loadType);
   const [optsOpen, setOptsOpen] = useState(false);
@@ -169,6 +171,8 @@ export default function ChartPage() {
   const p = (v) => money(v, cur);
   const ccyValue = ccy || meta?.display_currency || "native";
   const held = holding?.summary?.shares > 0;
+  const openBlocks = (holding?.items || []).filter((x) => !x.closed)
+    .sort((a, b) => (a.buy_date + (a.buy_time || "")).localeCompare(b.buy_date + (b.buy_time || "")));
   const last = rows?.[rows.length - 1];
   const prevRow = rows?.[rows.length - 2];
   const lq = quotes[symbol];
@@ -219,6 +223,7 @@ export default function ChartPage() {
         </div>
         <div className="stock-actions-top">
           <button className="btn primary btn-buy" onClick={() => setBuying(true)} title="Kurs und Uhrzeit von jetzt übernehmen">{held ? "+ Nachkauf" : "Kauf"}</button>
+          {held && <button className="btn btn-sell" onClick={() => setSelling({})} title="Kurs und Uhrzeit von jetzt übernehmen">Verkauf</button>}
           {watched !== null && !held && <button className="btn" onClick={toggleWatch}>{watched ? "✓ Beobachtet" : "☆ Beobachten"}</button>}
           <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>🔔 Alarm</Link>
           <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Großer Chart: Linien und Kennlinien selbst einzeichnen">⛶ Großer Chart</Link>
@@ -245,7 +250,7 @@ export default function ChartPage() {
         </section>
       )}
 
-      <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} />
+      <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} onSell={(id) => setSelling({ id })} />
       </aside>
 
       <div className="stock-main">
@@ -350,6 +355,10 @@ export default function ChartPage() {
       </div>
       </div>
 
+      {selling && openBlocks.length > 0 && (
+        <SellDialog blocks={openBlocks} initialId={selling.id} live={livePrice} liveCcy={cur}
+          name={info?.name} onClose={() => setSelling(null)} onSaved={refreshAll} />
+      )}
       {buying && (
         <BuyDialog symbol={symbol} info={{ ...meta, price: livePrice }}
           defaults={{ price: livePrice ? Math.round(livePrice * 100) / 100 : "", stop: bestSetup?.stop ?? rec?.stop ?? "",

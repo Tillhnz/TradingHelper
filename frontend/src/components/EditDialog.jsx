@@ -35,7 +35,7 @@ export default function EditDialog({ pos, mode, onClose, onSaved }) {
   const sellPl = mode === "sell" && n(f.sell_price) ? (n(f.sell_price) - pos.buy_price) * pos.quantity - (pos.fees || 0) - (n(f.sell_fees) || 0) : null;
 
   return (
-    <Modal title={`${mode === "sell" ? "Verkauf erfassen" : "Position bearbeiten"} · ${displayName(pos)}`} onClose={onClose}>
+    <Modal title={`${mode === "sell" ? "Verkauf erfassen" : "Block bearbeiten"} · ${displayName(pos)}`} onClose={onClose}>
       <form onSubmit={save}>
         <div className="form-grid">
           {mode === "sell" ? (
@@ -67,9 +67,9 @@ export default function EditDialog({ pos, mode, onClose, onSaved }) {
           <button type="button" className="btn" onClick={onClose}>Abbrechen</button>
           {mode !== "sell" && (
             <button type="button" className="btn danger push-right" onClick={async () => {
-              if (!window.confirm("Diesen Kauf wirklich löschen? Das lässt sich nicht rückgängig machen.")) return;
+              if (!window.confirm("Diesen Block wirklich löschen? Das lässt sich nicht rückgängig machen.")) return;
               try { await api.del(`/positions/${pos.id}`); onSaved(); onClose(); } catch (err) { setError(err.message); }
-            }}>Kauf löschen</button>
+            }}>Block löschen</button>
           )}
         </div>
       </form>

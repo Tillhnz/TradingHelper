@@ -966,3 +966,22 @@ h1 { font-size: 2.4rem; }
   border: 1px dashed var(--line); border-radius: 12px; }
 .onboard-chip { font-size: 0.85rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: rgba(111, 211, 195, 0.1); color: var(--celeste); text-decoration: none; }
 .onboard-line .link { margin-left: auto; }
+
+/* Verkauf-Knopf (Gegenstück zu „Kauf“) und Blöcke unter „Mein Bestand“ */
+.btn.btn-sell { background: rgba(255, 107, 107, 0.12); border-color: rgba(255, 107, 107, 0.5); color: #ffb3b3; font-weight: 600; }
+.btn.btn-sell:hover { background: rgba(255, 107, 107, 0.22); }
+.btn.primary.btn-sell { background: var(--signal); color: #2a0b0b; border-color: var(--signal); }
+.blocks .lots { gap: 0.55rem; }
+.lot.block { border-left: 3px solid var(--line); }
+.lot.block.pos { border-left-color: var(--celeste); }
+.lot.block.neg { border-left-color: var(--signal); }
+.block-qty { font-size: 1.05rem; }
+.lot.block .lot-actions .btn { flex: 1 1 0; text-align: center; }
+.sold-toggle { display: block; margin-top: 0.8rem; }
+.block-pick { border: 0; padding: 0; margin: 0 0 0.9rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.block-pick legend { margin-bottom: 0.3rem; }
+.block-opt { display: flex; flex-direction: row; align-items: center; gap: 0.7rem; padding: 0.55rem 0.8rem; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--ink-2); cursor: pointer; font-weight: 400; }
+.block-opt.on { border-color: var(--celeste); background: rgba(111, 211, 195, 0.08); }
+.block-opt input { width: auto; margin: 0; accent-color: var(--celeste); }
+.block-opt-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }

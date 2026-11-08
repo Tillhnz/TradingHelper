@@ -139,6 +139,8 @@ await mobile.getByRole("button", { name: "Einfach" }).first().click();
 await mobile.goto(`${base}/chart/DE0007164600.GTX`);
 await mobile.waitForTimeout(9000);
 await mobile.screenshot({ path: "shots/mobile-stock.png", fullPage: true });
+const mBlocks = mobile.locator(".panel.blocks");
+if (await mBlocks.count()) { await mBlocks.scrollIntoViewIfNeeded(); await mBlocks.screenshot({ path: "shots/mobile-blocks.png" }); }
 console.log("stock news", JSON.stringify(await mobile.evaluate(() => [...document.querySelectorAll(".news-list li")].slice(0, 8).map((li) => li.querySelector(".news-src")?.textContent + " | " + li.querySelector(".news-head")?.textContent))));
 const before = await mobile.evaluate(() => window.scrollY);
 const box = await mobile.locator(".chart-main").boundingBox();
@@ -169,10 +171,9 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   await pg.goto(`${base}/chart/IE00B4L5Y983.GTX`);
   await pg.waitForTimeout(9000);
   await pg.screenshot({ path: `shots/${tag}-stock.png` });
-  const moreBtn = pg.getByRole("button", { name: /^Details/ });
-  if (await moreBtn.count()) await moreBtn.first().click();
-  await pg.waitForTimeout(400);
-  await pg.locator(".lot-actions .btn", { hasText: "Verkauf erfassen" }).first().click();
+  const blocks = pg.locator(".panel.blocks");
+  if (await blocks.count()) { await blocks.scrollIntoViewIfNeeded(); await blocks.screenshot({ path: `shots/${tag}-blocks.png` }); }
+  await pg.locator(".stock-head .btn-sell").first().click();
   await pg.waitForTimeout(1200);
   await pg.screenshot({ path: `shots/${tag}-sell-dialog.png` });
   const onTop = await pg.evaluate(() => {

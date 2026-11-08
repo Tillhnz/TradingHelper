@@ -39,17 +39,17 @@ function RiskChance({ s, c }) {
   );
 }
 
-/** „Mein Bestand“ auf der Seite eines Werts: Zusammenfassung, Rat für Halter und alle Käufe mit Aktionen. */
-export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
+/** „Mein Bestand“ auf der Seite eines Werts: Zusammenfassung, darunter jeder Kauf als eigener Block mit Verkauf. */
+export default function HoldingPanel({ holding, onChanged, onBuyMore, onSell }) {
   const [dialog, setDialog] = useState(null);
   const [error, setError] = useState("");
   const [more, setMore] = useState(false);
+  const [showSold, setShowSold] = useState(false);
   if (!holding?.items?.length) return null;
   const s = holding.summary;
   const c = s.currency;
-  const open = holding.items.filter((p) => !p.closed);
-  const closed = holding.items.filter((p) => p.closed);
-  const hintCount = open.reduce((n, p) => n + (p.hints || []).filter((h) => h.suggested_stop || h.suggested_target || h.level === "bad").length, 0);
+  const open = holding.items.filter((p) => !p.closed).sort((a, b) => (a.buy_date + (a.buy_time || "")).localeCompare(b.buy_date + (b.buy_time || "")));
+  const closed = holding.items.filter((p) => p.closed).sort((a, b) => String(b.sell_date).localeCompare(String(a.sell_date)));
 
   async function act(fn) {
     setError("");
@@ -62,12 +62,13 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
   }
 
   const remove = (p) => {
-    if (window.confirm(`Kauf vom ${date(p.buy_date)} (${qty(p.quantity)} Stück) löschen? Das lässt sich nicht rückgängig machen.`)) {
+    if (window.confirm(`Block vom ${date(p.buy_date)} (${qty(p.quantity)} Stück) löschen? Das lässt sich nicht rückgängig machen.`)) {
       act(() => api.del(`/positions/${p.id}`));
     }
   };
 
   return (
+    <>
     <section className={`panel holding ${s.pl > 0 ? "gain" : s.pl < 0 ? "loss" : ""}`}>
       <div className="panel-head">
         <h2>Mein Bestand</h2>
@@ -81,47 +82,54 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
               <strong className={tone(s.pl)}>{signedMoney(s.pl, c)}</strong>
               <span className={tone(s.pl_pct)}>{pct(s.pl_pct)}</span>
             </div>
-            <p className="muted small holding-line">{qty(s.shares)} Stück · Ø {money(s.avg_price, c)} · Wert {money(s.value, c)}</p>
+            <p className="muted small holding-line">{qty(s.shares)} Stück{open.length > 1 ? ` in ${open.length} Blöcken` : ""} · Ø {money(s.avg_price, c)} · Wert {money(s.value, c)}</p>
             {s.advice && !/kein Handlungsbedarf/.test(s.advice.text) && <p className={`advice ${s.advice.level}`}>{s.advice.text}</p>}
           </div>
           {s.avg_price && <RiskBar entry={s.avg_price} stop={s.stop} target={s.target} current={s.price} currency={c} />}
           <div className="holding-actions">
-            {open.length === 1 && <button className="btn small" onClick={() => setDialog({ mode: "sell", pos: open[0] })}>Verkaufen</button>}
-            {open.length === 1 && <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: open[0] })}>Stopp/Ziel ändern</button>}
             <button className="toggle-link" onClick={() => setMore((m) => !m)} aria-expanded={more}>
-              {more ? "Weniger anzeigen" : `Details${open.length > 1 ? ` · ${open.length} Käufe` : ""}${hintCount ? ` · ${hintCount} ${hintCount === 1 ? "Hinweis" : "Hinweise"}` : ""}`}
+              {more ? "Weniger anzeigen" : "Risiko, Chance und Zahlen"}
             </button>
           </div>
           {more && (
             <>
               <RiskChance s={s} c={c} />
               <div className="stats stats-wide">
-                <div className="stat"><span className="stat-label">{s.lots > 1 ? "Erster Kauf" : "Gekauft am"}</span><strong className="stat-value">{date(s.since)}</strong>
-                  {s.lots > 1 && <span className="small muted">{s.lots} Käufe</span>}</div>
+                <div className="stat"><span className="stat-label">{s.lots > 1 ? "Erster Kauf" : "Gekauft am"}</span><strong className="stat-value">{date(s.since)}</strong></div>
                 <div className="stat"><span className="stat-label">Aktuell</span><strong className="stat-value">{money(s.price, c)}</strong></div>
                 <div className="stat"><span className="stat-label">Eingesetzt</span><strong className="stat-value">{money(s.invested, c)}</strong></div>
                 {s.closed_lots > 0 && <div className={`stat ${tone(s.realized)}`}><span className="stat-label">Realisiert</span><strong className="stat-value">{signedMoney(s.realized, c)}</strong></div>}
               </div>
-              {s.mixed_currency && <p className="muted small">Käufe in verschiedenen Währungen – Summen siehe einzelne Käufe.</p>}
+              {s.mixed_currency && <p className="muted small">Käufe in verschiedenen Währungen – Summen siehe einzelne Blöcke.</p>}
             </>
           )}
         </>
       ) : (
         <p className="muted">Kein offener Bestand. Realisiert: <strong className={tone(s.realized)}>{signedMoney(s.realized, c)}</strong></p>
       )}
+      {error && <p className="error" role="alert">{error}</p>}
+    </section>
 
-      {(more || !s.shares) && <>
-      <h3 className="sub-title lots-title">Deine Käufe</h3>
+    {(open.length > 0 || closed.length > 0) && (
+    <section className="panel blocks">
+      {open.length > 0 && <>
+      <div className="panel-head">
+        <h2>Deine Blöcke</h2>
+        <span className="muted small">{open.length} offen</span>
+      </div>
       <ul className="lots">
-        {open.map((p) => (
-          <li key={p.id} className="lot">
+        {open.map((p) => {
+          const cc = p.display_currency;
+          return (
+          <li key={p.id} className={`lot block ${tone(p.pl)}`}>
             <div className="lot-main">
-              <strong>{date(p.buy_date)} · {qty(p.quantity)} Stück à {money(p.buy_price, p.display_currency)}</strong>
-              {p.note && <span className="muted small">„{p.note}“</span>}
+              <strong className="block-qty">{qty(p.quantity)} Stück</strong>
+              <span className="muted small">{date(p.buy_date)}{p.buy_time ? ` · ${p.buy_time} Uhr` : ""} · Kauf {money(p.buy_price, cc)}</span>
               <span className="muted small">
-                Stopp {money(p.stop, p.display_currency)}{p.trail_pct ? ` (läuft ${String(p.trail_pct).replace(".", ",")} % unter dem Hoch mit)` : ""} · Ziel {money(p.target, p.display_currency)}
+                {p.stop ? `Stopp ${money(p.stop, cc)}${p.trail_pct ? ` (läuft ${String(p.trail_pct).replace(".", ",")} % mit)` : ""}` : "kein Stopp"}
+                {" · "}{p.target ? `Ziel ${money(p.target, cc)}` : "kein Ziel"}
               </span>
-              {p.hints?.filter((h) => h.suggested_stop || h.suggested_target || h.level === "bad" || h.text.startsWith("Stopp läuft")).map((h) => (
+              {p.hints?.filter((h) => h.suggested_stop || h.suggested_target || h.level === "bad").map((h) => (
                 <span key={h.text} className={`small hint-inline ${h.level}`}>
                   {h.text}
                   {h.suggested_stop && <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { stop: h.suggested_stop }))}>übernehmen</button>}
@@ -130,42 +138,55 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore }) {
               ))}
               {!p.trail_pct && p.trail_suggest_pct && (
                 <span className="small muted">
-                  Tipp: Stopp mitlaufen lassen ({String(p.trail_suggest_pct).replace(".", ",")} % passend zu deiner Strategie){" "}
+                  Tipp: Stopp {String(p.trail_suggest_pct).replace(".", ",")} % mitlaufen lassen{" "}
                   <button className="link small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { trail_pct: p.trail_suggest_pct }))}>einschalten</button>
                 </span>
               )}
             </div>
             <div className={`lot-pl ${tone(p.pl)}`}>
-              <strong>{signedMoney(p.pl, p.display_currency)}</strong>
+              <strong>{signedMoney(p.pl, cc)}</strong>
               <span className="small">{pct(p.pl_pct)}</span>
+              {p.value != null && <span className="small muted">Wert {money(p.value, cc)}</span>}
             </div>
             <div className="lot-actions">
-              <button className="btn small" onClick={() => setDialog({ mode: "sell", pos: p })}>Verkauf erfassen</button>
+              <button className="btn small btn-sell" onClick={() => onSell?.(p.id)}>Verkauf</button>
               <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: p })}>Bearbeiten</button>
-              <button className="btn small danger" onClick={() => remove(p)}>Löschen</button>
             </div>
           </li>
-        ))}
-        {closed.map((p) => (
-          <li key={p.id} className="lot closed">
-            <div className="lot-main">
-              <strong>{qty(p.quantity)} Stück · {money(p.buy_price, p.display_currency)} → {money(p.sell_price, p.display_currency)}</strong>
-              <span className="muted small">verkauft · {date(p.buy_date)} – {date(p.sell_date)}</span>
-            </div>
-            <div className={`lot-pl ${tone(p.pl)}`}>
-              <strong>{signedMoney(p.pl, p.display_currency)}</strong>
-              <span className="small">{pct(p.pl_pct)}</span>
-            </div>
-            <div className="lot-actions">
-              <button className="btn small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { reopen: true }))}>Wieder öffnen</button>
-              <button className="btn small danger" onClick={() => remove(p)}>Löschen</button>
-            </div>
-          </li>
-        ))}
+          );
+        })}
       </ul>
       </>}
-      {error && <p className="error" role="alert">{error}</p>}
+      {closed.length > 0 && (
+        <>
+          <button className="toggle-link sold-toggle" onClick={() => setShowSold((x) => !x)} aria-expanded={showSold}>
+            {showSold ? "Verkaufte Blöcke ausblenden" : `Verkaufte Blöcke (${closed.length}) · ${signedMoney(s.realized, c)}`}
+          </button>
+          {showSold && (
+            <ul className="lots">
+              {closed.map((p) => (
+                <li key={p.id} className="lot closed">
+                  <div className="lot-main">
+                    <strong>{qty(p.quantity)} Stück · {money(p.buy_price, p.display_currency)} → {money(p.sell_price, p.display_currency)}</strong>
+                    <span className="muted small">{date(p.buy_date)} – {date(p.sell_date)}{p.sell_time ? ` ${p.sell_time}` : ""}</span>
+                  </div>
+                  <div className={`lot-pl ${tone(p.pl)}`}>
+                    <strong>{signedMoney(p.pl, p.display_currency)}</strong>
+                    <span className="small">{pct(p.pl_pct)}</span>
+                  </div>
+                  <div className="lot-actions">
+                    <button className="btn small" onClick={() => act(() => api.patch(`/positions/${p.id}`, { reopen: true }))}>Verkauf zurücknehmen</button>
+                    <button className="btn small danger" onClick={() => remove(p)}>Löschen</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
       {dialog && <EditDialog pos={dialog.pos} mode={dialog.mode} onClose={() => setDialog(null)} onSaved={onChanged} />}
     </section>
+    )}
+    </>
   );
 }

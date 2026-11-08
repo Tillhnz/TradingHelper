@@ -95,7 +95,8 @@ CREATE TABLE IF NOT EXISTS positions (
     created_at TEXT NOT NULL,
     trail_pct REAL,
     watch_state TEXT NOT NULL DEFAULT '',
-    buy_time TEXT
+    buy_time TEXT,
+    sell_time TEXT
 );
 CREATE TABLE IF NOT EXISTS paper_state (
     user_id INTEGER NOT NULL DEFAULT 1,
@@ -240,6 +241,7 @@ class Storage:
             ("positions", "trail_pct", "REAL"),
             ("positions", "watch_state", "TEXT NOT NULL DEFAULT ''"),
             ("positions", "buy_time", "TEXT"),
+            ("positions", "sell_time", "TEXT"),
             ("users", "is_admin", "INTEGER NOT NULL DEFAULT 0"),
         ]:
             if col not in cls._cols(c, table):
@@ -518,7 +520,7 @@ class Storage:
 
     # --- Positionen (erfasste Käufe) -----------------------------------------
     POSITION_FIELDS = ("symbol", "quantity", "buy_price", "buy_date", "fees", "currency", "stop", "target", "note",
-                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state", "buy_time")
+                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state", "buy_time", "sell_time")
 
     def positions(self, symbol: str | None = None, open_only: bool = False) -> list[dict]:
         q, args = "SELECT * FROM positions WHERE user_id=?", [self.uid]

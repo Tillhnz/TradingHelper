@@ -319,6 +319,10 @@ def test_position_buy_time(client):
                                                 "buy_time": "25:00"}, headers=h).status_code == 422
     r = client.patch(f"/api/positions/{p['id']}", json={"buy_time": "", "buy_price": 101.5}, headers=h).json()
     assert r["buy_time"] is None and r["buy_price"] == 101.5
+    sold = client.patch(f"/api/positions/{p['id']}", json={"sell_price": 104, "sell_date": "2026-01-05",
+                                                            "sell_time": "09:31"}, headers=h).json()
+    assert sold["sell_time"] == "09:31" and sold["sell_price"] == 104
+    assert client.patch(f"/api/positions/{p['id']}", json={"reopen": True}, headers=h).json()["sell_time"] is None
     hist = client.get("/api/history/AAPL?period=1y", headers=h).json()
     assert hist["positions"][0]["buy_time"] is None and hist["positions"][0]["quantity"] == 2  # Kurse in Anzeigewährung
 
