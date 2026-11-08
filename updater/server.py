@@ -165,7 +165,7 @@ def do_update():
         code, _ = run(["git", "pull", "--ff-only"], 300, log=True)
         if code != 0:
             raise RuntimeError("git pull ist fehlgeschlagen. Lokale Änderungen im Projektordner oder GitHub nicht erreichbar.")
-        code, _ = run(base + ["build", *SERVICES], 3000, log=True)
+        code, _ = run(base + ["build", "--pull", *SERVICES], 3000, log=True)
         if code != 0:
             run(["git", "reset", "--keep", before], 60, log=True)
             raise RuntimeError("Der Bau der neuen Version ist fehlgeschlagen. Die laufende Version bleibt unverändert.")
@@ -174,7 +174,7 @@ def do_update():
         if code != 0 or not wait_healthy():
             job["log"] += "Die neue Version startet nicht. Gehe zur vorherigen Version zurück …\n"
             run(["git", "reset", "--keep", before], 60, log=True)
-            run(base + ["build", *SERVICES], 3000, log=True)
+            run(base + ["build", "--pull", *SERVICES], 3000, log=True)
             run(base + ["up", "-d", *SERVICES], 600, log=True)
             raise RuntimeError("Die neue Version ist nicht angesprungen. TradeHelper läuft wieder mit der vorherigen Version.")
         job["state"] = "done"

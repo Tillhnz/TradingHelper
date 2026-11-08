@@ -107,7 +107,7 @@ setup_env() {
 
 start_stack() {
   info "Baue und starte TradeHelper (der erste Start dauert einige Minuten) …"
-  (cd "$APP_DIR" && "${DOCKER[@]}" compose up -d --build --remove-orphans)
+  (cd "$APP_DIR" && "${DOCKER[@]}" compose build --pull && "${DOCKER[@]}" compose up -d --remove-orphans)
 }
 
 wait_healthy() {
