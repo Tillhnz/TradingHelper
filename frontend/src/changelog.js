@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: "0.15.2",
+    date: "09.11.2026",
+    title: "Bericht-Fehler behoben",
+    items: [
+      "Der Bericht brach ab, sobald ein Wert komplett verkauft war (alle Blöcke weg). Behoben – Berichte kommen wieder.",
+      "Nutzer ohne ntfy-Topic: Der Bericht gilt als erledigt (liegt auf der Webseite), nicht mehr als „mit Problem“.",
+    ],
+  },
+  {
     version: "0.15.1",
     date: "09.11.2026",
     title: "Berichte gehen nicht mehr verloren",

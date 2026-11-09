@@ -68,4 +68,17 @@ def test_send_report_status_without_topic(tmp_path, monkeypatch):
     monkeypatch.setattr(report, "short_text", lambda r: "kurz")
     monkeypatch.setattr(report.Report, "to_markdown", lambda self: "lang")
     out = report.send_report(st, cfg(ntfy_topic=""), "morning")
-    assert out.push_ok is False and "kein ntfy-Topic" in out.status
+    assert "kein ntfy-Topic" in out.status  # ohne Topic ist das kein Fehler, nur ohne Push
+
+
+def test_short_text_with_fully_sold_holding():
+    """Alles verkauft: summarize() liefert advice=None – der Bericht darf daran nicht scheitern."""
+    from types import SimpleNamespace
+
+    from app import analysis
+    sold = {"shares": 0, "advice": None, "currency": "EUR", "lots": 0, "closed_lots": 1}
+    held = {"shares": 5, "advice": {"level": "warn", "text": "Stopp nachziehen"}}
+    e1 = SimpleNamespace(rec=SimpleNamespace(action=analysis.HOLD, symbol="A"), holding=sold, name="Alpha", ticker=None)
+    e2 = SimpleNamespace(rec=SimpleNamespace(action=analysis.HOLD, symbol="B"), holding=held, name="Beta", ticker=None)
+    txt = report.short_text(report.Report("x", [e1, e2], {}, "p"))
+    assert "Beta: Stopp nachziehen" in txt and "Alpha:" not in txt

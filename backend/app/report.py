@@ -149,7 +149,7 @@ def short_text(rep: Report) -> str:
     """Kurzfassung für die Push-Benachrichtigung; der ganze Bericht steht auf der Webseite."""
     buy = [e for e in rep.entries if e.rec.action == analysis.BUY]
     sell = [e for e in rep.entries if e.rec.action == analysis.SELL]
-    held_act = [e for e in rep.entries if e.holding and e.holding.get("advice", {}).get("level") in ("bad", "warn", "good")
+    held_act = [e for e in rep.entries if e.holding and (e.holding.get("advice") or {}).get("level") in ("bad", "warn", "good")
                 and e not in buy and e not in sell]
     name = lambda e: e.name or e.ticker or e.rec.symbol  # noqa: E731
     parts = [f"{len(rep.entries)} Werte geprüft: {len(buy)} Gelegenheit{'en' if len(buy) != 1 else ''}, "
@@ -183,7 +183,12 @@ def send_report(storage: Storage, settings: Settings, kind: str = "morning") -> 
                          tags=[tag], path=f"/?bericht={rid}")
     else:
         ok = notify.send(settings, f"TradeHelper {title}", rep.to_markdown(), tags=[tag])
-    rep.push_ok = ok
+    rep.push_ok = ok or not settings.ntfy_topic
     done = f"{len(rep.entries)} Werte" + (f", {len(rep.errors)} ohne Daten" if rep.errors else "")
-    rep.status = f"{done} · Push gesendet" if ok else f"{done} · Bericht gespeichert, Push fehlgeschlagen: {notify.last_error}"
+    if ok:
+        rep.status = f"{done} · Push gesendet"
+    elif not settings.ntfy_topic:
+        rep.status = f"{done} · Bericht gespeichert, kein Push (kein ntfy-Topic hinterlegt)"
+    else:
+        rep.status = f"{done} · Bericht gespeichert, Push fehlgeschlagen: {notify.last_error}"
     return rep
