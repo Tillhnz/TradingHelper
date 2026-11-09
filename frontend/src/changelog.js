@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.15.1",
+    date: "09.11.2026",
+    title: "Berichte gehen nicht mehr verloren",
+    items: [
+      "War TradeHelper zur Berichtszeit nicht erreichbar (z. B. wegen eines Updates oder Neustarts), wird der verpasste Bericht beim Start nachgeholt.",
+      "Unter Administration → Zustand siehst du jetzt den Zeitplan und die letzten Berichte – mit dem Grund, falls etwas schiefging (z. B. Push fehlgeschlagen).",
+      "„Bericht jetzt senden“ meldet, wenn die Push-Nachricht nicht rausging, statt still „verschickt“ zu sagen.",
+    ],
+  },
+  {
     version: "0.15.0",
     date: "08.11.2026",
     title: "Verkauf mit einem Tipp, Bestand in Blöcken",

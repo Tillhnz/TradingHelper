@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -48,9 +50,7 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
     tz = settings.timezone
     # Morgen- und Nachmittagsbericht; direkt danach handelt das Schattendepot (oder platziert Orders)
     if settings.report_enabled:
-        for kind, at in (("morning", settings.report_time), ("afternoon", settings.report_time_pm)):
-            if not at:
-                continue
+        for kind, at in report_slots(settings):
             hh, mm = at.split(":")
             sched.add_job(
                 lambda kind=kind: _each_user(storage, settings, lambda st, cfg: _report_and_trade(st, cfg, kind),
@@ -93,6 +93,14 @@ def start(storage: Storage, settings: Settings) -> None:
         _plan(_sched, storage, settings)
         _sched.start()
         log.info("Scheduler gestartet: %s", next_runs())
+    threading.Thread(target=_safe_catch_up, args=(storage, settings), daemon=True, name="catch-up").start()
+
+
+def _safe_catch_up(storage: Storage, settings: Settings) -> None:
+    try:
+        catch_up(storage, settings)
+    except Exception:  # noqa: BLE001
+        log.exception("Nachholen des Berichts fehlgeschlagen")
 
 
 def replan(storage: Storage, settings: Settings) -> None:
@@ -132,10 +140,52 @@ def _check(storage: Storage, settings: Settings) -> None:
 
 
 def _report_and_trade(storage: Storage, settings: Settings, kind: str) -> None:
+    jid = storage.job_start(f"{kind}_report")
     try:
-        report.send_report(storage, settings, kind)
+        rep = report.send_report(storage, settings, kind)
+        storage.job_finish(jid, "ok" if rep.push_ok or not rep.entries else "warn", rep.status)
+    except Exception as exc:
+        storage.job_finish(jid, "error", f"{type(exc).__name__}: {exc}")
+        raise
     finally:
         _paper(storage, settings)
+
+
+def report_slots(settings: Settings) -> list[tuple[str, str]]:
+    return [(k, at) for k, at in (("morning", settings.report_time), ("afternoon", settings.report_time_pm)) if at]
+
+
+def _last_due(settings: Settings, now: datetime) -> tuple[str, datetime] | None:
+    """Der zuletzt fällige Bericht von heute (falls schon fällig) – zum Nachholen nach einem Neustart."""
+    if now.weekday() >= 5 and not settings.report_weekends:
+        return None
+    due = None
+    for kind, at in report_slots(settings):
+        hh, mm = (int(x) for x in at.split(":"))
+        t = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if t <= now and (due is None or t > due[1]):
+            due = (kind, t)
+    return due
+
+
+def catch_up(storage: Storage, settings: Settings) -> None:
+    """War der Dienst zur Berichtszeit nicht erreichbar (Update, Neustart, Stromausfall), fehlt der Bericht.
+    Den zuletzt fälligen von heute holen wir nach – aber nur, wenn er noch nicht lief."""
+    if not settings.report_enabled:
+        return
+    now = datetime.now(ZoneInfo(settings.timezone))
+    due = _last_due(settings, now)
+    if not due or now - due[1] < timedelta(minutes=3):
+        return  # gerade erst fällig – das erledigt der normale Zeitplan
+    kind, t = due
+    since = t.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+    def job(st: Storage, cfg: Settings) -> None:
+        if not st.ran_since(f"{kind}_report", since):
+            log.info("Hole %s von %s für %s nach", kind, t.strftime("%H:%M"), st.uid)
+            _report_and_trade(st, cfg, kind)
+
+    _each_user(storage, settings, job, "Bericht nachholen")
 
 
 def _paper_orders(storage: Storage, settings: Settings) -> None:

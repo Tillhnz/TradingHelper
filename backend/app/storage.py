@@ -71,6 +71,15 @@ CREATE TABLE IF NOT EXISTS chart_layouts (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, symbol)
 );
+CREATE TABLE IF NOT EXISTS job_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    job TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL,
+    detail TEXT
+);
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -473,6 +482,34 @@ class Storage:
                       "ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value", (self.uid, key, value))
 
     # --- Morgenberichte (die letzten 30 je Nutzer) -----------------------------
+    # --- Protokoll der Hintergrund-Jobs (für alle Nutzer, sichtbar in der Administration) --------------------
+    def job_start(self, job: str) -> int:
+        with self._conn() as c:
+            jid = int(c.execute("INSERT INTO job_runs(user_id, job, started_at, status) VALUES (?,?,?,'running')",
+                                (self.uid, job, now_iso())).lastrowid)
+            c.execute("DELETE FROM job_runs WHERE id NOT IN (SELECT id FROM job_runs ORDER BY id DESC LIMIT 200)")
+            return jid
+
+    def job_finish(self, jid: int, status: str, detail: str = "") -> None:
+        with self._conn() as c:
+            c.execute("UPDATE job_runs SET finished_at=?, status=?, detail=? WHERE id=?",
+                      (now_iso(), status, detail[:500], jid))
+
+    def job_runs(self, limit: int = 40) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT j.*, u.username FROM job_runs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.id DESC LIMIT ?",
+                (limit,))]
+
+    def ran_since(self, job: str, since_iso: str) -> bool:
+        """Lief der Job für diesen Nutzer seit dem Zeitpunkt (oder gibt es seitdem einen gespeicherten Bericht)?"""
+        with self._conn() as c:
+            if c.execute("SELECT 1 FROM job_runs WHERE user_id=? AND job=? AND started_at>=? LIMIT 1",
+                         (self.uid, job, since_iso)).fetchone():
+                return True
+            return bool(job.endswith("_report") and c.execute(
+                "SELECT 1 FROM reports WHERE user_id=? AND created_at>=? LIMIT 1", (self.uid, since_iso)).fetchone())
+
     def save_report(self, data: dict) -> int:
         with self._conn() as c:
             rid = int(c.execute("INSERT INTO reports(user_id, created_at, data) VALUES (?,?,?)",

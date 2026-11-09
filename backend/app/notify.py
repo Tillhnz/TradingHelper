@@ -10,6 +10,8 @@ from .config import Settings
 
 log = logging.getLogger(__name__)
 
+last_error = ""  # Grund des letzten fehlgeschlagenen Versands (für das Job-Protokoll)
+
 
 def link(settings: Settings, path: str = "/") -> str | None:
     """Adresse in der Oberfläche, die beim Antippen der Benachrichtigung geöffnet wird."""
@@ -20,7 +22,10 @@ def link(settings: Settings, path: str = "/") -> str | None:
 def send(settings: Settings, title: str, message: str, priority: str = "default",
          tags: list[str] | None = None, click: str | None = None, path: str = "/") -> bool:
     """Push über ntfy. Beim Antippen öffnet sich die Oberfläche (app_url + path), sofern die Adresse bekannt ist."""
+    global last_error
+    last_error = ""
     if not settings.ntfy_topic:
+        last_error = "kein ntfy-Topic hinterlegt"
         log.warning("TH_NTFY_TOPIC nicht gesetzt – Nachricht nur geloggt: %s | %s", title, message)
         return False
 
@@ -45,5 +50,6 @@ def send(settings: Settings, title: str, message: str, priority: str = "default"
         r.raise_for_status()
         return True
     except requests.RequestException as exc:
+        last_error = str(exc)[:300]
         log.error("ntfy-Versand fehlgeschlagen: %s", exc)
         return False

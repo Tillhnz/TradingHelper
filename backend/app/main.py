@@ -844,8 +844,17 @@ def report_send(st: Storage = Depends(user_storage), settings: Settings = Depend
     from datetime import datetime
     from zoneinfo import ZoneInfo
     hour = datetime.now(ZoneInfo(settings.timezone)).hour
-    rep = send_report(st, settings, "afternoon" if hour >= 12 else "morning")
-    return {"sent": True, "entries": len(rep.entries)}
+    kind = "afternoon" if hour >= 12 else "morning"
+    jid = st.job_start(f"{kind}_report")
+    try:
+        rep = send_report(st, settings, kind)
+    except Exception as exc:
+        st.job_finish(jid, "error", f"{type(exc).__name__}: {exc}")
+        raise
+    st.job_finish(jid, "ok" if rep.push_ok else "warn", rep.status + " (von Hand)")
+    if rep.entries and not rep.push_ok:
+        raise HTTPException(502, f"Bericht gespeichert, aber die Push-Nachricht ging nicht raus: {rep.status}")
+    return {"sent": rep.push_ok, "entries": len(rep.entries), "status": rep.status}
 
 
 # ---------- Einstellungen ----------
@@ -942,6 +951,7 @@ def admin_status(st: Storage = Depends(user_storage), settings: Settings = Depen
         "version": __version__,
         "checks": checks,
         "next_runs": scheduler.next_runs(),
+        "job_runs": st.job_runs(),
         "counts": {"watchlist": len(st.watchlist()), "alerts": len(st.alerts(active_only=True)), "users": st.user_count()},
     }
 

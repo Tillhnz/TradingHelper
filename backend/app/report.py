@@ -35,6 +35,8 @@ class Report:
     entries: list[ReportEntry]
     errors: dict[str, str]
     profile: str = ""
+    push_ok: bool = False
+    status: str = ""  # Ergebnis des Versands für das Job-Protokoll
 
     def to_markdown(self) -> str:
         lines = [f"**TradeHelper Morgenreport – {self.created}**", f"Strategie: {self.profile}", ""]
@@ -171,13 +173,17 @@ def send_report(storage: Storage, settings: Settings, kind: str = "morning") -> 
     Ohne bekannte Adresse der Oberfläche (app_url) kommt wie früher der ganze Bericht in die Nachricht."""
     rep = build_report(storage, settings)
     if not rep.entries and not rep.errors:
+        rep.status = "übersprungen – keine Werte in der Watchlist"
         return rep
     title = KINDS.get(kind, "Bericht")
     rid = storage.save_report({**rep.to_dict(), "kind": kind, "title": title})
     tag = "sunrise" if kind == "morning" else "city_sunset"
     if notify.link(settings):
-        notify.send(settings, f"Dein {title} ist da", short_text(rep) + "\nAntippen für den ganzen Bericht.",
-                    tags=[tag], path=f"/?bericht={rid}")
+        ok = notify.send(settings, f"Dein {title} ist da", short_text(rep) + "\nAntippen für den ganzen Bericht.",
+                         tags=[tag], path=f"/?bericht={rid}")
     else:
-        notify.send(settings, f"TradeHelper {title}", rep.to_markdown(), tags=[tag])
+        ok = notify.send(settings, f"TradeHelper {title}", rep.to_markdown(), tags=[tag])
+    rep.push_ok = ok
+    done = f"{len(rep.entries)} Werte" + (f", {len(rep.errors)} ohne Daten" if rep.errors else "")
+    rep.status = f"{done} · Push gesendet" if ok else f"{done} · Bericht gespeichert, Push fehlgeschlagen: {notify.last_error}"
     return rep

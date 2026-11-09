@@ -985,3 +985,9 @@ h1 { font-size: 2.4rem; }
 .block-opt.on { border-color: var(--celeste); background: rgba(111, 211, 195, 0.08); }
 .block-opt input { width: auto; margin: 0; accent-color: var(--celeste); }
 .block-opt-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+/* Administration: Zeitplan und Protokoll der Berichte */
+.check-dot.warn { background: var(--amber); }
+.sub-head { font-size: 1rem; margin: 1.1rem 0 0.4rem; color: var(--chalk); }
+.plain-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.job-runs .job-detail { margin: 0.15rem 0 0 1.4rem; overflow-wrap: anywhere; }

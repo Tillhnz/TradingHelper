@@ -3,7 +3,30 @@ import { api } from "../api.js";
 import { ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime } from "../fmt.js";
 
-const JOB_LABEL = { morning_report: "Morgenreport", alert_check: "Alarmprüfung", paper_run: "Schattendepot", paper_backtest: "Rückblick" };
+const JOB_LABEL = {
+  morning_report: "Morgenbericht", afternoon_report: "Nachmittagsbericht", alert_check: "Alarmprüfung",
+  paper_orders: "Schattendepot-Orders", paper_backtest: "Rückblick", update_watch: "Update-Prüfung",
+};
+const RUN_STATUS = { ok: ["ok", "erledigt"], warn: ["warn", "mit Problem"], error: ["bad", "Fehler"], running: ["warn", "läuft"] };
+
+function JobRuns({ runs }) {
+  if (!runs?.length) return <p className="muted small">Noch keine Berichte gelaufen (das Protokoll gibt es ab Version 0.15.1).</p>;
+  return (
+    <ul className="checks job-runs">
+      {runs.slice(0, 15).map((r) => {
+        const [cls, label] = RUN_STATUS[r.status] || ["warn", r.status];
+        return (
+          <li key={r.id}>
+            <span className={`check-dot ${cls}`} aria-hidden="true" />
+            <strong>{JOB_LABEL[r.job] || r.job}</strong>{" "}
+            <span className="muted small">{dateTime(r.started_at)}{r.username ? ` · ${r.username}` : ""} · {label}</span>
+            {r.detail && <div className="small muted job-detail">{r.detail}</div>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 function Status() {
   const [st, setSt] = useState(null);
@@ -26,8 +49,13 @@ function Status() {
           </ul>
           <p className="muted small">
             {st.counts.users} {st.counts.users === 1 ? "Nutzer" : "Nutzer"} · deine Watchlist: {st.counts.watchlist} Werte · {st.counts.alerts} aktive Alarme
-            {Object.entries(st.next_runs).map(([k, v]) => ` · ${JOB_LABEL[k] || k}: ${dateTime(v)}`)}
           </p>
+          <h3 className="sub-head">Zeitplan</h3>
+          <ul className="muted small plain-list">
+            {Object.entries(st.next_runs).map(([k, v]) => <li key={k}>{JOB_LABEL[k] || k}: nächster Lauf {v ? dateTime(v) : "–"}</li>)}
+          </ul>
+          <h3 className="sub-head">Letzte Berichte</h3>
+          <JobRuns runs={st.job_runs} />
         </>
       )}
     </section>
