@@ -1,3 +1,4 @@
+import UpdateToast from "./UpdateToast.jsx";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api.js";
@@ -102,6 +103,7 @@ export default function Shell({ user, onLogout, children }) {
           Regelbasierte, automatisch erzeugte Einschätzungen – keine Anlageberatung.
           <span className="compact-only">{user.is_admin && <> · <NavLink to="/admin">Administration</NavLink></>} · <button className="link small" onClick={onLogout}>Abmelden</button></span>
         </footer>
+        {user.is_admin && <UpdateToast />}
       </main>
       <WhatsNew version={ver?.version} />
     </div>
