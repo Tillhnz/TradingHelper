@@ -55,6 +55,7 @@ class Settings:
     report_time: str = field(default_factory=lambda: _env("report_time", "07:00"))
     report_time_pm: str = field(default_factory=lambda: _env("report_time_pm", "16:00"))  # leer = kein Nachmittagsbericht
     report_weekends: bool = field(default_factory=lambda: _bool(_env("report_weekends", "false")))
+    update_notify: bool = field(default_factory=lambda: _bool(_env("update_notify", "true")))
     alerts_enabled: bool = field(default_factory=lambda: _bool(_env("alerts_enabled", "true")))
     alert_interval_minutes: int = field(default_factory=lambda: int(_env("alert_interval_minutes", "5")))
     alert_start_hour: int = field(default_factory=lambda: int(_env("alert_start_hour", "8")))

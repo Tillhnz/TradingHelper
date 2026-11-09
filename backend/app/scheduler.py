@@ -7,8 +7,9 @@ import threading
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
-from . import alerts, paper, portfolio, report, settings_store
+from . import alerts, paper, portfolio, report, settings_store, updatewatch
 from .config import Settings
 from .storage import Storage
 
@@ -71,6 +72,9 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
         CronTrigger(day_of_week="mon-fri", hour="8-21", minute="*/10", timezone=tz),
         id="paper_orders", max_instances=1, coalesce=True,
     )
+    # Neue Version auf GitHub? Administratoren per Push informieren
+    sched.add_job(lambda: updatewatch.run(storage, settings), IntervalTrigger(hours=6, timezone=tz),
+                  id="update_watch", max_instances=1, coalesce=True)
     # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
     sched.add_job(
         lambda: _each_user(storage, settings, lambda st, cfg: cfg.paper_enabled and paper.run_backtest(st, cfg),

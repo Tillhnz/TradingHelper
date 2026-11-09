@@ -73,6 +73,7 @@ const GROUPS = [
     fields: {
       display_currency: { label: "Anzeigewährung", type: "select", options: ["EUR", "USD", "CHF", "GBP", "native"], labels: { native: "Handelswährung des Börsenplatzes", EUR: "Euro (€)", USD: "US-Dollar ($)", CHF: "Schweizer Franken", GBP: "Britisches Pfund" } },
       timezone: { label: "Zeitzone", hint: "z. B. Europe/Berlin" },
+      update_notify: { label: "Neue Versionen per Push melden", type: "bool", hint: "prüft alle 6 Stunden auf GitHub, Sicherheitsupdates mit hoher Priorität (an Administratoren)" },
       app_url: { label: "Adresse von TradeHelper", hint: "für Push-Nachrichten: Antippen öffnet diese Seite. Wird beim ersten Aufruf automatisch gesetzt." },
     },
   },

@@ -45,6 +45,7 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "display_currency": ("choice:native,EUR,USD,CHF,GBP", "general", False),
     "timezone": ("tz", "general", False),
     "app_url": ("url_or_empty", "general", False),
+    "update_notify": ("bool", "general", False),
 }
 # Diese Einstellungen hat jeder Nutzer für sich
 USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
