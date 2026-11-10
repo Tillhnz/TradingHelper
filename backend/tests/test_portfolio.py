@@ -174,3 +174,21 @@ def test_watch_notifies_once(fake_market, tmp_path):
     assert len(got) == 1 and "Stopp" in got[0]
     portfolio.watch(st, Settings(), send)
     assert len(got) == 1  # nicht doppelt
+
+
+def test_rethink_sells_on_likely_breakdown():
+    bo = {"tilt": "down", "down": 0.48, "up": 0.1, "level_down": 95.0, "days": 10}
+    win = [{"stop": 90, "hints": [], "pl": 50, "invested": 1000, "breakout": bo, "score": 0.1}]
+    a = portfolio.advice(win, analysis.HOLD)
+    assert a["level"] == "bad" and a["text"].startswith("Gewinne sichern") and a["reason"] == "rethink"
+    loss = [{**win[0], "pl": -30}]
+    assert portfolio.advice(loss, analysis.HOLD)["text"].startswith("Verkauf prüfen")
+    calm = [{**win[0], "breakout": {**bo, "tilt": "neutral", "down": 0.2}}]
+    assert portfolio.advice(calm, analysis.HOLD)["text"].startswith("Halten")
+
+
+def test_rethink_takes_profit_when_momentum_fades():
+    lot = [{"stop": 90, "hints": [], "pl": 120, "invested": 1000, "breakout": None, "score": -0.2}]
+    assert portfolio.advice(lot, analysis.HOLD)["text"].startswith("Gewinn mitnehmen")
+    lot[0]["score"] = 0.3
+    assert portfolio.advice(lot, analysis.HOLD)["text"].startswith("Halten")

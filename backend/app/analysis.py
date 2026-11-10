@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from . import breakout
 from . import indicators as ind
 
 # ---------- Anlagestrategie ----------
@@ -99,6 +100,7 @@ class Analysis:
     support: float | None = None
     resistance: float | None = None
     profile: Profile = field(default_factory=Profile)
+    breakout: dict | None = None  # Ausbruch-/Rutsch-Wahrscheinlichkeit (siehe breakout.py)
 
     @property
     def score(self) -> float:
@@ -124,6 +126,7 @@ class Analysis:
             "resistance": self.resistance,
             "metrics": self.metrics,
             "signals": [s.__dict__ for s in self.signals],
+            "breakout": self.breakout,
             "profile": {"horizon": self.profile.horizon, "risk": self.profile.risk, "label": self.profile.label},
         }
 
@@ -163,7 +166,7 @@ def _perf(close: pd.Series, bars: int) -> float | None:
     return _f((close.iloc[-1] / close.iloc[-bars - 1] - 1) * 100) if len(close) > bars else None
 
 
-def analyze(symbol: str, df: pd.DataFrame, profile: Profile | None = None) -> Analysis:
+def analyze(symbol: str, df: pd.DataFrame, profile: Profile | None = None, with_breakout: bool = True) -> Analysis:
     p = profile or Profile()
     if len(df) < 30:
         raise ValueError(f"Noch zu wenig Kursverlauf für eine Einschätzung ({len(df)} Kerzen, mindestens 30 nötig).")
@@ -299,6 +302,11 @@ def analyze(symbol: str, df: pd.DataFrame, profile: Profile | None = None) -> An
     for s in sig:
         s.weight = weights.get(s.name, 1.0)
     a.signals = [s for s in sig if s.weight > 0]
+    if with_breakout:
+        try:
+            a.breakout = breakout.probabilities(d, p.horizon)
+        except Exception:  # noqa: BLE001 – Zusatzinfo, darf die Einschätzung nie verhindern
+            a.breakout = None
     return a
 
 
@@ -351,6 +359,18 @@ def recommend(a: Analysis, sentiment: float | None, profile: Profile | None = No
 
     tech = a.normalized
     combined = tech if sentiment is None else (1 - H["news"]) * tech + H["news"] * sentiment
+
+    # Ausbruch/Rutsch: Ist eine Richtung klar wahrscheinlicher, darf das die Meinung kippen (z. B. doch verkaufen)
+    bo = a.breakout
+    if bo and bo["tilt"] != "neutral":
+        edge = bo["up"] - bo["down"]
+        combined += max(-0.25, min(0.25, edge * 0.5))
+        if bo["tilt"] == "down":
+            notes.append(f"Rutsch unter {bo['level_down']:.2f} wahrscheinlich ({bo['down'] * 100:.0f} % in "
+                         f"{bo['days']} Handelstagen, üblich {bo['base_down'] * 100:.0f} %)")
+        else:
+            notes.append(f"Ausbruch über {bo['level_up']:.2f} wahrscheinlich ({bo['up'] * 100:.0f} % in "
+                         f"{bo['days']} Handelstagen, üblich {bo['base_up'] * 100:.0f} %)")
 
     atr_pct = m.get("atr_pct")
     if R["vol_limit"] and atr_pct and atr_pct > R["vol_limit"]:

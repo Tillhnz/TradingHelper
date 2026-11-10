@@ -175,7 +175,7 @@ def precompute(histories: dict[str, pd.DataFrame], days: list[str], progress=Non
                 if i < WARMUP or dd not in wanted:
                     continue
                 try:
-                    a = analysis.analyze(sym, d.iloc[max(0, i - 300): i + 1], base)  # 300 Kerzen reichen für alle Kennzahlen
+                    a = analysis.analyze(sym, d.iloc[max(0, i - 300): i + 1], base, with_breakout=False)  # 300 Kerzen reichen für alle Kennzahlen
                 except ValueError:
                     continue
                 for r in RISKS:

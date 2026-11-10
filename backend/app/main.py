@@ -478,7 +478,8 @@ def watchlist_overview(st: Storage = Depends(user_storage), settings: Settings =
             rec = analysis.recommend(a, None)
             spark = [round(float(x), 4) for x in df["close"].tail(30)]
             row.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
-                       rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"])
+                       rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"],
+                       breakout=a.breakout)
         except Exception as exc:  # noqa: BLE001
             row["error"] = str(exc)
         h = holdings.get(sym)

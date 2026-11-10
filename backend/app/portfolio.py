@@ -69,7 +69,7 @@ def evaluate(pos: dict, profile: analysis.Profile) -> dict:
     value = pos["quantity"] * price
     out.update(price=price, value=round(value, 2), pl=round(value - invested, 2),
                pl_pct=round((value / invested - 1) * 100, 2) if invested else None,
-               day_change_pct=a.change_pct_1d, action=rec.action)
+               day_change_pct=a.change_pct_1d, action=rec.action, score=rec.combined, breakout=a.breakout)
 
     stop, target, buy = pos.get("stop"), pos.get("target"), pos["buy_price"]
     qty, fees = pos["quantity"], pos.get("fees") or 0
@@ -298,6 +298,31 @@ def summarize(items: list[dict], action: str | None = None) -> dict | None:
     return out
 
 
+def rethink(open_: list[dict]) -> dict | None:
+    """Die Meinung darf kippen: Auch ohne klares Verkaufssignal kann es sich lohnen, jetzt zu verkaufen –
+    wenn ein Rutsch unter die Unterstützung deutlich wahrscheinlicher ist als ein Ausbruch, oder wenn ein schöner
+    Gewinn läuft und der Schwung nachlässt."""
+    priced = [p for p in open_ if p.get("pl") is not None]
+    if not priced:
+        return None
+    pl = sum(p["pl"] for p in priced)
+    invested = sum(p.get("invested") or 0 for p in priced)
+    pl_pct = pl / invested * 100 if invested else 0.0
+    bo = next((p["breakout"] for p in open_ if p.get("breakout")), None)
+    score = next((p["score"] for p in open_ if p.get("score") is not None), None)
+    if bo and bo["tilt"] == "down" and bo["down"] >= 0.35:
+        chance = f"{bo['down'] * 100:.0f} %"
+        if pl > 0:
+            return {"level": "bad", "reason": "rethink",
+                    "text": f"Gewinne sichern – Rutsch unter {bo['level_down']:.2f} wahrscheinlich ({chance})"}
+        return {"level": "bad", "reason": "rethink",
+                "text": f"Verkauf prüfen – Rutsch unter {bo['level_down']:.2f} wahrscheinlich ({chance}), Verlust begrenzen"}
+    if pl_pct >= 8 and score is not None and score < -0.05 and (not bo or bo["tilt"] != "up"):
+        return {"level": "warn", "reason": "rethink",
+                "text": f"Gewinn mitnehmen erwägen – {pl_pct:.0f} % im Plus, aber der Schwung lässt nach"}
+    return None
+
+
 def advice(open_: list[dict], action: str | None) -> dict:
     """Ein klarer Satz für den Halter, abgeleitet aus Einschätzung und den Hinweisen der Käufe."""
     texts = [h["text"] for p in open_ for h in p.get("hints", [])]
@@ -305,6 +330,9 @@ def advice(open_: list[dict], action: str | None) -> dict:
         return {"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"}
     if action == analysis.SELL:
         return {"level": "bad", "text": "Signale negativ – Bestand reduzieren oder Stopp eng setzen"}
+    sell_now = rethink(open_)
+    if sell_now:
+        return sell_now
     reached = next((h for p in open_ for h in p.get("hints", []) if h.get("reason") == "reached"), None)
     if reached:
         return {"level": "good", "text": reached["text"]}
