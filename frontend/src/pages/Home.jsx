@@ -5,6 +5,7 @@ import NewsList from "../components/NewsList.jsx";
 import ReportModal from "../components/ReportModal.jsx";
 import AssetRow, { actionHint, heldNums, priceNums } from "../components/AssetRow.jsx";
 import { ErrorText, Loading } from "../components/ui.jsx";
+import Icon from "../components/Icon.jsx";
 import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
@@ -48,7 +49,7 @@ function NewsSection({ hasStocks }) {
 
   const minePanel = hasStocks && (
     <section className={`panel ${tab === "mine" ? "" : "hide-narrow"}`} aria-label="Nachrichten zu deinen Werten">
-      <div className="panel-head"><h2>Zu deinen Werten</h2></div>
+      <div className="panel-head"><h2><Icon name="news" className="h-icon" /> Zu deinen Werten</h2></div>
       {!mine ? <Loading text="Suche Nachrichten …" /> : (
         <NewsList items={mine.items} initial={6} showStock
           empty={mine.sources?.length ? "In den letzten Tagen nichts Neues zu deinen Werten." : "Alle Nachrichtenquellen sind ausgeschaltet (Einstellungen → Nachrichten)."} />
@@ -57,7 +58,7 @@ function NewsSection({ hasStocks }) {
   );
   const marketPanel = (
     <section className={`panel ${!hasStocks || tab === "market" ? "" : "hide-narrow"}`} aria-label="Marktnachrichten">
-      <div className="panel-head"><h2>Markt &amp; Wirtschaft</h2><Link className="link small" to="/settings#news">Quellen</Link></div>
+      <div className="panel-head"><h2><Icon name="activity" className="h-icon" /> Markt &amp; Wirtschaft</h2><Link className="link small" to="/settings#news">Quellen</Link></div>
       {!market ? <Loading text="Lade Marktnachrichten …" /> : (
         <NewsList items={market.items} initial={6} empty="Keine Marktnachrichten. Quellen lassen sich in den Einstellungen eintragen." />
       )}
@@ -90,14 +91,14 @@ function SummaryTiles({ depot, shadow }) {
     <div className="summary-tiles">
       {hasDepot && (
         <Link to="/depot" className="summary-tile">
-          <span className="muted small">Mein Depot</span>
+          <span className="muted small"><Icon name="wallet" /> Mein Depot</span>
           <strong>{money(t.value, t.currency)}</strong>
           <span className={`small ${tone(t.pl)}`}>{signedMoney(t.pl, t.currency)} · {pct(t.pl_pct, 1)}</span>
         </Link>
       )}
       {shadow?.started && (
         <Link to="/depot/schatten" className="summary-tile">
-          <span className="muted small">Schattendepot</span>
+          <span className="muted small"><Icon name="flask" /> Schattendepot</span>
           <strong>{money(shadow.value, shadow.currency)}</strong>
           <span className={`small ${tone(shadow.pl)}`}>{signedMoney(shadow.pl, shadow.currency)} · {pct(shadow.pl_pct, 1)}</span>
         </Link>
@@ -120,6 +121,12 @@ function rowFor(e, q, pro) {
   let hint = h ? actionHint(h.advice) : null;
   if (!h && e.action === "Kaufen prüfen") hint = { level: "good", text: e.reasons[0] };
   if (!h && e.action === "Reduzieren prüfen") hint = { level: "warn", text: e.reasons[0] };
+  const bo = e.analysis?.breakout;
+  if (!hint && bo && bo.tilt !== "neutral") {
+    hint = bo.tilt === "up"
+      ? { level: "good", text: `Ausbruch nach oben wahrscheinlich (${Math.round(bo.up * 100)} %)` }
+      : { level: h ? "bad" : "warn", text: `Rutsch nach unten wahrscheinlich (${Math.round(bo.down * 100)} %)${h ? " – Stopp prüfen" : ""}` };
+  }
   return { meta, nums, hint, held: !!h };
 }
 
@@ -180,9 +187,9 @@ export default function Home() {
   const restShown = showAll ? rest : rest.slice(0, 6);
   const chances = entries.filter((e) => e.action === "Kaufen prüfen" && !(e.holding?.shares > 0)).length;
   const warnings = entries.filter((e) => e.holding?.advice?.level === "bad").length;
-  const renderRow = (r) => (
+  const renderRow = (r, i) => (
     <AssetRow key={r.e.symbol} symbol={r.e.symbol} name={displayName(r.e)} meta={r.meta} action={r.e.action} held={r.held}
-      top={r.nums.top} bottom={r.nums.bottom} hint={r.hint} />
+      top={r.nums.top} bottom={r.nums.bottom} hint={r.hint} bo={r.e.analysis?.breakout} index={i} />
   );
 
   return (
@@ -201,9 +208,9 @@ export default function Home() {
           </p>
         </div>
         <div className="actions">
-          <button className="btn hide-sm" onClick={load} disabled={!report && !error}>Aktualisieren</button>
-          <button className="btn" onClick={() => setShowReport("latest")}>Bericht</button>
-          <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}>{sending ? "Sende …" : "Aufs Handy"}</button>
+          <button className="btn hide-sm" onClick={load} disabled={!report && !error}><Icon name="refresh" /> Aktualisieren</button>
+          <button className="btn" onClick={() => setShowReport("latest")}><Icon name="report" /> Bericht</button>
+          <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}><Icon name="phone" /> {sending ? "Sende …" : "Aufs Handy"}</button>
         </div>
       </div>
       {msg && <p className="note" role="status">{msg}</p>}
@@ -224,12 +231,12 @@ export default function Home() {
 
       {report && report.entries.length > 0 && (
         <>
-          <div className="list-head"><h2>Heute wichtig</h2>{important.length > 0 && <span className="muted small">{important.length}</span>}</div>
+          <div className="list-head"><h2><Icon name="zap" className="h-icon" /> Heute wichtig</h2>{important.length > 0 && <span className="muted small">{important.length}</span>}</div>
           {important.length ? <ul className="asset-list">{important.map(renderRow)}</ul>
-            : <p className="calm-note">Alles ruhig – bei keinem deiner Werte ist gerade etwas zu tun.</p>}
+            : <p className="calm-note"><Icon name="check" /> Alles ruhig – bei keinem deiner Werte ist gerade etwas zu tun.</p>}
           {rest.length > 0 && (
             <>
-              <div className="list-head"><h2>Alle weiteren Werte</h2><Link className="small" to="/watchlist">Meine Werte →</Link></div>
+              <div className="list-head"><h2><Icon name="list" className="h-icon" /> Alle weiteren Werte</h2><Link className="small more-link" to="/watchlist">Meine Werte <Icon name="arrow" /></Link></div>
               <ul className="asset-list">
                 {restShown.map(renderRow)}
                 {rest.length > restShown.length && (
@@ -246,7 +253,7 @@ export default function Home() {
 
       {log.length > 0 && (
         <>
-          <h2 className="section-title">Letzte Alarme</h2>
+          <div className="list-head"><h2><Icon name="bell" className="h-icon" /> Letzte Alarme</h2><Link className="small more-link" to="/alerts">Alle <Icon name="arrow" /></Link></div>
           <ul className="log-list">
             {log.slice(0, 3).map((l) => (
               <li key={l.id}>

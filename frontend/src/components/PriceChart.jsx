@@ -4,7 +4,7 @@ import { money, pct, signedMoney } from "../fmt.js";
 import { barIndex, buyTimestamp, PositionBox, sellTimestamp } from "./positionBox.js";
 
 export const COLORS = {
-  bg: "#111b26", text: "#8d9eb0", grid: "#1a2735", line: "#263749",
+  bg: "rgba(0, 0, 0, 0)", text: "#9fb0c2", grid: "rgba(255, 255, 255, 0.05)", line: "rgba(255, 255, 255, 0.12)",
   up: "#6fd3c3", down: "#ff6b6b", amber: "#f2b84b",
   buySig: "#38bdf8", sellSig: "#e879f9",
   sma20: "#f2b84b", sma50: "#7aa7ff", sma200: "#c792ea",

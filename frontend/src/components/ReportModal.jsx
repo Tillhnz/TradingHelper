@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { dateTime, money, pct, signedMoney, tone } from "../fmt.js";
 import { ACTION_UI, displayName } from "../texts.js";
 import Modal from "./Modal.jsx";
+import { BreakoutChip } from "./BreakoutMeter.jsx";
 import { ActionBadge, ErrorText, Loading } from "./ui.jsx";
 
 const ORDER = { "Kaufen prüfen": 0, "Reduzieren prüfen": 1, "Halten / beobachten": 2 };
@@ -41,6 +42,7 @@ export default function ReportModal({ id, onClose }) {
                 <div className="report-head">
                   <Link to={`/chart/${encodeURIComponent(e.symbol)}`} onClick={onClose} className="report-name">{displayName(e)}</Link>
                   <ActionBadge action={e.action} held={!!e.holding?.shares} />
+                  <BreakoutChip bo={e.analysis?.breakout} />
                   <span className="report-price">
                     {money(e.analysis.last_close, e.currency)} <span className={tone(e.analysis.change_pct_1d)}>{pct(e.analysis.change_pct_1d)}</span>
                   </span>

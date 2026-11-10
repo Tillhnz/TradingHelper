@@ -674,7 +674,8 @@ def positions_list(st: Storage = Depends(user_storage), settings: Settings = Dep
         summ = portfolio.summarize(its, its[-1].get("action"))
         first = its[-1]
         groups.append({"symbol": sym, "name": first.get("name"), "ticker": first.get("ticker"),
-                       "action": first.get("action"), "day_change_pct": first.get("day_change_pct"), "error": next((i.get("error") for i in its if i.get("error")), None),
+                       "action": first.get("action"), "day_change_pct": first.get("day_change_pct"),
+                       "breakout": next((i["breakout"] for i in its if i.get("breakout")), None), "error": next((i.get("error") for i in its if i.get("error")), None),
                        **(summ or {})})
     groups.sort(key=lambda g: (not g.get("shares"), -(g.get("value") or 0)))
     return {"items": items, "totals": totals, "groups": groups}

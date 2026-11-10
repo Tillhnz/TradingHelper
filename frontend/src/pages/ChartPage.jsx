@@ -4,6 +4,8 @@ import { api } from "../api.js";
 import BuyDialog from "../components/BuyDialog.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
 import HoldingPanel from "../components/HoldingPanel.jsx";
+import BreakoutMeter from "../components/BreakoutMeter.jsx";
+import Icon from "../components/Icon.jsx";
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
 import PriceChart, { CHART_TYPES } from "../components/PriceChart.jsx";
@@ -188,7 +190,10 @@ export default function ChartPage() {
   }, [quoteOk, lq, last, view.interval]);
   const bestSetup = analysis?.entry?.setups?.find((x) => x.ok && x.status === "now") || analysis?.entry?.setups?.find((x) => x.ok);
   const info = meta || analysis;
-  const ui = rec ? ACTION_UI[rec.action] : null;
+  // Die Meinung darf kippen: Rät die Halter-Sicht zum Verkauf (z. B. Rutsch wahrscheinlich), zeigt das Abzeichen das auch
+  const adv = holding?.summary?.advice;
+  const shownAction = rec && held && adv?.reason === "rethink" && adv.level === "bad" ? "Reduzieren prüfen" : rec?.action;
+  const ui = shownAction ? ACTION_UI[shownAction] : null;
   const rangeId = RANGES.find((r) => r.period === view.period && r.interval === view.interval)?.id;
   const intervals = ["5m", "15m", "1h", "1d", "1wk"].filter((iv) => meta?.intraday !== false || !INTRADAY.has(iv));
   const ranges = RANGES;
@@ -197,7 +202,7 @@ export default function ChartPage() {
     <>
       <div className="stock-head">
         <div className="stock-id">
-          <Link to="/watchlist" className="back-link small">← Meine Werte</Link>
+          <Link to="/watchlist" className="back-link small"><Icon name="back" /> Meine Werte</Link>
           <h1>{info?.name || displayTicker({ symbol })}</h1>
           <p className="muted small">
             {displayTicker({ symbol, ticker: info?.ticker })}
@@ -222,14 +227,21 @@ export default function ChartPage() {
           ) : meta && <p className={`muted small ${meta.delay_min ? "delayed" : ""}`}><Term name="Verzögerung">{freshness(meta)}</Term>{meta.native_currency && meta.currency !== meta.native_currency && ` · umgerechnet in ${meta.currency}`}</p>}
         </div>
         <div className="stock-actions-top">
-          <button className="btn primary btn-buy" onClick={() => setBuying(true)} title="Kurs und Uhrzeit von jetzt übernehmen">{held ? "+ Nachkauf" : "Kauf"}</button>
-          {held && <button className="btn btn-sell" onClick={() => setSelling({})} title="Kurs und Uhrzeit von jetzt übernehmen">Verkauf</button>}
-          {watched !== null && !held && <button className="btn" onClick={toggleWatch}>{watched ? "✓ Beobachtet" : "☆ Beobachten"}</button>}
-          <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}>🔔 Alarm</Link>
-          <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Großer Chart: Linien und Kennlinien selbst einzeichnen">⛶ Großer Chart</Link>
+          <button className="btn primary btn-buy" onClick={() => setBuying(true)} title="Kurs und Uhrzeit von jetzt übernehmen"><Icon name="buy" /> {held ? "Nachkauf" : "Kauf"}</button>
+          {held && <button className="btn btn-sell" onClick={() => setSelling({})} title="Kurs und Uhrzeit von jetzt übernehmen"><Icon name="sell" /> Verkauf</button>}
+          {watched !== null && !held && <button className={`btn ${watched ? "on" : ""}`} onClick={toggleWatch}><Icon name={watched ? "check" : "star"} /> {watched ? "Beobachtet" : "Beobachten"}</button>}
+          <Link className="btn" to={`/alerts?symbol=${encodeURIComponent(symbol)}`}><Icon name="bell" /> Alarm</Link>
+          <Link className="btn" to={`/charts/${encodeURIComponent(symbol)}`} title="Großer Chart: Linien und Kennlinien selbst einzeichnen"><Icon name="expand" /> Großer Chart</Link>
         </div>
       </div>
       {msg && <p className="ok" role="status">{msg}</p>}
+      <nav className="jump-nav" aria-label="Auf dieser Seite">
+        <a href="#chart"><Icon name="activity" /> Chart</a>
+        {analysis?.breakout && <a href="#ausbruch"><Icon name="zap" /> Ausbruch</a>}
+        {holding?.items?.length > 0 && <a href="#bestand"><Icon name="briefcase" /> Bestand</a>}
+        {analysis && <a href="#plan"><Icon name="target" /> Einstieg</a>}
+        {analysis && <a href="#news"><Icon name="news" /> News</a>}
+      </nav>
 
       <div className="stock-layout">
       <aside className="stock-side">
@@ -237,7 +249,7 @@ export default function ChartPage() {
         <section className={`verdict ${ui?.tone || ""}`}>
           <div className="verdict-main">
             <span className="verdict-label">{held ? "Für deinen Bestand" : "Unsere Einschätzung"}</span>
-            <ActionBadge action={rec.action} held={held} large />
+            <ActionBadge action={shownAction} held={held} large />
             <p className="verdict-text">{held && holding.summary.advice ? holding.summary.advice.text : ui?.explain}</p>
           </div>
           <ul className="verdict-reasons">
@@ -250,11 +262,13 @@ export default function ChartPage() {
         </section>
       )}
 
+      <div id="ausbruch" className="anchor"><BreakoutMeter bo={analysis?.breakout} currency={cur} /></div>
+      <div id="bestand" className="anchor" />
       <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} onSell={(id) => setSelling({ id })} />
       </aside>
 
       <div className="stock-main">
-      <section className="panel chart-panel">
+      <section className="panel chart-panel" id="chart">
         <div className={`toolbar ${optsOpen ? "opts-open" : ""}`}>
           {pro ? (
             <>
@@ -305,10 +319,11 @@ export default function ChartPage() {
 
       {analysis && (
         <>
+          <div id="plan" className="anchor" />
           <EntryPlan symbol={symbol} plan={analysis.entry} currency={analysis.currency} nativeCurrency={analysis.native_currency} held={held} />
 
           <details className="panel details-pro" open={pro}>
-            <summary><h2>Details für Profis</h2><span className="muted small">Indikatoren, Kennzahlen und Einzelsignale</span></summary>
+            <summary><h2><Icon name="sparkles" className="h-icon" /> Details für Profis</h2><span className="muted small">Indikatoren, Kennzahlen und Einzelsignale</span></summary>
             <div className="analysis-grid">
               <div>
                 <h3 className="sub-title">Signale</h3>
@@ -342,9 +357,9 @@ export default function ChartPage() {
             </div>
           </details>
 
-          <section className="panel">
+          <section className="panel" id="news">
             <div className="panel-head">
-              <h2>Nachrichten</h2>
+              <h2><Icon name="news" className="h-icon" /> Nachrichten</h2>
               <Link className="link small" to="/settings#news">Quellen</Link>
             </div>
             <NewsList items={analysis.news} initial={5}

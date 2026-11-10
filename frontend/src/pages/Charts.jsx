@@ -8,6 +8,7 @@ import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime, money } from "../fmt.js";
 import { indicatorTitle, INDICATORS, PARAM_LABEL } from "../indicators.js";
 import { displayName, displayTicker } from "../texts.js";
+import Icon from "../components/Icon.jsx";
 
 const RANGES = [
   { id: "1d", label: "1 T", period: "1d", interval: "5m" },
@@ -226,7 +227,7 @@ function Workspace({ symbol }) {
 
       <div className="ws-lists">
         <section className="panel">
-          <h2>Kennlinien</h2>
+          <h2><Icon name="activity" className="h-icon" /> Kennlinien</h2>
           {!indicators.length && <p className="muted small">Noch keine. Oben „+ Kennlinie“ wählen.</p>}
           <ul className="ws-list">
             {indicators.map((ind) => (
@@ -247,7 +248,7 @@ function Workspace({ symbol }) {
           </ul>
         </section>
         <section className="panel">
-          <h2>Zeichnungen</h2>
+          <h2><Icon name="pencil" className="h-icon" /> Zeichnungen</h2>
           {!drawings.length && <p className="muted small">Noch keine. Werkzeug wählen und in den Chart klicken.</p>}
           <ul className="ws-list">
             {drawings.map((d) => (

@@ -8,6 +8,7 @@ import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
 import { displayName } from "../texts.js";
+import Icon from "../components/Icon.jsx";
 
 export default function Depot() {
   const [data, setData] = useState(null);
@@ -77,9 +78,9 @@ export default function Depot() {
 
           {open.length > 0 && (
             <>
-              <div className="list-head"><h2>Im Depot</h2><span className="muted small">{open.length} {open.length === 1 ? "Wert" : "Werte"}</span></div>
+              <div className="list-head"><h2><Icon name="wallet" className="h-icon" /> Im Depot</h2><span className="muted small">{open.length} {open.length === 1 ? "Wert" : "Werte"}</span></div>
               <ul className="asset-list">
-                {open.map((g) => {
+                {open.map((g, i) => {
                   const q = quotes[g.symbol];
                   const liveOk = q && q.currency === g.currency && g.invested;
                   const value = liveOk ? g.shares * q.price : g.value;
@@ -88,7 +89,7 @@ export default function Depot() {
                   return (
                     <AssetRow key={g.symbol} symbol={g.symbol} name={displayName(g)} action={g.action} held error={g.error}
                       meta={<>{num(g.shares, g.shares % 1 ? 3 : 0)} St.{change != null && <> · <span className={tone(change)}>{pct(change)}</span></>}</>}
-                      top={nums.top} bottom={nums.bottom} hint={actionHint(g.advice)} />
+                      top={nums.top} bottom={nums.bottom} hint={actionHint(g.advice)} bo={g.breakout} index={i} />
                   );
                 })}
               </ul>
@@ -98,7 +99,7 @@ export default function Depot() {
           {closed.length > 0 && (
             <>
               <div className="list-head">
-                <h2>Verkauft</h2>
+                <h2><Icon name="check" className="h-icon" /> Verkauft</h2>
                 <button className="toggle-link" onClick={() => setShowClosed((v) => !v)}>{showClosed ? "ausblenden" : `${closed.length} anzeigen`}</button>
               </div>
               {showClosed && (

@@ -3,6 +3,19 @@
 
 export const CHANGELOG = [
   {
+    version: "0.16.0",
+    date: "10.11.2026",
+    title: "Neues Glas-Design und Ausbruch-Chance",
+    items: [
+      "Komplett neues Aussehen: durchscheinende Glasflächen, farbiger Hintergrund, Symbole überall und sanfte Animationen.",
+      "Neu bei jedem Wert: die Ausbruch-Chance – wie wahrscheinlich der Kurs in den nächsten Wochen über das letzte Hoch steigt oder unter das Tief rutscht. Berechnet aus der eigenen Kursgeschichte des Werts.",
+      "In allen Listen zeigt ein kleines ↗/↘-Kürzel, wenn eine Richtung klar wahrscheinlicher ist.",
+      "Die Einschätzung darf jetzt kippen: Ist ein Rutsch deutlich wahrscheinlicher oder läuft ein schöner Gewinn bei nachlassendem Schwung, rät TradeHelper zum Verkauf bzw. Gewinne sichern.",
+      "Auf der Seite eines Werts springst du über die Leiste oben direkt zu Chart, Ausbruch, Bestand, Einstieg und News.",
+      "Live-Kurse leuchten kurz auf, wenn sie sich ändern.",
+    ],
+  },
+  {
     version: "0.15.2",
     date: "09.11.2026",
     title: "Bericht-Fehler behoben",

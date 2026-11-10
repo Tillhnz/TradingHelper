@@ -5,6 +5,7 @@ import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { CURRENCY_LABEL, dateTime } from "../fmt.js";
 import { displayName, displayTicker } from "../texts.js";
 import { Link } from "react-router-dom";
+import Icon from "../components/Icon.jsx";
 
 const PARAM_LABEL = {
   value: "Wert", period: "Periode", fast: "Schneller MA", slow: "Langsamer MA", type: "Art",
@@ -114,7 +115,7 @@ export default function Alerts() {
 
       {meta && (
         <form className="panel" onSubmit={submit}>
-          <h2>Neuer Alarm</h2>
+          <h2><Icon name="plus" className="h-icon" /> Neuer Alarm</h2>
           <div className="form-grid">
             <label>
               Symbol
@@ -167,7 +168,7 @@ export default function Alerts() {
         </form>
       )}
 
-      <h2 className="section-title">Deine Alarme</h2>
+      <h2 className="section-title"><Icon name="bell" className="h-icon" /> Deine Alarme</h2>
       {list && !list.length && <Empty title="Noch keine Alarme"><p className="muted">Lege oben deinen ersten an.</p></Empty>}
       {list && list.length > 0 && (
         <div className="table-wrap">
@@ -200,7 +201,7 @@ export default function Alerts() {
         </div>
       )}
 
-      <h2 className="section-title">Verlauf</h2>
+      <h2 className="section-title"><Icon name="clock" className="h-icon" /> Verlauf</h2>
       {log.length ? (
         <ul className="log-list">
           {log.map((l) => <li key={l.id}><span className="muted small">{dateTime(l.triggered_at)}</span> <Link to={`/chart/${encodeURIComponent(l.symbol)}`}><strong>{displayName(l)}</strong></Link> {l.message}</li>)}

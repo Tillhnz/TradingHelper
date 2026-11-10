@@ -92,7 +92,7 @@ export default function Watchlist() {
             {converted && <span className="muted small">Kurse teils umgerechnet in {rows.find((r) => r.currency)?.currency} · <Link to="/settings">ändern</Link></span>}
           </div>
           <ul className="asset-list">
-            {shown.map((row) => {
+            {shown.map((row, i) => {
               const q = quotes[row.symbol];
               const r = q && q.currency === row.currency ? { ...row, price: q.price, change_pct: q.change_pct ?? row.change_pct } : row;
               const h0 = r.holding;
@@ -108,7 +108,7 @@ export default function Watchlist() {
                 : filter === "chance" || mode === "pro" ? (r.entry ? { level: "info", text: r.entry } : null) : null;
               return (
                 <AssetRow key={r.symbol} symbol={r.symbol} name={displayName(r)} meta={meta} action={r.action} held={!!h?.shares}
-                  top={nums.top} bottom={nums.bottom} hint={hint} error={r.error} />
+                  top={nums.top} bottom={nums.bottom} hint={hint} error={r.error} bo={r.breakout} index={i} />
               );
             })}
             {!shown.length && <li className="muted asset-empty">Keine Werte in dieser Auswahl.</li>}

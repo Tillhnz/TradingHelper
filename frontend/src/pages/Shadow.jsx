@@ -7,6 +7,7 @@ import PnlChart from "../components/PnlChart.jsx";
 import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 import { displayName } from "../texts.js";
+import Icon from "../components/Icon.jsx";
 
 const ORDER_STATUS = { open: "wartet", filled: "ausgeführt", cancelled: "verfallen" };
 const day = (d) => (d ? new Date(d).toLocaleDateString("de-DE") : "–");
@@ -51,7 +52,7 @@ function Backtest({ onApplied }) {
   return (
     <section className="panel" id="rueckblick">
       <div className="panel-head">
-        <h2>Rückblick: Welche Strategie hätte am meisten gebracht?</h2>
+        <h2><Icon name="sparkles" className="h-icon" /> Rückblick: Welche Strategie hätte am meisten gebracht?</h2>
         <button className="btn small" onClick={start} disabled={running}>{running ? "Rechne …" : r ? "Neu rechnen" : "Rückblick starten"}</button>
       </div>
       <p className="muted small">
@@ -261,14 +262,14 @@ export default function Shadow() {
 
           {curve.length > 1 ? (
             <section className="panel chart-panel">
-              <div className="panel-head"><h2>Verlauf</h2><span className="muted small">Gewinn/Verlust gegenüber dem Startkapital</span></div>
+              <div className="panel-head"><h2><Icon name="activity" className="h-icon" /> Verlauf</h2><span className="muted small">Gewinn/Verlust gegenüber dem Startkapital</span></div>
               <PnlChart points={curve} />
             </section>
           ) : (
             <p className="note small">Der Verlauf erscheint ab dem zweiten Handelstag. Aussagekräftig wird das Schattendepot erst nach einigen Wochen und vielen Orders – für eine schnelle Einschätzung gibt es unten den Rückblick.</p>
           )}
 
-          <div className="list-head"><h2>Offene Positionen</h2><span className="muted small">{data.positions.length}</span></div>
+          <div className="list-head"><h2><Icon name="layers" className="h-icon" /> Offene Positionen</h2><span className="muted small">{data.positions.length}</span></div>
           {data.positions.length ? (
             <ul className="asset-list">
               {data.positions.map((p) => (
@@ -282,7 +283,7 @@ export default function Shadow() {
 
           {data.orders?.length > 0 && (
             <>
-              <h2 className="section-title">Platzierte Orders</h2>
+              <h2 className="section-title"><Icon name="clock" className="h-icon" /> Platzierte Orders</h2>
               <p className="muted small">Bei geschlossener Börse legt das Schattendepot Orders an. Sie werden während der Handelszeit alle 10 Minuten geprüft; Kauf-Limits gelten bis Handelsende.</p>
               <ul className="order-list">
                 {data.orders.slice(0, 12).map((o) => (
@@ -298,7 +299,7 @@ export default function Shadow() {
             </>
           )}
 
-          <h2 className="section-title">Ausgeführt</h2>
+          <h2 className="section-title"><Icon name="check" className="h-icon" /> Ausgeführt</h2>
           {data.trades.length ? <TradeTable trades={data.trades} currency={c} /> : <p className="muted">Noch keine Orders.</p>}
         </>
       )}

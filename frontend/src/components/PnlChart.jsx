@@ -21,7 +21,7 @@ export default function PnlChart({ points, height = 260, lines = null }) {
     if (!points?.length) return undefined;
     const chart = createChart(ref.current, {
       autoSize: true,
-      layout: { background: { color: "#16222f" }, textColor: "#8d9eb0", fontFamily: "Barlow, system-ui, sans-serif" },
+      layout: { background: { color: "rgba(0, 0, 0, 0)" }, textColor: "#8d9eb0", fontFamily: "Barlow, system-ui, sans-serif" },
       grid: { vertLines: { color: "#1b2a3a" }, horzLines: { color: "#1b2a3a" } },
       rightPriceScale: { borderColor: "#263749" },
       timeScale: { borderColor: "#263749" },

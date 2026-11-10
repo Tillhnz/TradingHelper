@@ -4,6 +4,7 @@ import { money, num, pct, signedMoney, tone } from "../fmt.js";
 import { RiskBar } from "./BuyDialog.jsx";
 import EditDialog from "./EditDialog.jsx";
 import Term from "./Term.jsx";
+import Icon from "./Icon.jsx";
 
 const date = (iso) => (iso ? new Date(iso).toLocaleDateString("de-DE") : "–");
 const qty = (q) => num(q, q % 1 ? 3 : 0);
@@ -71,8 +72,8 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore, onSell }) 
     <>
     <section className={`panel holding ${s.pl > 0 ? "gain" : s.pl < 0 ? "loss" : ""}`}>
       <div className="panel-head">
-        <h2>Mein Bestand</h2>
-        <button className="btn small primary" onClick={onBuyMore}>{s.shares ? "+ Nachkauf" : "Kauf"}</button>
+        <h2><Icon name="briefcase" className="h-icon" /> Mein Bestand</h2>
+        <button className="btn small primary" onClick={onBuyMore}><Icon name="plus" /> {s.shares ? "Nachkauf" : "Kauf"}</button>
       </div>
 
       {s.shares > 0 ? (
@@ -114,7 +115,7 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore, onSell }) 
     <section className="panel blocks">
       {open.length > 0 && <>
       <div className="panel-head">
-        <h2>Deine Blöcke</h2>
+        <h2><Icon name="layers" className="h-icon" /> Deine Blöcke</h2>
         <span className="muted small">{open.length} offen</span>
       </div>
       <ul className="lots">
@@ -149,8 +150,8 @@ export default function HoldingPanel({ holding, onChanged, onBuyMore, onSell }) 
               {p.value != null && <span className="small muted">Wert {money(p.value, cc)}</span>}
             </div>
             <div className="lot-actions">
-              <button className="btn small btn-sell" onClick={() => onSell?.(p.id)}>Verkauf</button>
-              <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: p })}>Bearbeiten</button>
+              <button className="btn small btn-sell" onClick={() => onSell?.(p.id)}><Icon name="sell" /> Verkauf</button>
+              <button className="btn small" onClick={() => setDialog({ mode: "edit", pos: p })}><Icon name="pencil" /> Bearbeiten</button>
             </div>
           </li>
           );

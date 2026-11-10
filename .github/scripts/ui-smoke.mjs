@@ -171,6 +171,9 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   await pg.goto(`${base}/chart/IE00B4L5Y983.GTX`);
   await pg.waitForTimeout(9000);
   await pg.screenshot({ path: `shots/${tag}-stock.png` });
+  const boPanel = pg.locator(".panel.breakout");
+  if (await boPanel.count()) await boPanel.screenshot({ path: `shots/${tag}-breakout.png` });
+  else console.log("no breakout panel for", tag);
   const blocks = pg.locator(".panel.blocks");
   if (await blocks.count()) { await blocks.scrollIntoViewIfNeeded(); await blocks.screenshot({ path: `shots/${tag}-blocks.png` }); }
   await pg.locator(".stock-head .btn-sell").first().click();
