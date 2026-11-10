@@ -5,6 +5,7 @@ import BuyDialog from "../components/BuyDialog.jsx";
 import EntryPlan from "../components/EntryPlan.jsx";
 import HoldingPanel from "../components/HoldingPanel.jsx";
 import BreakoutMeter from "../components/BreakoutMeter.jsx";
+import CompanyPanel from "../components/CompanyPanel.jsx";
 import Icon from "../components/Icon.jsx";
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
@@ -240,6 +241,7 @@ export default function ChartPage() {
         {analysis?.breakout && <a href="#ausbruch"><Icon name="zap" /> Ausbruch</a>}
         {holding?.items?.length > 0 && <a href="#bestand"><Icon name="briefcase" /> Bestand</a>}
         {analysis && <a href="#plan"><Icon name="target" /> Einstieg</a>}
+        <a href="#firma"><Icon name="building" /> Unternehmen</a>
         {analysis && <a href="#news"><Icon name="news" /> News</a>}
       </nav>
 
@@ -321,6 +323,9 @@ export default function ChartPage() {
         <>
           <div id="plan" className="anchor" />
           <EntryPlan symbol={symbol} plan={analysis.entry} currency={analysis.currency} nativeCurrency={analysis.native_currency} held={held} />
+
+          <div id="firma" className="anchor" />
+          <CompanyPanel symbol={symbol} pro={pro} />
 
           <details className="panel details-pro" open={pro}>
             <summary><h2><Icon name="sparkles" className="h-icon" /> Details für Profis</h2><span className="muted small">Indikatoren, Kennzahlen und Einzelsignale</span></summary>

@@ -16,6 +16,20 @@ export const HELD_UI = {
 };
 
 export const GLOSSARY = {
+  KGV: "Kurs-Gewinn-Verhältnis: Wie viele Jahresgewinne du für eine Aktie bezahlst. Unter 15 gilt als günstig, über 30 als teuer – Wachstumsfirmen haben oft ein höheres KGV.",
+  Dividendenrendite: "Ausschüttung pro Jahr im Verhältnis zum Kurs. 3 % heißt: Für 100 € Aktien gibt es etwa 3 € Dividende im Jahr.",
+  Börsenwert: "Marktkapitalisierung: Aktienkurs mal Anzahl aller Aktien – so viel ist das Unternehmen an der Börse wert.",
+  "EBIT-Marge": "Operativer Gewinn (vor Zinsen und Steuern) je 100 € Umsatz. Zeigt, wie profitabel das Kerngeschäft ist.",
+  Nettomarge: "Was nach allen Kosten und Steuern von 100 € Umsatz als Gewinn übrig bleibt.",
+  Eigenkapitalrendite: "Gewinn im Verhältnis zum Eigenkapital – wie gut das Unternehmen mit dem Geld seiner Eigentümer wirtschaftet. Über 15 % ist stark.",
+  Eigenkapitalquote: "Anteil des Eigenkapitals an der Bilanzsumme. Je höher, desto weniger hängt die Firma von Schulden ab.",
+  KBV: "Kurs-Buchwert-Verhältnis: Börsenwert geteilt durch das bilanzielle Eigenkapital. Unter 1 heißt: Die Börse bewertet die Firma unter ihrem Buchwert.",
+  PEG: "KGV geteilt durch das erwartete Gewinnwachstum. Um 1 gilt als fair bewertet, darunter als günstig im Verhältnis zum Wachstum.",
+  TER: "Laufende Kosten eines Fonds pro Jahr in Prozent des angelegten Geldes. Sie werden automatisch vom Fondsvermögen abgezogen.",
+  Thesaurierend: "Erträge wie Dividenden werden nicht ausgezahlt, sondern automatisch wieder angelegt.",
+  Ausschüttend: "Erträge wie Dividenden werden regelmäßig auf dein Konto ausgezahlt.",
+  Risikoklasse: "Einstufung von 1 (sehr geringes Risiko) bis 7 (sehr hohes Risiko) aus dem Basisinformationsblatt des Fonds.",
+  "Max. Verlust": "Größter Rückgang vom Höchst- zum Tiefststand innerhalb des Zeitraums.",
   "Stopp": "Ein Kurs, bei dem du verkaufst, um größere Verluste zu vermeiden. Fällt der Kurs darunter, meldet sich TradeHelper.",
   "Ziel": "Ein Kurs, bei dem du Gewinne mitnehmen oder deinen Stopp nachziehen kannst.",
   "Chance/Risiko": "Wie viel du bis zum Ziel gewinnen kannst im Verhältnis zu dem, was du bis zum Stopp verlieren würdest. 2 heißt: doppelt so viel Chance wie Risiko.",

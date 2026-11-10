@@ -350,8 +350,10 @@ BUY, HOLD, SELL = "Kaufen prüfen", "Halten / beobachten", "Reduzieren prüfen"
 EMOJI = {BUY: "🟢", HOLD: "🟡", SELL: "🔴"}
 
 
-def recommend(a: Analysis, sentiment: float | None, profile: Profile | None = None) -> Recommendation:
+def recommend(a: Analysis, sentiment: float | None, profile: Profile | None = None, news_count: int = 0) -> Recommendation:
     p = profile or a.profile
+    if sentiment is not None and a.breakout and "news" not in a.breakout:
+        a.breakout = breakout.with_news(a.breakout, sentiment, news_count)
     H, R = p.h, p.r
     m = a.metrics
     close = a.last_close

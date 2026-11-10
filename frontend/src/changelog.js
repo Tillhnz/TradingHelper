@@ -3,6 +3,17 @@
 
 export const CHANGELOG = [
   {
+    version: "0.17.0",
+    date: "10.11.2026",
+    title: "Startseite nach Wunsch, Unternehmensdaten, News in der Ausbruch-Chance",
+    items: [
+      "Startseite und „Meine Werte“ zeigen bei jedem Wert den aktuellen Kurs – dein Vermögen im Wert siehst du auf seiner Seite (und im Depot).",
+      "Startseite anpassen (Regler-Symbol oben): Bausteine ein-/ausblenden, sortieren und Beträge verbergen – gilt auf allen Geräten.",
+      "Neu auf jeder Aktienseite: Unternehmen mit Kurzbeschreibung und Kennzahlen (Börsenwert, KGV, Dividende, Umsatz, Margen …). Bei ETFs: Kosten, Volumen, Index, größte Positionen und Branchen.",
+      "Die Ausbruch-Chance rechnet jetzt die Nachrichtenlage mit ein und zeigt, wie stark sie die Werte verschoben hat.",
+    ],
+  },
+  {
     version: "0.16.0",
     date: "10.11.2026",
     title: "Neues Glas-Design und Ausbruch-Chance",

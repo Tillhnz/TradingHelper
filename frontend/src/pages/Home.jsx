@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import NewsList from "../components/NewsList.jsx";
 import ReportModal from "../components/ReportModal.jsx";
-import AssetRow, { actionHint, heldNums, priceNums } from "../components/AssetRow.jsx";
+import AssetRow, { actionHint, priceNums } from "../components/AssetRow.jsx";
+import Modal from "../components/Modal.jsx";
 import { ErrorText, Loading } from "../components/ui.jsx";
 import Icon from "../components/Icon.jsx";
-import { dateTime, money, num, pct, signed, signedMoney, tone } from "../fmt.js";
+import { dateTime, money, pct, signed, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { displayName, displayTicker, greeting } from "../texts.js";
@@ -83,7 +84,7 @@ function NewsSection({ hasStocks }) {
   );
 }
 
-function SummaryTiles({ depot, shadow }) {
+function SummaryTiles({ depot, shadow, priv }) {
   const t = depot?.totals;
   const hasDepot = depot?.items?.some((p) => !p.closed);
   if (!hasDepot && !shadow?.started) return null;
@@ -92,18 +93,92 @@ function SummaryTiles({ depot, shadow }) {
       {hasDepot && (
         <Link to="/depot" className="summary-tile">
           <span className="muted small"><Icon name="wallet" /> Mein Depot</span>
-          <strong>{money(t.value, t.currency)}</strong>
-          <span className={`small ${tone(t.pl)}`}>{signedMoney(t.pl, t.currency)} · {pct(t.pl_pct, 1)}</span>
+          <strong className={priv ? tone(t.pl) : ""}>{priv ? pct(t.pl_pct, 1) : money(t.value, t.currency)}</strong>
+          <span className={`small ${priv ? "muted" : tone(t.pl)}`}>{priv ? "seit Kauf" : <>{signedMoney(t.pl, t.currency)} · {pct(t.pl_pct, 1)}</>}</span>
         </Link>
       )}
       {shadow?.started && (
         <Link to="/depot/schatten" className="summary-tile">
           <span className="muted small"><Icon name="flask" /> Schattendepot</span>
-          <strong>{money(shadow.value, shadow.currency)}</strong>
-          <span className={`small ${tone(shadow.pl)}`}>{signedMoney(shadow.pl, shadow.currency)} · {pct(shadow.pl_pct, 1)}</span>
+          <strong className={priv ? tone(shadow.pl) : ""}>{priv ? pct(shadow.pl_pct, 1) : money(shadow.value, shadow.currency)}</strong>
+          <span className={`small ${priv ? "muted" : tone(shadow.pl)}`}>{priv ? "seit Start" : <>{signedMoney(shadow.pl, shadow.currency)} · {pct(shadow.pl_pct, 1)}</>}</span>
         </Link>
       )}
     </div>
+  );
+}
+
+export const WIDGETS = {
+  setup: { label: "Einrichtungs-Hinweise", icon: "sparkles", text: "Was zum Start noch fehlt" },
+  tiles: { label: "Depot & Schattendepot", icon: "wallet", text: "Kacheln mit Gesamtwert und Entwicklung" },
+  important: { label: "Heute wichtig", icon: "zap", text: "Werte, bei denen etwas zu tun ist" },
+  assets: { label: "Alle weiteren Werte", icon: "list", text: "Restliche Werte mit Kurs" },
+  news: { label: "Nachrichten", icon: "news", text: "Zu deinen Werten und zum Markt" },
+  alerts: { label: "Letzte Alarme", icon: "bell", text: "Die drei jüngsten ausgelösten Alarme" },
+};
+const DEFAULT_LAYOUT = { order: Object.keys(WIDGETS), hidden: [], private: false };
+
+export function parseLayout(raw) {
+  try {
+    const v = raw ? JSON.parse(raw) : {};
+    const order = (v.order || []).filter((w) => WIDGETS[w]);
+    return { order: [...new Set([...order, ...DEFAULT_LAYOUT.order])], hidden: (v.hidden || []).filter((w) => WIDGETS[w]), private: !!v.private };
+  } catch {
+    return DEFAULT_LAYOUT;
+  }
+}
+
+function LayoutEditor({ layout, onClose, onSave }) {
+  const [l, setL] = useState(layout);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const move = (i, d) => setL((x) => {
+    const o = [...x.order];
+    [o[i], o[i + d]] = [o[i + d], o[i]];
+    return { ...x, order: o };
+  });
+  const toggle = (w) => setL((x) => ({ ...x, hidden: x.hidden.includes(w) ? x.hidden.filter((h) => h !== w) : [...x.hidden, w] }));
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(l);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Startseite anpassen" onClose={onClose}>
+      <p className="muted small">Bausteine ein- oder ausschalten und mit den Pfeilen sortieren. Gilt auf allen Geräten.</p>
+      <ul className="layout-list">
+        {l.order.map((w, i) => (
+          <li key={w} className={l.hidden.includes(w) ? "off" : ""}>
+            <Icon name={WIDGETS[w].icon} className="layout-icon" />
+            <span className="layout-main"><strong>{WIDGETS[w].label}</strong><span className="muted small">{WIDGETS[w].text}</span></span>
+            <span className="layout-move">
+              <button className="icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`${WIDGETS[w].label} nach oben`}><Icon name="chevup" /></button>
+              <button className="icon-btn" onClick={() => move(i, 1)} disabled={i === l.order.length - 1} aria-label={`${WIDGETS[w].label} nach unten`}><Icon name="chevdown" /></button>
+            </span>
+            <label className="switch" title={l.hidden.includes(w) ? "Einblenden" : "Ausblenden"}>
+              <input type="checkbox" checked={!l.hidden.includes(w)} onChange={() => toggle(w)} aria-label={`${WIDGETS[w].label} anzeigen`} />
+              <span />
+            </label>
+          </li>
+        ))}
+      </ul>
+      <label className="layout-private">
+        <span className="switch"><input type="checkbox" checked={l.private} onChange={(e) => setL((x) => ({ ...x, private: e.target.checked }))} /><span /></span>
+        <span><strong><Icon name="eye" /> Beträge verbergen</strong><span className="muted small">Die Kacheln zeigen nur Prozent statt Euro – praktisch, wenn jemand mitschaut.</span></span>
+      </label>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="actions">
+        <button className="btn primary" onClick={save} disabled={busy}><Icon name="check" /> Speichern</button>
+        <button className="btn" onClick={() => setL(DEFAULT_LAYOUT)}>Standard</button>
+        <button className="btn" onClick={onClose}>Abbrechen</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -112,12 +187,9 @@ function rowFor(e, q, pro) {
   const price = live ? live.price : e.analysis.last_close;
   const change = live && live.change_pct != null ? live.change_pct : e.analysis.change_pct_1d;
   const h = e.holding?.shares > 0 ? e.holding : null;
-  const hv = h && live && h.invested && h.currency === e.currency
-    ? { ...h, value: h.shares * price, pl: h.shares * price - h.invested, pl_pct: (h.shares * price / h.invested - 1) * 100 } : h;
-  const nums = hv ? heldNums(hv, e.currency) : priceNums(price, change, e.currency);
-  const meta = hv
-    ? <>{num(h.shares, h.shares % 1 ? 3 : 0)} St. · <span className={tone(change)}>{pct(change)}</span></>
-    : <>{displayTicker(e)}{pro ? ` · Score ${signed(e.combined_score)}` : ""}</>;
+  // Auf der Startseite steht immer der Kurs – dein Vermögen im Wert siehst du erst auf seiner Seite
+  const nums = priceNums(price, change, e.currency);
+  const meta = <>{h && <span className="held-mark" title="Im Depot"><Icon name="briefcase" /></span>}{displayTicker(e)}{pro ? ` · Score ${signed(e.combined_score)}` : ""}</>;
   let hint = h ? actionHint(h.advice) : null;
   if (!h && e.action === "Kaufen prüfen") hint = { level: "good", text: e.reasons[0] };
   if (!h && e.action === "Reduzieren prüfen") hint = { level: "warn", text: e.reasons[0] };
@@ -141,6 +213,7 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [params, setParams] = useSearchParams();
   const [showReport, setShowReport] = useState(() => params.get("bericht"));
   const closeReport = () => {
@@ -184,13 +257,63 @@ export default function Home() {
   const rows = entries.map((e) => ({ e, ...rowFor(e, quotes[e.symbol], pro) }));
   const important = rows.filter((r) => r.hint);
   const rest = rows.filter((r) => !r.hint);
-  const restShown = showAll ? rest : rest.slice(0, 6);
   const chances = entries.filter((e) => e.action === "Kaufen prüfen" && !(e.holding?.shares > 0)).length;
   const warnings = entries.filter((e) => e.holding?.advice?.level === "bad").length;
   const renderRow = (r, i) => (
     <AssetRow key={r.e.symbol} symbol={r.e.symbol} name={displayName(r.e)} meta={r.meta} action={r.e.action} held={r.held}
       top={r.nums.top} bottom={r.nums.bottom} hint={r.hint} bo={r.e.analysis?.breakout} index={i} />
   );
+
+  const layout = parseLayout(settings?.fields?.home_layout?.value);
+  async function saveLayout(l) {
+    const value = JSON.stringify(l);
+    await api.put("/settings", { home_layout: value });
+    setSettings((x) => x && { ...x, fields: { ...x.fields, home_layout: { ...(x.fields.home_layout || {}), value } } });
+  }
+  const hasEntries = report && report.entries.length > 0;
+  function widget(w) {
+    switch (w) {
+      case "setup": return <Onboarding settings={settings} count={report?.entries.length ?? 1} />;
+      case "tiles": return <SummaryTiles depot={depot} shadow={shadow} priv={layout.private} />;
+      case "important": return hasEntries && (
+        <section className="home-block">
+          <div className="list-head"><h2><Icon name="zap" className="h-icon" /> Heute wichtig</h2>{important.length > 0 && <span className="muted small">{important.length}</span>}</div>
+          {important.length ? <ul className="asset-list">{important.map(renderRow)}</ul>
+            : <p className="calm-note"><Icon name="check" /> Alles ruhig – bei keinem deiner Werte ist gerade etwas zu tun.</p>}
+        </section>
+      );
+      case "assets": {
+        const list = layout.hidden.includes("important") ? rows : rest;
+        const shown = showAll ? list : list.slice(0, 6);
+        return hasEntries && list.length > 0 && (
+          <section className="home-block">
+            <div className="list-head"><h2><Icon name="list" className="h-icon" /> {layout.hidden.includes("important") ? "Deine Werte" : "Alle weiteren Werte"}</h2><Link className="small more-link" to="/watchlist">Meine Werte <Icon name="arrow" /></Link></div>
+            <ul className="asset-list">
+              {shown.map(renderRow)}
+              {list.length > shown.length && (
+                <li><button className="list-more" onClick={() => setShowAll(true)}>Alle {list.length} anzeigen</button></li>
+              )}
+            </ul>
+          </section>
+        );
+      }
+      case "news": return report && <NewsSection hasStocks={report.entries.length > 0} />;
+      case "alerts": return log.length > 0 && (
+        <section className="home-block">
+          <div className="list-head"><h2><Icon name="bell" className="h-icon" /> Letzte Alarme</h2><Link className="small more-link" to="/alerts">Alle <Icon name="arrow" /></Link></div>
+          <ul className="log-list">
+            {log.slice(0, 3).map((l) => (
+              <li key={l.id}>
+                <span className="muted small">{dateTime(l.triggered_at)}</span>{" "}
+                <Link to={`/chart/${encodeURIComponent(l.symbol)}`}><strong>{displayName(l)}</strong></Link> {l.message}
+              </li>
+            ))}
+          </ul>
+        </section>
+      );
+      default: return null;
+    }
+  }
 
   return (
     <>
@@ -210,14 +333,13 @@ export default function Home() {
         <div className="actions">
           <button className="btn hide-sm" onClick={load} disabled={!report && !error}><Icon name="refresh" /> Aktualisieren</button>
           <button className="btn" onClick={() => setShowReport("latest")}><Icon name="report" /> Bericht</button>
+          <button className="btn icon-only" onClick={() => setEditing(true)} title="Startseite anpassen" aria-label="Startseite anpassen"><Icon name="sliders" /></button>
           <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}><Icon name="phone" /> {sending ? "Sende …" : "Aufs Handy"}</button>
         </div>
       </div>
       {msg && <p className="note" role="status">{msg}</p>}
       {showReport && <ReportModal id={showReport === "latest" ? null : showReport} onClose={closeReport} />}
-
-      <Onboarding settings={settings} count={report?.entries.length ?? 1} />
-      <SummaryTiles depot={depot} shadow={shadow} />
+      {editing && <LayoutEditor layout={layout} onClose={() => setEditing(false)} onSave={saveLayout} />}
 
       <ErrorText error={error} />
       {!report && !error && <Loading text="Schaue mir deine Werte und die Nachrichten an …" />}
@@ -228,42 +350,9 @@ export default function Home() {
           <p className="muted">Such oben nach einer Aktie oder einem ETF, zum Beispiel „Apple“ oder „MSCI World“. Auf der Seite des Werts tippst du auf „Beobachten“.</p>
         </div>
       )}
-
-      {report && report.entries.length > 0 && (
-        <>
-          <div className="list-head"><h2><Icon name="zap" className="h-icon" /> Heute wichtig</h2>{important.length > 0 && <span className="muted small">{important.length}</span>}</div>
-          {important.length ? <ul className="asset-list">{important.map(renderRow)}</ul>
-            : <p className="calm-note"><Icon name="check" /> Alles ruhig – bei keinem deiner Werte ist gerade etwas zu tun.</p>}
-          {rest.length > 0 && (
-            <>
-              <div className="list-head"><h2><Icon name="list" className="h-icon" /> Alle weiteren Werte</h2><Link className="small more-link" to="/watchlist">Meine Werte <Icon name="arrow" /></Link></div>
-              <ul className="asset-list">
-                {restShown.map(renderRow)}
-                {rest.length > restShown.length && (
-                  <li><button className="list-more" onClick={() => setShowAll(true)}>Alle {rest.length} anzeigen</button></li>
-                )}
-              </ul>
-            </>
-          )}
-        </>
-      )}
       {report && Object.entries(report.errors).map(([sym, err]) => <p key={sym} className="error small">{sym}: {err}</p>)}
 
-      {report && <NewsSection hasStocks={report.entries.length > 0} />}
-
-      {log.length > 0 && (
-        <>
-          <div className="list-head"><h2><Icon name="bell" className="h-icon" /> Letzte Alarme</h2><Link className="small more-link" to="/alerts">Alle <Icon name="arrow" /></Link></div>
-          <ul className="log-list">
-            {log.slice(0, 3).map((l) => (
-              <li key={l.id}>
-                <span className="muted small">{dateTime(l.triggered_at)}</span>{" "}
-                <Link to={`/chart/${encodeURIComponent(l.symbol)}`}><strong>{displayName(l)}</strong></Link> {l.message}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      {layout.order.filter((w) => !layout.hidden.includes(w)).map((w) => <Fragment key={w}>{widget(w)}</Fragment>)}
     </>
   );
 }

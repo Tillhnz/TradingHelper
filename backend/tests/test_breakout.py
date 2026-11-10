@@ -40,3 +40,24 @@ def test_tilt_respects_what_is_usual():
     assert breakout.tilt(0.30, 0.34, 0.60, 0.14) == "down"
     assert breakout.tilt(0.45, 0.10, 0.30, 0.15) == "up"
     assert breakout.tilt(0.25, 0.22, 0.25, 0.22) == "neutral"
+
+
+def test_news_shift_probabilities():
+    bo = {"up": 0.3, "down": 0.3, "base_up": 0.3, "base_down": 0.3, "tilt": "neutral", "edge": 0.0, "days": 10}
+    good = breakout.with_news(bo, 0.8, count=6)
+    bad = breakout.with_news(bo, -0.8, count=6)
+    assert good["up"] > 0.3 > good["down"] and good["tilt"] == "up"
+    assert bad["down"] > 0.3 > bad["up"] and bad["tilt"] == "down"
+    assert good["news"]["up_before"] == 0.3
+    few = breakout.with_news(bo, 0.8, count=1)
+    assert few["up"] < good["up"]  # wenige Meldungen zählen weniger
+    assert breakout.with_news(bo, None) is bo and breakout.with_news(None, 0.5) is None
+
+
+def test_recommend_applies_news_once():
+    a = analysis.analyze("X", _df(0.0))
+    before = dict(a.breakout)
+    analysis.recommend(a, 0.9, news_count=8)
+    assert a.breakout["news"]["sentiment"] == 0.9 and a.breakout["up"] >= before["up"]
+    analysis.recommend(a, 0.9, news_count=8)  # nicht doppelt anwenden
+    assert a.breakout["news"]["up_before"] == before["up"]

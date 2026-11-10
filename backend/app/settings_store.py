@@ -46,15 +46,36 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "timezone": ("tz", "general", False),
     "app_url": ("url_or_empty", "general", False),
     "update_notify": ("bool", "general", False),
+    "home_layout": ("home_layout", "home", False),
 }
+# Bausteine der Startseite (Reihenfolge = Standard)
+HOME_WIDGETS = ["setup", "tiles", "important", "assets", "news", "alerts"]
 # Diese Einstellungen hat jeder Nutzer für sich
 USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
-             "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency"}
+             "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency", "home_layout"}
 SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone"}
 
 
 class SettingError(ValueError):
     pass
+
+
+def _home_layout(raw) -> str:
+    """{"order": [...], "hidden": [...], "private": bool} – unbekannte Bausteine fliegen raus, fehlende kommen ans Ende."""
+    import json
+
+    if raw in (None, ""):
+        return ""
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except (ValueError, TypeError) as exc:
+        raise SettingError("Ungültiges Startseiten-Layout") from exc
+    if not isinstance(data, dict):
+        raise SettingError("Ungültiges Startseiten-Layout")
+    order = [w for w in data.get("order") or [] if w in HOME_WIDGETS]
+    order = list(dict.fromkeys(order)) + [w for w in HOME_WIDGETS if w not in order]
+    hidden = sorted({w for w in data.get("hidden") or [] if w in HOME_WIDGETS})
+    return json.dumps({"order": order, "hidden": hidden, "private": bool(data.get("private"))}, separators=(",", ":"))
 
 
 def coerce(key: str, raw):
@@ -133,6 +154,8 @@ def coerce(key: str, raw):
                 raise SettingError(f"Ungültige Zeile: {ln[:60]} (Format: Name | https://…)")
             out.append(f"{name} | {url}" if name else url)
         return "\n".join(out)
+    if base == "home_layout":
+        return _home_layout(raw)
     if base == "tz":
         try:
             ZoneInfo(text)

@@ -15,6 +15,23 @@ export function BreakoutChip({ bo }) {
   );
 }
 
+/** Wie die Nachrichtenlage die Wahrscheinlichkeiten verschoben hat. */
+function NewsEffect({ n, bo }) {
+  const mood = n.sentiment > 0.15 ? "positiv" : n.sentiment < -0.15 ? "negativ" : "neutral";
+  const du = Math.round((bo.up - n.up_before) * 100);
+  const dd = Math.round((bo.down - n.down_before) * 100);
+  const sig = (v) => (v > 0 ? `+${v}` : `${v}`);
+  return (
+    <p className={`bo-news ${mood}`}>
+      <Icon name="news" />
+      <span>
+        Nachrichtenlage <strong>{mood}</strong>{n.count ? ` (${n.count} Meldungen)` : ""}
+        {du || dd ? <> · eingerechnet: Ausbruch {sig(du)} Pkt., Rutsch {sig(dd)} Pkt.</> : " · kaum Einfluss"}
+      </span>
+    </p>
+  );
+}
+
 /**
  * Ausbruch- und Rutsch-Wahrscheinlichkeit aus der eigenen Kursgeschichte des Werts: Wie oft ging es in ähnlicher
  * Lage über das Hoch bzw. unter das Tief der letzten Wochen?
@@ -50,6 +67,7 @@ export default function BreakoutMeter({ bo, currency }) {
           </div>
         ))}
       </div>
+      {bo.news && <NewsEffect n={bo.news} bo={bo} />}
       <p className="muted small bo-foot">
         <Icon name="info" /> Aus {bo.samples} Handelstagen dieses Werts: wie es in den {bo.neighbors} ähnlichsten Lagen weiterging.
         Keine Garantie – eine Einschätzung wie die übrigen.

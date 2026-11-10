@@ -109,6 +109,25 @@ def tilt(p_up: float, p_down: float, base_up: float | None = None, base_down: fl
     return "neutral"
 
 
+NEWS_WEIGHT = 0.35  # Stimmung ±1 verschiebt die Wahrscheinlichkeiten um bis zu 35 % (relativ)
+
+
+def with_news(bo: dict | None, sentiment: float | None, count: int = 0) -> dict | None:
+    """Nachrichtenlage einrechnen: gute Nachrichten machen einen Ausbruch nach oben wahrscheinlicher und einen Rutsch
+    unwahrscheinlicher, schlechte umgekehrt. Wenige Meldungen zählen weniger (ab 5 Meldungen volles Gewicht)."""
+    if not bo or sentiment is None:
+        return bo
+    s = max(-1.0, min(1.0, float(sentiment)))
+    w = NEWS_WEIGHT * min(1.0, max(count, 1) / 5) if count else NEWS_WEIGHT * 0.6
+    up = min(0.97, max(0.01, bo["up"] * (1 + w * s)))
+    down = min(0.97, max(0.01, bo["down"] * (1 - w * s)))
+    out = {**bo, "up": round(up, 3), "down": round(down, 3)}
+    out["tilt"] = tilt(up, down, bo["base_up"], bo["base_down"])
+    out["edge"] = round(edge(up, down, bo["base_up"], bo["base_down"]), 3)
+    out["news"] = {"sentiment": round(s, 2), "count": count, "up_before": bo["up"], "down_before": bo["down"]}
+    return out
+
+
 def describe(bo: dict, fmt=lambda v: f"{v:.2f}") -> str:
     wk = "Woche" if bo["days"] <= 5 else f"{bo['days'] // 5} Wochen"
     return (f"Ausbruch über {fmt(bo['level_up'])}: {bo['up'] * 100:.0f} % · Rutsch unter {fmt(bo['level_down'])}: "

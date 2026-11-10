@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import SymbolSearch from "../components/SymbolSearch.jsx";
-import AssetRow, { actionHint, heldNums, priceNums } from "../components/AssetRow.jsx";
+import AssetRow, { actionHint, priceNums } from "../components/AssetRow.jsx";
+import Icon from "../components/Icon.jsx";
 import { Empty, ErrorText, Loading } from "../components/ui.jsx";
-import { money, num, pct, tone } from "../fmt.js";
+import { num } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { displayName, displayTicker } from "../texts.js";
@@ -95,13 +96,11 @@ export default function Watchlist() {
             {shown.map((row, i) => {
               const q = quotes[row.symbol];
               const r = q && q.currency === row.currency ? { ...row, price: q.price, change_pct: q.change_pct ?? row.change_pct } : row;
-              const h0 = r.holding;
-              const h = h0 && q && q.currency === row.currency && h0.invested && h0.currency === row.currency
-                ? { ...h0, value: h0.shares * q.price, pl: h0.shares * q.price - h0.invested, pl_pct: (h0.shares * q.price / h0.invested - 1) * 100 }
-                : h0;
-              const nums = h?.shares ? heldNums(h, r.currency) : priceNums(r.price, r.change_pct, r.currency);
+              const h = r.holding;
+              // Hier steht immer der Kurs – dein Vermögen im Wert siehst du auf seiner Seite (oder im Depot)
+              const nums = priceNums(r.price, r.change_pct, r.currency);
               const meta = h?.shares
-                ? <>{num(h.shares, h.shares % 1 ? 3 : 0)} Stück · {money(r.price, r.currency)} <span className={tone(r.change_pct)}>{pct(r.change_pct)}</span></>
+                ? <><span className="held-mark" title="Im Depot"><Icon name="briefcase" /></span>{displayTicker(r)}</>
                 : <>{displayTicker(r)}{mode === "pro" && r.rsi != null ? ` · RSI ${num(r.rsi, 0)}` : ""}</>;
               const hint = h?.shares ? actionHint(h.advice)
                 : r.action === "Kaufen prüfen" ? { level: "good", text: "Signale sprechen für einen Einstieg" }

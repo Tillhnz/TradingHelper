@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from datetime import date
 
-from . import __version__, alerts, analysis, entry, events, indicators, market, news, notify, paper, portfolio, scheduler
+from . import __version__, alerts, analysis, entry, events, fundamentals, indicators, market, news, notify, paper, portfolio, scheduler
 from . import settings_store
 from . import updater_client
 from .config import Settings
@@ -390,9 +390,19 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
         raise HTTPException(422, str(exc)) from exc
     meta = _meta(symbol, target, settings)
     items = news.collect(symbol, settings, meta.get("name")) if with_news else []
-    rec = analysis.recommend(a, news.aggregate_sentiment(items))
+    rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
     return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
             "news": [n.to_dict() for n in items], "news_sources": news.sources(settings) if with_news else [], **meta}
+
+
+@app.get("/api/fundamentals/{symbol}", dependencies=auth)
+def get_fundamentals(symbol: str):
+    """Unternehmens- bzw. Fondskennzahlen mit Kurzbeschreibung (12 Stunden zwischengespeichert)."""
+    try:
+        name = _info(symbol).get("name")
+    except Exception:  # noqa: BLE001
+        name = None
+    return {"symbol": symbol.upper(), **fundamentals.get(symbol, name)}
 
 
 @app.get("/api/news/market", dependencies=auth)

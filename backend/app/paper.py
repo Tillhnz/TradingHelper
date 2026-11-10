@@ -579,7 +579,7 @@ def run_live(storage, settings, push: bool | None = None) -> dict:
                 df = market.get_history(sym, period, "1d", currency=currency)
                 a = analysis.analyze(sym, df, profile)
                 items = news.collect(sym, settings, names.get(sym)) if sym in names else []
-                rec = analysis.recommend(a, news.aggregate_sentiment(items), profile)
+                rec = analysis.recommend(a, news.aggregate_sentiment(items), profile, news_count=sum(1 for i in items if i.sentiment))
                 sigs[sym] = to_sig(a, rec)
                 bars[sym] = _bars(df)
                 prices[sym] = a.last_close

@@ -174,6 +174,9 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   const boPanel = pg.locator(".panel.breakout");
   if (await boPanel.count()) await boPanel.screenshot({ path: `shots/${tag}-breakout.png` });
   else console.log("no breakout panel for", tag);
+  const co = pg.locator(".panel.company");
+  if (await co.count()) { await co.scrollIntoViewIfNeeded(); await pg.waitForTimeout(1500); await co.screenshot({ path: `shots/${tag}-company.png` }); }
+  else console.log("no company panel for", tag);
   const blocks = pg.locator(".panel.blocks");
   if (await blocks.count()) { await blocks.scrollIntoViewIfNeeded(); await blocks.screenshot({ path: `shots/${tag}-blocks.png` }); }
   await pg.locator(".stock-head .btn-sell").first().click();
@@ -250,6 +253,22 @@ console.log("report modal", JSON.stringify(await page.evaluate(() => ({
   title: document.querySelector(".modal h2")?.textContent, items: document.querySelectorAll(".report-item").length,
 }))));
 await page.keyboard.press("Escape");
+
+// Startseite anpassen: Beträge verbergen, Nachrichten ausblenden
+await page.getByRole("button", { name: "Startseite anpassen" }).click();
+await page.waitForTimeout(800);
+await page.screenshot({ path: "shots/home-layout.png" });
+await page.getByRole("checkbox", { name: "Nachrichten anzeigen" }).uncheck({ force: true });
+await page.locator(".layout-private input").check({ force: true });
+await page.getByRole("button", { name: /Speichern/ }).click();
+await page.waitForTimeout(1500);
+console.log("home layout", JSON.stringify(await page.evaluate(() => ({
+  news: !!document.querySelector(".news-grid"), tiles: [...document.querySelectorAll(".summary-tile strong")].map((x) => x.textContent),
+}))));
+await page.screenshot({ path: "shots/home-private.png" });
+
+// Unternehmensdaten einer Aktie (SAP)
+console.log("fundamentals SAP", JSON.stringify(await api("/fundamentals/DE0007164600.GTX")).slice(0, 600));
 
 // Einladung: Link in der Administration erstellen, zweiten Nutzer anlegen, getrennte Daten prüfen
 await page.goto(`${base}/admin`);

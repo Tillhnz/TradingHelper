@@ -128,7 +128,7 @@ def build_report(storage: Storage, settings: Settings) -> Report:
             df = market.get_history(sym, profile.period, "1d", currency=target)
             a = analysis.analyze(sym, df, profile)
             items = news.collect(sym, settings, w.get("name"))
-            rec = analysis.recommend(a, news.aggregate_sentiment(items))
+            rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
             native = w.get("currency")
             if native is None and w.get("exchange") is None:
                 native = market.guess_listing(sym)[1]
