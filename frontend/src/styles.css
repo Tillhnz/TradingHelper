@@ -907,7 +907,7 @@ h1 { font-size: 2.4rem; }
 .asset-nums strong { font-size: 1rem; }
 .asset-go { color: var(--mute); font-size: 1.3rem; line-height: 1; }
 .asset-hint { margin: -0.35rem 0 0; padding: 0 1rem 0.7rem calc(1rem + 9px + 0.75rem); font-size: 0.82rem; color: var(--mute); }
-.asset-hint::before { content: "→ "; }
+
 .asset-hint.bad { color: var(--signal); }
 .asset-hint.warn { color: var(--amber); }
 .asset-hint.good { color: var(--celeste); }
@@ -947,9 +947,13 @@ h1 { font-size: 2.4rem; }
   .stock-layout { display: flex; flex-direction: column; }
   .stock-side, .stock-main { display: contents; }
   .stock-main > .chart-panel { order: 1; }
+  .stock-side > * { order: 6; }
   .stock-side > .verdict { order: 2; }
+  .stock-side > #bestand { order: 3; }
   .stock-side > .holding { order: 3; }
-  .stock-main > * { order: 4; }
+  .stock-side > .blocks { order: 4; }
+  .stock-side > #ausbruch { order: 5; }
+  .stock-main > * { order: 7; }
   .stock-main > .chart-panel { order: 1; }
 }
 .toolbar .opts-btn { display: none; background: none; border: 1px solid var(--line); color: var(--chalk); border-radius: 8px;
@@ -1226,3 +1230,6 @@ input:focus, select:focus, textarea:focus { border-color: rgba(111, 211, 195, 0.
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 0.01ms !important; }
 }
+
+.breakout .panel-head { flex-wrap: wrap; row-gap: 0.2rem; }
+@media (max-width: 600px) { .breakout .panel-head h2 { font-size: 1.35rem; } }

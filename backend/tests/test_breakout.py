@@ -29,7 +29,14 @@ def test_likely_breakdown_can_flip_the_opinion():
     a = analysis.analyze("X", _df(-0.003))
     assert a.breakout and a.breakout["tilt"] == "down"
     rec = analysis.recommend(a, None)
-    assert any("Rutsch unter" in n for n in rec.notes)
+    assert any("Rutsch-Risiko" in n for n in rec.notes)
     plain = analysis.analyze("X", _df(-0.003), with_breakout=False)
     assert plain.breakout is None
     assert rec.combined < analysis.recommend(plain, None).combined
+
+
+def test_tilt_respects_what_is_usual():
+    assert breakout.tilt(0.42, 0.30, 0.60, 0.14) == "neutral"  # oben vorn, aber unter dem Üblichen: keine Chance
+    assert breakout.tilt(0.30, 0.34, 0.60, 0.14) == "down"
+    assert breakout.tilt(0.45, 0.10, 0.30, 0.15) == "up"
+    assert breakout.tilt(0.25, 0.22, 0.25, 0.22) == "neutral"

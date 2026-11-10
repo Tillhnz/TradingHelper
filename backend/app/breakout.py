@@ -87,15 +87,24 @@ def probabilities(d: pd.DataFrame, horizon: str = "medium") -> dict | None:
         "base_up": round(base_u, 3), "base_down": round(base_d, 3),
         "level_up": round(hi_now, 4), "level_down": round(lo_now, 4),
         "samples": int(train.sum()), "neighbors": k,
-        "tilt": tilt(p_u, p_d),
+        "tilt": tilt(p_u, p_d, base_u, base_d),
+        "edge": round(edge(p_u, p_d, base_u, base_d), 3),
     }
 
 
-def tilt(p_up: float, p_down: float) -> str:
-    """Grobe Richtung: „up“, „down“ oder „neutral“ (Unterschied unter 12 Prozentpunkten)."""
-    if p_down >= 0.3 and p_down - p_up >= 0.12:
+def edge(p_up: float, p_down: float, base_up: float, base_down: float) -> float:
+    """Richtung als Zahl (−1 … +1): zu zwei Dritteln der direkte Vergleich oben/unten, zu einem Drittel die
+    Abweichung vom Üblichen. So zählt bei einem Wert, der sonst fast immer neue Hochs macht, auch ein deutlich
+    erhöhtes Rutsch-Risiko – und ein Dauer-Abwärtstrend bleibt trotzdem ein Risiko."""
+    return float((2 * (p_up - p_down) + ((p_up - base_up) - (p_down - base_down))) / 3)
+
+
+def tilt(p_up: float, p_down: float, base_up: float | None = None, base_down: float | None = None) -> str:
+    """Grobe Richtung: „up“, „down“ oder „neutral“."""
+    e = edge(p_up, p_down, base_up if base_up is not None else p_up, base_down if base_down is not None else p_down)
+    if e <= -0.1 and p_down >= 0.25:
         return "down"
-    if p_up >= 0.3 and p_up - p_down >= 0.12:
+    if e >= 0.1 and p_up >= 0.3:
         return "up"
     return "neutral"
 

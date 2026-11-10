@@ -9,7 +9,7 @@ export function BreakoutChip({ bo }) {
   if (!bo || bo.tilt === "neutral") return null;
   const up = bo.tilt === "up";
   return (
-    <span className={`bo-chip ${up ? "up" : "down"}`} title={`${up ? "Ausbruch nach oben" : "Rutsch nach unten"}: ${pc(up ? bo.up : bo.down)} in den ${span(bo.days)}`}>
+    <span className={`bo-chip ${up ? "up" : "down"}`} title={`${up ? "Ausbruch-Chance erhöht" : "Rutsch-Risiko erhöht"}: ${pc(up ? bo.up : bo.down)} (üblich ${pc(up ? bo.base_up : bo.base_down)}), ${span(bo.days)}`}>
       <Icon name={up ? "up" : "down"} />{pc(up ? bo.up : bo.down)}
     </span>
   );
@@ -25,9 +25,9 @@ export default function BreakoutMeter({ bo, currency }) {
     { key: "up", icon: "up", label: "Ausbruch nach oben", level: `über ${money(bo.level_up, currency)}`, p: bo.up, base: bo.base_up },
     { key: "down", icon: "down", label: "Rutsch nach unten", level: `unter ${money(bo.level_down, currency)}`, p: bo.down, base: bo.base_down },
   ];
-  const verdict = bo.tilt === "up" ? "Ein Ausbruch nach oben ist klar wahrscheinlicher."
-    : bo.tilt === "down" ? "Ein Rutsch nach unten ist klar wahrscheinlicher – Stopp im Blick behalten."
-      : "Keine Richtung drängt sich auf – eher Seitwärtsphase.";
+  const verdict = bo.tilt === "up" ? "Die Chancen auf einen Ausbruch nach oben stehen besser als sonst."
+    : bo.tilt === "down" ? "Das Risiko eines Rutsches nach unten ist erhöht – Stopp im Blick behalten."
+      : "Keine Richtung sticht heraus – eher eine Seitwärtsphase.";
   return (
     <section className={`panel breakout tilt-${bo.tilt}`} aria-labelledby="bo-h">
       <div className="panel-head">

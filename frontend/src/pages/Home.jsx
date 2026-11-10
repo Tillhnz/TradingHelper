@@ -124,8 +124,8 @@ function rowFor(e, q, pro) {
   const bo = e.analysis?.breakout;
   if (!hint && bo && bo.tilt !== "neutral") {
     hint = bo.tilt === "up"
-      ? { level: "good", text: `Ausbruch nach oben wahrscheinlich (${Math.round(bo.up * 100)} %)` }
-      : { level: h ? "bad" : "warn", text: `Rutsch nach unten wahrscheinlich (${Math.round(bo.down * 100)} %)${h ? " – Stopp prüfen" : ""}` };
+      ? { level: "good", text: `Ausbruch-Chance erhöht: ${Math.round(bo.up * 100)} % (üblich ${Math.round(bo.base_up * 100)} %)` }
+      : { level: h ? "bad" : "warn", text: `Rutsch-Risiko erhöht: ${Math.round(bo.down * 100)} % (üblich ${Math.round(bo.base_down * 100)} %)${h ? " – Stopp prüfen" : ""}` };
   }
   return { meta, nums, hint, held: !!h };
 }

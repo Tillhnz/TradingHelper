@@ -310,13 +310,13 @@ def rethink(open_: list[dict]) -> dict | None:
     pl_pct = pl / invested * 100 if invested else 0.0
     bo = next((p["breakout"] for p in open_ if p.get("breakout")), None)
     score = next((p["score"] for p in open_ if p.get("score") is not None), None)
-    if bo and bo["tilt"] == "down" and bo["down"] >= 0.35:
+    if bo and bo["tilt"] == "down" and bo["down"] >= 0.3:
         chance = f"{bo['down'] * 100:.0f} %"
         if pl > 0:
             return {"level": "bad", "reason": "rethink",
-                    "text": f"Gewinne sichern – Rutsch unter {bo['level_down']:.2f} wahrscheinlich ({chance})"}
+                    "text": f"Gewinne sichern – Rutsch-Risiko unter {bo['level_down']:.2f} erhöht ({chance})"}
         return {"level": "bad", "reason": "rethink",
-                "text": f"Verkauf prüfen – Rutsch unter {bo['level_down']:.2f} wahrscheinlich ({chance}), Verlust begrenzen"}
+                "text": f"Verkauf prüfen – Rutsch-Risiko unter {bo['level_down']:.2f} erhöht ({chance}), Verlust begrenzen"}
     if pl_pct >= 8 and score is not None and score < -0.05 and (not bo or bo["tilt"] != "up"):
         return {"level": "warn", "reason": "rethink",
                 "text": f"Gewinn mitnehmen erwägen – {pl_pct:.0f} % im Plus, aber der Schwung lässt nach"}

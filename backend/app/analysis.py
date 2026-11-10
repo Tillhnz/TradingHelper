@@ -363,14 +363,13 @@ def recommend(a: Analysis, sentiment: float | None, profile: Profile | None = No
     # Ausbruch/Rutsch: Ist eine Richtung klar wahrscheinlicher, darf das die Meinung kippen (z. B. doch verkaufen)
     bo = a.breakout
     if bo and bo["tilt"] != "neutral":
-        edge = bo["up"] - bo["down"]
-        combined += max(-0.25, min(0.25, edge * 0.5))
+        combined += max(-0.25, min(0.25, bo["edge"] * 0.5))
         if bo["tilt"] == "down":
-            notes.append(f"Rutsch unter {bo['level_down']:.2f} wahrscheinlich ({bo['down'] * 100:.0f} % in "
-                         f"{bo['days']} Handelstagen, üblich {bo['base_down'] * 100:.0f} %)")
+            notes.append(f"Rutsch-Risiko erhöht: {bo['down'] * 100:.0f} % für einen Schluss unter {bo['level_down']:.2f} "
+                         f"in {bo['days']} Handelstagen (üblich {bo['base_down'] * 100:.0f} %)")
         else:
-            notes.append(f"Ausbruch über {bo['level_up']:.2f} wahrscheinlich ({bo['up'] * 100:.0f} % in "
-                         f"{bo['days']} Handelstagen, üblich {bo['base_up'] * 100:.0f} %)")
+            notes.append(f"Ausbruch-Chance erhöht: {bo['up'] * 100:.0f} % für einen Schluss über {bo['level_up']:.2f} "
+                         f"in {bo['days']} Handelstagen (üblich {bo['base_up'] * 100:.0f} %)")
 
     atr_pct = m.get("atr_pct")
     if R["vol_limit"] and atr_pct and atr_pct > R["vol_limit"]:
