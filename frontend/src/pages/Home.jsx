@@ -93,14 +93,14 @@ function SummaryTiles({ depot, shadow, priv }) {
       {hasDepot && (
         <Link to="/depot" className="summary-tile">
           <span className="muted small"><Icon name="wallet" /> Mein Depot</span>
-          <strong className={priv ? tone(t.pl) : ""}>{priv ? pct(t.pl_pct, 1) : money(t.value, t.currency)}</strong>
+          <strong className={priv ? tone(Math.round((t.pl_pct || 0) * 10) / 10) : ""}>{priv ? pct(t.pl_pct, 1) : money(t.value, t.currency)}</strong>
           <span className={`small ${priv ? "muted" : tone(t.pl)}`}>{priv ? "seit Kauf" : <>{signedMoney(t.pl, t.currency)} · {pct(t.pl_pct, 1)}</>}</span>
         </Link>
       )}
       {shadow?.started && (
         <Link to="/depot/schatten" className="summary-tile">
           <span className="muted small"><Icon name="flask" /> Schattendepot</span>
-          <strong className={priv ? tone(shadow.pl) : ""}>{priv ? pct(shadow.pl_pct, 1) : money(shadow.value, shadow.currency)}</strong>
+          <strong className={priv ? tone(Math.round((shadow.pl_pct || 0) * 10) / 10) : ""}>{priv ? pct(shadow.pl_pct, 1) : money(shadow.value, shadow.currency)}</strong>
           <span className={`small ${priv ? "muted" : tone(shadow.pl)}`}>{priv ? "seit Start" : <>{signedMoney(shadow.pl, shadow.currency)} · {pct(shadow.pl_pct, 1)}</>}</span>
         </Link>
       )}
