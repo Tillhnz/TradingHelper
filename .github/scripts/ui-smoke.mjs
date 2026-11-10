@@ -258,8 +258,8 @@ await page.keyboard.press("Escape");
 await page.getByRole("button", { name: "Startseite anpassen" }).click();
 await page.waitForTimeout(800);
 await page.screenshot({ path: "shots/home-layout.png" });
-await page.getByRole("checkbox", { name: "Nachrichten anzeigen" }).uncheck({ force: true });
-await page.locator(".layout-private input").check({ force: true });
+await page.locator(".layout-list li", { hasText: "Nachrichten" }).locator(".switch span").click();
+await page.locator(".layout-private .switch span").click();
 await page.getByRole("button", { name: /Speichern/ }).click();
 await page.waitForTimeout(1500);
 console.log("home layout", JSON.stringify(await page.evaluate(() => ({
