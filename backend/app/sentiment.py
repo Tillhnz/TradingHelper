@@ -118,6 +118,8 @@ PHRASES: list[tuple[str, float]] = [
     (r"(verkauft|verkaufen|setzt|setzen|liefert|liefern|sells?|ships?|delivers?) (\S+ ){0,3}(mehr|more)\b", 1),
     (r"(verkauft|verkaufen|setzt|setzen|liefert|liefern|sells?|ships?|delivers?) (\S+ ){0,3}(weniger|fewer|less)\b", -1.5),
     (r"(hebt|heben) (\S+ ){0,3}an\b", 1),
+    (r"grüne(n|m)? (vorzeichen|bereich|zone)|im grünen (bereich)?|in the green", 1),
+    (r"rote(n|m)? (vorzeichen|bereich|zone)|im roten bereich", -1),
     (r"schwarze(n)? zahlen|gewinnzone|(erstmals|first) (profitabel|profitable|profit)", 1.5),
     (r"rote(n)? zahlen|in the red|verbrennt (\S+ ){0,2}geld|burns? (through )?cash", -1.5),
     (r"cuts? (\S+ ){0,2}jobs|streicht (\S+ ){0,2}jobs|baut (\S+ ){0,2}(stellen|jobs) ab", -1.5),

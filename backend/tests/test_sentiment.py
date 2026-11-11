@@ -50,6 +50,8 @@ def test_context_rules():
     assert f("Should You Buy Nvidia Stock Right Now?") == 0
     assert f("Droht der Tesla-Aktie jetzt der Absturz?") < -0.15
     assert f("Kein Grund zur Sorge: Aktie nicht unter Druck") > 0
+    assert f("iShares Core MSCI World ETF mit grünen Vorzeichen") > 0.15
+    assert f("DAX mit roten Vorzeichen") < -0.15
     assert f("Arbeitslosigkeit steigt auf höchsten Stand seit Jahren") < -0.15
 
 
