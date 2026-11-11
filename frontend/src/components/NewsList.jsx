@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api.js";
 import { dateTime } from "../fmt.js";
+import Icon from "./Icon.jsx";
 import { displayName } from "../texts.js";
 
 export function ago(iso) {
@@ -18,6 +20,42 @@ export function ago(iso) {
 
 const mood = (v) => (v > 0.15 ? "pos" : v < -0.15 ? "neg" : "neu");
 const MOOD_LABEL = { pos: "klingt positiv", neg: "klingt negativ", neu: "neutral" };
+const CHOICES = [[1, "pos", "positiv"], [0, "neu", "neutral"], [-1, "neg", "negativ"]];
+
+/** Stimmung einer Meldung korrigieren – TradeHelper lernt daraus für künftige Schlagzeilen. */
+function MoodFix({ n, m, onFixed }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  async function pick(label) {
+    setBusy(true);
+    try {
+      const r = await api.post("/news/feedback", { headline: n.headline, label });
+      onFixed(r.sentiment);
+      setDone(true);
+      setOpen(false);
+    } catch {
+      /* Korrektur ist ein Extra – bei Fehler einfach offen lassen */
+    }
+    setBusy(false);
+  }
+  if (open) {
+    return (
+      <span className="mood-fix" role="group" aria-label="Stimmung korrigieren">
+        <span className="muted">Eigentlich:</span>
+        {CHOICES.map(([v, cls, label]) => (
+          <button key={v} className={`mood-tag ${cls} ${m === cls ? "cur" : ""}`} disabled={busy} onClick={() => pick(v)}>{label}</button>
+        ))}
+        <button className="mood-x" onClick={() => setOpen(false)} aria-label="Abbrechen"><Icon name="x" /></button>
+      </span>
+    );
+  }
+  return (
+    <button className={`mood-tag ${m} as-btn`} onClick={() => setOpen(true)} title="Stimmt nicht? Antippen und korrigieren – TradeHelper lernt daraus.">
+      {done && <Icon name="check" />} {MOOD_LABEL[m]} <Icon name="pencil" className="mood-pen" />
+    </button>
+  );
+}
 
 const STOP = new Set(("aktie aktien der die das und mit für von auf den dem des ein eine im in ist zu nach bei über "
   + "the and for with from to of on in at is are as its by after stock stocks shares share inc corp ag se").split(" "));
@@ -45,12 +83,15 @@ export default function NewsList({ items, initial = 5, showStock = false, empty 
   const [all, setAll] = useState(false);
   const [lang, setLang] = useState("all");
   const [open, setOpen] = useState(null);
+  const [fixed, setFixed] = useState({});
 
   const langs = useMemo(() => {
     const de = (items || []).filter((n) => GERMAN.test(n.headline)).length;
     return { de, en: (items || []).length - de };
   }, [items]);
-  const filtered = useMemo(() => (items || []).filter((n) => lang === "all" || (lang === "de") === GERMAN.test(n.headline)), [items, lang]);
+  const filtered = useMemo(() => (items || [])
+    .map((n) => (n.headline in fixed ? { ...n, sentiment: fixed[n.headline] } : n))
+    .filter((n) => lang === "all" || (lang === "de") === GERMAN.test(n.headline)), [items, lang, fixed]);
   const groups = useMemo(() => group(filtered), [filtered]);
 
   if (!items?.length) return empty ? <p className="muted">{empty}</p> : null;
@@ -95,7 +136,7 @@ export default function NewsList({ items, initial = 5, showStock = false, empty 
                 )}
                 <span className="news-src">{n.source || n.via}</span>
                 <span className="muted" title={dateTime(n.published)}>{ago(n.published)}</span>
-                {m !== "neu" && <span className={`mood-tag ${m}`}>{MOOD_LABEL[m]}</span>}
+                <MoodFix n={n} m={m} onFixed={(v) => setFixed((x) => ({ ...x, [n.headline]: v }))} />
                 {n.more.length > 0 && (
                   <button className="link small" onClick={() => setOpen(open === key ? null : key)} aria-expanded={open === key}>
                     +{n.more.length} {n.more.length === 1 ? "weitere Quelle" : "weitere Quellen"}

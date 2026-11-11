@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from datetime import date
 
-from . import __version__, alerts, analysis, entry, events, fundamentals, indicators, market, news, notify, paper, portfolio, scheduler
+from . import __version__, alerts, analysis, entry, events, fundamentals, indicators, learn, market, news, notify, paper, portfolio, scheduler
 from . import settings_store
 from . import updater_client
 from .config import Settings
@@ -47,6 +47,10 @@ async def lifespan(app: FastAPI):
                       base_settings.db_path)
         raise
     settings_store.apply_overrides(st, base_settings)
+    try:
+        learn.refresh(st)
+    except Exception:  # noqa: BLE001
+        log.exception("Gelernte Nachrichten-Korrekturen nicht ladbar")
     if base_settings.scheduler_enabled:
         scheduler.start(st, base_settings)
     yield
@@ -393,6 +397,20 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
     rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
     return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
             "news": [n.to_dict() for n in items], "news_sources": news.sources(settings) if with_news else [], **meta}
+
+
+class NewsFeedback(BaseModel):
+    headline: str = Field(min_length=3, max_length=500)
+    label: int = Field(ge=-1, le=1)
+
+
+@app.post("/api/news/feedback")
+def news_feedback(item: NewsFeedback, st: Storage = Depends(user_storage)):
+    """Stimmung einer Meldung korrigieren – das Modell lernt daraus (für alle Nutzer dieser Installation)."""
+    st.add_news_feedback(item.headline.strip(), item.label)
+    learn.refresh(st)
+    news.clear_cache()
+    return {"sentiment": news.score_text(item.headline), "corrections": learn.COUNT}
 
 
 @app.get("/api/fundamentals/{symbol}", dependencies=auth)

@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.18.0",
+    date: "11.11.2026",
+    title: "Nachrichten-Stimmung deutlich treffsicherer – und lernfähig",
+    items: [
+      "Neues Stimmungsmodell: erkennt deutsche Wortzusammensetzungen („Spionageskandal“, „Kursrutsch“), getrennte Verben („legt kräftig zu“), Fragen wie „Droht jetzt der Absturz?“, „aber/trotz“-Sätze und viele neue Finanzbegriffe.",
+      "Bei neuen, nicht vorher gesehenen Schlagzeilen liegt es jetzt in rund drei Viertel der Fälle richtig statt in der Hälfte – und dreht die Richtung praktisch nie falsch herum.",
+      "Liegt es trotzdem daneben: Tipp auf „klingt positiv/negativ/neutral“ bei einer Meldung und wähle die richtige Stimmung. TradeHelper merkt sich das für diese Meldung und lernt aus wiederkehrenden Wörtern für künftige Schlagzeilen.",
+    ],
+  },
+  {
     version: "0.17.0",
     date: "10.11.2026",
     title: "Startseite nach Wunsch, Unternehmensdaten, News in der Ausbruch-Chance",

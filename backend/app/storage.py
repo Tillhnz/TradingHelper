@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS chart_layouts (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, symbol)
 );
+CREATE TABLE IF NOT EXISTS news_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    headline TEXT NOT NULL,
+    label INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS job_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -482,6 +489,17 @@ class Storage:
                       "ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value", (self.uid, key, value))
 
     # --- Morgenberichte (die letzten 30 je Nutzer) -----------------------------
+    # --- Korrekturen der Nachrichten-Stimmung (für alle Nutzer, siehe learn.py) ----------------------------------
+    def add_news_feedback(self, headline: str, label: int) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM news_feedback WHERE headline=?", (headline,))
+            c.execute("INSERT INTO news_feedback(user_id, headline, label, created_at) VALUES (?,?,?,?)",
+                      (self.uid, headline, int(label), now_iso()))
+
+    def news_feedback(self) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT headline, label, user_id, created_at FROM news_feedback ORDER BY id")]
+
     # --- Protokoll der Hintergrund-Jobs (für alle Nutzer, sichtbar in der Administration) --------------------
     def job_start(self, job: str) -> int:
         with self._conn() as c:

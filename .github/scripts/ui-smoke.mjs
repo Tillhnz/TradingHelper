@@ -177,6 +177,16 @@ for (const [w, h, tag] of [[1366, 768, "laptop"], [1024, 768, "tablet"]]) {
   const co = pg.locator(".panel.company");
   if (await co.count()) { await co.scrollIntoViewIfNeeded(); await pg.waitForTimeout(1500); await co.screenshot({ path: `shots/${tag}-company.png` }); }
   else console.log("no company panel for", tag);
+  const moodBtn = pg.locator(".news-list .mood-tag.as-btn").first();
+  if (await moodBtn.count()) {
+    await moodBtn.scrollIntoViewIfNeeded();
+    await moodBtn.click();
+    await pg.waitForTimeout(300);
+    await pg.locator(".news-list").first().screenshot({ path: `shots/${tag}-mood-fix.png` });
+    await pg.locator(".mood-fix .mood-tag.neg").first().click();
+    await pg.waitForTimeout(1500);
+    console.log("mood fixed", tag, await pg.locator(".news-list li").first().locator(".mood-tag").first().textContent());
+  } else console.log("no news for", tag);
   const blocks = pg.locator(".panel.blocks");
   if (await blocks.count()) { await blocks.scrollIntoViewIfNeeded(); await blocks.screenshot({ path: `shots/${tag}-blocks.png` }); }
   await pg.locator(".stock-head .btn-sell").first().click();
