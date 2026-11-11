@@ -27,7 +27,8 @@ jobs:
       - name: Browser-Test
         run: |
           npm init -y >/dev/null && npm i --no-audit --no-fund playwright@1.48.2
-          npx playwright install --with-deps chromium
+          # Fallen die Ubuntu-Paketserver aus, reicht meist der Browser allein (Abhängigkeiten sind im Runner-Image)
+          timeout 300 npx playwright install --with-deps chromium || npx playwright install chromium
           node .github/scripts/ui-smoke.mjs
       - name: Protokolle
         if: always()
