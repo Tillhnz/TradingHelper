@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import SymbolSearch from "../components/SymbolSearch.jsx";
 import AssetRow, { actionHint, priceNums } from "../components/AssetRow.jsx";
 import Icon from "../components/Icon.jsx";
-import { Empty, ErrorText, Loading } from "../components/ui.jsx";
+import { Empty, ErrorText, Loading, RefreshState } from "../components/ui.jsx";
 import { num } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
+import { useCachedGet } from "../cache.js";
 import { useMode } from "../mode.js";
 import { displayName, displayTicker } from "../texts.js";
 
@@ -19,23 +20,15 @@ const FILTERS = [
 
 export default function Watchlist() {
   const { mode } = useMode();
-  const [rows, setRows] = useState(null);
+  const overview = useCachedGet("/watchlist/overview");
+  const rows = overview.data;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState("");
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("all");
 
-  const load = useCallback(async () => {
-    try {
-      setRows(await api.get("/watchlist/overview"));
-      setError("");
-    } catch (e) {
-      setError(e.message);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const load = overview.reload;
 
   async function add(r) {
     setBusy(r.symbol);
@@ -64,6 +57,7 @@ export default function Watchlist() {
         <div>
           <h1>Meine Werte</h1>
           <p className="muted">Alles, was du beobachtest oder besitzt. Diese Werte kommen in deine Berichte.</p>
+          <RefreshState q={overview} />
         </div>
         <button className="btn primary" onClick={() => setAdding((a) => !a)}>{adding ? "Schließen" : "+ Wert hinzufügen"}</button>
       </div>
@@ -77,9 +71,9 @@ export default function Watchlist() {
         </section>
       )}
       {msg && <p className="ok" role="status">{msg}</p>}
-      <ErrorText error={error} />
+      <ErrorText error={error || overview.error} />
 
-      {!rows && !error && <Loading />}
+      {!rows && !error && !overview.error && <Loading />}
       {rows && !rows.length && <Empty title="Noch leer"><p className="muted">Such oben nach deinem ersten Wert.</p></Empty>}
 
       {rows && rows.length > 0 && (

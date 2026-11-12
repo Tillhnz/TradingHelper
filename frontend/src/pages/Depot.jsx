@@ -1,32 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import AssetRow, { actionHint, heldNums } from "../components/AssetRow.jsx";
 import BuyDialog from "../components/BuyDialog.jsx";
 import DepotTabs from "../components/DepotTabs.jsx";
 import PnlChart from "../components/PnlChart.jsx";
-import { Empty, ErrorText, Loading } from "../components/ui.jsx";
+import { Empty, ErrorText, Loading, RefreshState } from "../components/ui.jsx";
 import { money, num, pct, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
+import { useCachedGet } from "../cache.js";
 import { displayName } from "../texts.js";
 import Icon from "../components/Icon.jsx";
 
 export default function Depot() {
-  const [data, setData] = useState(null);
+  const positions = useCachedGet("/positions");
+  const data = positions.data;
   const [hist, setHist] = useState(null);
-  const [error, setError] = useState("");
   const [buying, setBuying] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setData(await api.get("/positions"));
-      setError("");
-    } catch (e) {
-      setError(e.message);
-    }
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  const load = positions.reload;
+  const error = positions.error;
   useEffect(() => {
     if (showChart && !hist) api.get("/positions/history").then(setHist).catch(() => {});
   }, [showChart, hist]);
@@ -43,6 +37,7 @@ export default function Depot() {
         <div>
           <h1>Depot</h1>
           <p className="muted">Deine Käufe mit Gewinn und Verlust. Antippen öffnet alle Details, Stopp, Ziel und Verkauf.</p>
+          <RefreshState q={positions} />
         </div>
         <button className="btn primary" onClick={() => setBuying(true)}>Kauf erfassen</button>
       </div>

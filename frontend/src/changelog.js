@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: "0.20.0",
+    date: "12.11.2026",
+    title: "Sofort da – und Zeichnen mit dem Finger",
+    items: [
+      "Übersicht, Meine Werte, Depot und Nachrichten zeigen beim Öffnen sofort den zuletzt geladenen Stand. Frische Kurse und Meldungen kommen im Hintergrund dazu – oben steht „aktualisiere …“ bzw. der Stand.",
+      "Großer Chart auf dem Handy: Linien einfach ziehen (Anfang aufsetzen, Ende loslassen) – eine gestrichelte Vorschau mit Preis zeigt, wo sie landet. Antippen klappt weiterhin.",
+      "Neu: Magnet (Punkte rasten an Hoch, Tief, Eröffnung oder Schluss der Kerze ein) und „Rückgängig“.",
+      "Nach dem Zeichnen erscheint direkt unter dem Chart eine Leiste für Farbe, Alarm und Löschen – kein Scrollen zur Liste mehr.",
+      "Beim Zeichnen bewegt sich weder Chart noch Seite mit; ohne Werkzeug scrollt die Seite beim senkrechten Wischen wieder ganz normal.",
+    ],
+  },
+  {
     version: "0.19.1",
     date: "12.11.2026",
     title: "Übersicht lädt schneller und zuverlässiger",

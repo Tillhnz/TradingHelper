@@ -2,7 +2,13 @@ const TOKEN_KEY = "tradehelper_token";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+export const clearToken = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  // Zwischengespeicherte Seiten (cache.js) gehören zur Anmeldung und gehen mit
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith("th_cache:")).forEach((k) => localStorage.removeItem(k));
+  } catch { /* egal */ }
+};
 
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => (onUnauthorized = fn);

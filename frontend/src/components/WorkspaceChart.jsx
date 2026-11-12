@@ -5,6 +5,16 @@ import { money, pct, signedMoney } from "../fmt.js";
 import { buyTimestamp, PositionBox, sellTimestamp } from "./positionBox.js";
 import { baseOptions, COLORS } from "./PriceChart.jsx";
 
+/**
+ * Verschieben/Zoomen. Senkrechtes Wischen bleibt beim Seiten-Scrollen (sonst „klebt“ die Seite am Chart);
+ * mit aktivem Zeichenwerkzeug gehört jede Berührung dem Zeichnen.
+ */
+const pan = (on) => ({
+  handleScroll: on ? { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false } : false,
+  handleScale: on ? { mouseWheel: true, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true } : false,
+  kineticScroll: { touch: on, mouse: false },
+});
+
 export const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
 const fmtPct = (x) => `${(x * 100).toFixed(1).replace(".", ",").replace(",0", "")} %`;
@@ -15,19 +25,27 @@ const series = (rows, values) => rows.map((r, i) => (values[i] === null || value
 
 /**
  * Freier Chart mit Zeichnungen und Kennlinien.
- * - tool: null | "hline" | "trend" | "ray" | "fib" – Klicks in den Chart setzen Punkte
- * - onPoint({time, price}) wird bei jedem Klick mit aktivem Werkzeug aufgerufen
- * - pending: erster Punkt einer Zwei-Punkt-Zeichnung (wird als Markierung gezeigt)
+ * - tool: null | "hline" | "trend" | "ray" | "fib" – Tippen/Klicken oder Ziehen im Chart zeichnet
+ * - onDraw(kind, points, { touch }) bei einer fertigen Zeichnung
+ * - onPending(point) nach dem ersten Punkt einer Zwei-Punkt-Zeichnung (nur angetippt)
+ * - pending: dieser erste Punkt (wird als Markierung gezeigt)
+ * - magnet: Punkte rasten an Eröffnung/Hoch/Tief/Schluss der Kerze ein
  */
 export default function WorkspaceChart({ rows, type = "candles", intraday = false, indicators = [], drawings = [],
-  tool = null, pending = null, selected = null, onPoint, positions = [], currency = null }) {
+  tool = null, pending = null, selected = null, onPending, onDraw, magnet = true, positions = [], currency = null }) {
   const mainRef = useRef(null);
   const subRefs = useRef({});
   const state = useRef({ charts: [], main: null, price: null, range: null });
   const toolRef = useRef(tool);
-  const pointRef = useRef(onPoint);
+  const pendingRef = useRef(pending);
+  const magnetRef = useRef(magnet);
+  const drawRef = useRef(onDraw);
+  const pendRef = useRef(onPending);
   toolRef.current = tool;
-  pointRef.current = onPoint;
+  pendingRef.current = pending;
+  magnetRef.current = magnet;
+  drawRef.current = onDraw;
+  pendRef.current = onPending;
 
   const subs = indicators.filter((i) => INDICATORS[i.kind]?.pane === "sub");
 
@@ -35,7 +53,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
   useEffect(() => {
     if (!rows?.length || !mainRef.current) return undefined;
     const closes = rows.map((r) => r.close);
-    const opts = { ...baseOptions(false, intraday), handleScroll: true, handleScale: true };
+    const opts = { ...baseOptions(false, intraday), ...pan(!toolRef.current) };
     const main = createChart(mainRef.current, opts);
     const ohlc = type === "candles" || type === "bars";
     let price;
@@ -135,29 +153,138 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     const r0 = main.timeScale().getVisibleLogicalRange();
     if (r0) charts.slice(1).forEach((c) => c.timeScale().setVisibleLogicalRange(r0));
 
-    // Klicks direkt am Element auswerten: die Klick-Ereignisse der Chart-Bibliothek verschlucken einen zweiten
-    // schnellen Klick (Doppelklick-Erkennung), für Zwei-Punkt-Zeichnungen braucht es aber jeden Klick
+    // Zeichnen per Pointer-Ereignis (Maus, Finger, Stift):
+    // - Tippen/Klicken setzt einen Punkt, bei Zwei-Punkt-Werkzeugen danach den zweiten
+    // - Ziehen zeichnet in einem Zug (Anfang beim Aufsetzen, Ende beim Loslassen) – auf dem Handy der bequeme Weg
+    // - währenddessen zeigt eine gestrichelte Vorschau samt Preis an der Achse, wo die Linie landet
+    // - Magnet: der Punkt rastet an Eröffnung/Hoch/Tief/Schluss der Kerze ein, wenn er nah dran ist
     const el = mainRef.current;
-    const onClick = (e) => {
-      if (!toolRef.current) return;
-      const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left, y = e.clientY - rect.top;
-      if (x < 0 || y < 0 || x > main.timeScale().width() || y > rect.height - main.timeScale().height()) return;
-      const p = price.coordinateToPrice(y);
-      let t = main.timeScale().coordinateToTime(x);
-      if (t === null || t === undefined) {
-        // Rechts neben den Kursen: an den letzten Kurs anhängen
-        const lg = main.timeScale().coordinateToLogical(x);
-        if (lg !== null && lg > rows.length - 1) t = rows[rows.length - 1].time;
-      }
-      if (p === null || t === null || t === undefined) return;
-      pointRef.current?.({ time: typeof t === "number" ? t : Math.floor(new Date(`${t.year}-${t.month}-${t.day}`).getTime() / 1000), price: p });
+    let preview = null;
+    const clearPreview = () => {
+      if (!preview) return;
+      if (preview.series) { try { main.removeSeries(preview.series); } catch { /* schon weg */ } }
+      if (preview.line) { try { price.removePriceLine(preview.line); } catch { /* schon weg */ } }
+      preview = null;
     };
-    el.addEventListener("click", onClick);
+    const showPreview = (kind, a, b) => {
+      if (!preview) preview = {};
+      const at = b || a;
+      if (!preview.line) {
+        preview.line = price.createPriceLine({ price: at.price, color: "#ffffff", lineWidth: 1, lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true, title: "" });
+      } else preview.line.applyOptions({ price: at.price });
+      if (kind === "hline" || !b) return;
+      if (!preview.series) {
+        preview.series = main.addLineSeries({ color: "#ffffff", lineWidth: 2, lineStyle: LineStyle.Dashed, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
+      }
+      const [p1, p2] = a.time <= b.time ? [a, b] : [b, a];
+      preview.series.setData(p1.time === p2.time ? [] : [{ time: p1.time, value: p1.price }, { time: p2.time, value: p2.price }]);
+    };
+    const pointAt = (clientX, clientY, coarse) => {
+      const rect = el.getBoundingClientRect();
+      const x = clientX - rect.left, y = clientY - rect.top;
+      const ts = main.timeScale();
+      if (x < 0 || y < 0 || x > ts.width() || y > rect.height - ts.height()) return null;
+      const lg = ts.coordinateToLogical(x);
+      const p = price.coordinateToPrice(y);
+      if (lg === null || p === null) return null;
+      const raw = Math.round(lg);
+      const i = Math.max(0, Math.min(rows.length - 1, raw));
+      const bar = rows[i];
+      let value = p;
+      if (magnetRef.current && raw === i) {
+        let best = null, dist = Infinity;
+        for (const v of ohlc ? [bar.open, bar.high, bar.low, bar.close] : [bar.close]) {
+          if (v === null || v === undefined) continue;
+          const cy = price.priceToCoordinate(v);
+          if (cy === null) continue;
+          if (Math.abs(cy - y) < dist) { dist = Math.abs(cy - y); best = v; }
+        }
+        if (best !== null && dist <= (coarse ? 28 : 14)) value = best;
+      }
+      return { time: bar.time, price: value };
+    };
 
-    state.current = { ...state.current, charts, main, price, lastTime: rows[rows.length - 1].time };
-    return () => { el.removeEventListener("click", onClick); charts.forEach((c) => c.remove()); state.current = { ...state.current, charts: [], main: null, price: null }; };
+    let gesture = null;
+    const onDown = (e) => {
+      const tool = toolRef.current;
+      if (!tool || (e.pointerType === "mouse" && e.button !== 0)) return;
+      const coarse = e.pointerType !== "mouse";
+      const pt = pointAt(e.clientX, e.clientY, coarse);
+      if (!pt) return;
+      e.preventDefault();
+      e.stopPropagation();
+      try { el.setPointerCapture(e.pointerId); } catch { /* egal */ }
+      const pending = pendingRef.current;
+      gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, coarse, last: pt,
+        anchor: tool === "hline" ? null : (pending || pt), hadPending: !!pending };
+      if (tool === "hline") showPreview("hline", pt);
+      else showPreview(tool, gesture.anchor, pending ? pt : null);
+    };
+    const onMove = (e) => {
+      const tool = toolRef.current;
+      if (!tool) return;
+      if (gesture && e.pointerId === gesture.id) {
+        e.preventDefault();
+        if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 8) gesture.moved = true;
+        const pt = pointAt(e.clientX, e.clientY, gesture.coarse);
+        if (!pt) return;
+        gesture.last = pt;
+        if (tool === "hline") showPreview("hline", pt);
+        else if (gesture.moved || gesture.hadPending) showPreview(tool, gesture.anchor, pt);
+        return;
+      }
+      // Maus ohne gedrückte Taste: Vorschau vom ersten Punkt bis zum Zeiger
+      if (e.pointerType === "mouse" && pendingRef.current && tool !== "hline") {
+        const pt = pointAt(e.clientX, e.clientY, false);
+        if (pt) showPreview(tool, pendingRef.current, pt);
+      }
+    };
+    const onUp = (e) => {
+      if (!gesture || e.pointerId !== gesture.id) return;
+      const g = gesture;
+      gesture = null;
+      const tool = toolRef.current;
+      const pt = pointAt(e.clientX, e.clientY, g.coarse) || g.last;
+      clearPreview();
+      if (!tool) return;
+      const info = { touch: g.coarse };
+      if (tool === "hline") { drawRef.current?.("hline", [pt], info); return; }
+      const sameBar = pt.time === g.anchor.time;
+      if ((g.moved || g.hadPending) && !(sameBar && tool !== "fib")) {
+        drawRef.current?.(tool, [g.anchor, pt], info);
+        return;
+      }
+      // Nur angetippt (oder senkrecht auf derselben Kerze gezogen): das ist der erste Punkt
+      if (!g.hadPending) pendRef.current?.(g.moved ? pt : g.anchor);
+    };
+    const onCancel = () => { gesture = null; clearPreview(); };
+    const onLeave = (e) => { if (e.pointerType === "mouse" && !gesture) clearPreview(); };
+    const cap = { capture: true, passive: false };
+    el.addEventListener("pointerdown", onDown, cap);
+    el.addEventListener("pointermove", onMove, cap);
+    el.addEventListener("pointerup", onUp, cap);
+    el.addEventListener("pointercancel", onCancel, cap);
+    el.addEventListener("pointerleave", onLeave);
+
+    state.current = { ...state.current, charts, main, price, lastTime: rows[rows.length - 1].time, clearPreview };
+    return () => {
+      el.removeEventListener("pointerdown", onDown, cap);
+      el.removeEventListener("pointermove", onMove, cap);
+      el.removeEventListener("pointerup", onUp, cap);
+      el.removeEventListener("pointercancel", onCancel, cap);
+      el.removeEventListener("pointerleave", onLeave);
+      charts.forEach((c) => c.remove());
+      state.current = { ...state.current, charts: [], main: null, price: null, clearPreview: null };
+    };
   }, [rows, type, intraday, indicators, positions, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Werkzeug gewechselt: Verschieben an/aus, offene Vorschau weg
+  useEffect(() => {
+    state.current.charts.forEach((c) => c.applyOptions(pan(!tool)));
+    state.current.clearPreview?.();
+  }, [tool, pending]);
 
   // Zeichnungen: eigene Serien/Linien, werden bei jeder Änderung neu gesetzt
   useEffect(() => {

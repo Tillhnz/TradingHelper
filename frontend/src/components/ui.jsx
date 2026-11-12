@@ -1,9 +1,18 @@
 import { money } from "../fmt.js";
 import { ACTION_UI, HELD_UI } from "../texts.js";
 import Term from "./Term.jsx";
+import { standLabel } from "../cache.js";
 
 export function Loading({ text = "Lade …" }) {
   return <p className="muted loading" role="status"><span className="spinner" aria-hidden="true" />{text}</p>;
+}
+
+/** Kleiner Hinweis unter der Überschrift: „aktualisiere …“ bzw. „Stand 18:42“ (für useCachedGet). */
+export function RefreshState({ q }) {
+  if (!q || q.data == null) return null;
+  if (q.refreshing) return <span className="refresh-state"><span className="spinner" aria-hidden="true" /> aktualisiere …</span>;
+  if (q.refreshError) return <span className="refresh-state warn" title={q.refreshError}>{standLabel(q.at)} · Aktualisieren klappt gerade nicht</span>;
+  return null;
 }
 
 export function ErrorText({ error }) {

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import NewsList from "../components/NewsList.jsx";
@@ -9,6 +9,7 @@ import { ErrorText, Loading } from "../components/ui.jsx";
 import Icon from "../components/Icon.jsx";
 import { dateTime, money, pct, signed, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
+import { readCache, standLabel, useCachedGet, writeCache } from "../cache.js";
 import { useMode } from "../mode.js";
 import { displayName, displayTicker, greeting } from "../texts.js";
 
@@ -36,17 +37,20 @@ function Onboarding({ settings, count }) {
   );
 }
 
-function NewsSection({ hasStocks }) {
-  const [mine, setMine] = useState(null);
-  const [market, setMarket] = useState(null);
+function NewsSection({ hasStocks, refreshKey }) {
+  // Zuletzt geladene Nachrichten sofort zeigen, neue kommen im Hintergrund dazu
+  const mineQ = useCachedGet("/news/watchlist?limit=30", { enabled: hasStocks });
+  const marketQ = useCachedGet("/news/market?limit=40");
   const [tab, setTab] = useState("mine");
-
+  const mine = mineQ.data || (mineQ.error ? { items: [], sources: [] } : null);
+  const market = marketQ.data || (marketQ.error ? { items: [], feeds: [] } : null);
+  const { reload: reloadMine } = mineQ;
+  const { reload: reloadMarket } = marketQ;
   useEffect(() => {
-    let alive = true;
-    api.get("/news/market?limit=40").then((r) => alive && setMarket(r)).catch(() => alive && setMarket({ items: [], feeds: [] }));
-    if (hasStocks) api.get("/news/watchlist?limit=30").then((r) => alive && setMine(r)).catch(() => alive && setMine({ items: [], sources: [] }));
-    return () => { alive = false; };
-  }, [hasStocks]);
+    if (!refreshKey) return;
+    reloadMarket();
+    if (hasStocks) reloadMine();
+  }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const minePanel = hasStocks && (
     <section className={`panel ${tab === "mine" ? "" : "hide-narrow"}`} aria-label="Nachrichten zu deinen Werten">
@@ -219,11 +223,6 @@ function rowFor(e, q, pro) {
 
 export default function Home() {
   const { mode } = useMode();
-  const [report, setReport] = useState(null);
-  const [log, setLog] = useState([]);
-  const [settings, setSettings] = useState(null);
-  const [depot, setDepot] = useState(null);
-  const [shadow, setShadow] = useState(null);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
@@ -237,27 +236,67 @@ export default function Home() {
   };
 
   const [fallback, setFallback] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const settingsQ = useCachedGet("/settings");
+  const depotQ = useCachedGet("/positions");
+  const shadowQ = useCachedGet("/paper");
+  const logQ = useCachedGet("/alerts/log?limit=6");
+  const settings = settingsQ.data;
+  const depot = depotQ.data;
+  const shadow = shadowQ.data;
+  const log = logQ.data || [];
+
+  // Übersicht: sofort den zuletzt gesehenen Stand, die frische Einschätzung kommt im Hintergrund
+  const [rep, setRep] = useState(() => {
+    const c = readCache("/report");
+    return { data: c ? c.data : null, at: c ? c.at : null, refreshing: true };
+  });
+  const report = rep.data;
+  const hasReport = useRef(!!rep.data);
+  hasReport.current = !!report;
+  const seq = useRef(0);
+
   const load = useCallback(async (fresh = false) => {
+    const n = ++seq.current;
     setError("");
-    setFallback("");
-    setReport(null);
-    api.get("/settings").then(setSettings).catch(() => {});
-    api.get("/positions").then(setDepot).catch(() => {});
-    api.get("/paper").then(setShadow).catch(() => {});
-    api.get("/alerts/log?limit=6").then(setLog).catch(() => {});
+    setRep((r) => ({ ...r, refreshing: true }));
+    if (fresh === true) {
+      settingsQ.reload(); depotQ.reload(); shadowQ.reload(); logQ.reload();
+      setRefreshKey((k) => k + 1);
+    }
+    // Noch gar nichts auf diesem Gerät: den letzten Stand vom Server holen, bis die frische Einschätzung fertig ist
+    if (!hasReport.current) {
+      api.get("/report?cached=1").then((d) => {
+        if (n === seq.current && !hasReport.current) {
+          hasReport.current = true;
+          setRep((r) => (r.data ? r : { ...r, data: { errors: {}, ...d }, at: d.cached_at ? d.cached_at * 1000 : null }));
+        }
+      }).catch(() => {});
+    }
     try {
-      setReport(await api.get(`/report${fresh === true ? "?fresh=1" : ""}`));
+      const data = await api.get(`/report${fresh === true ? "?fresh=1" : ""}`);
+      if (n !== seq.current) return;
+      writeCache("/report", data);
+      setFallback("");
+      setRep({ data, at: Date.now(), refreshing: false });
     } catch (e) {
+      if (n !== seq.current) return;
+      if (hasReport.current) {
+        setRep((r) => ({ ...r, refreshing: false }));
+        setFallback(`Aktualisieren klappt gerade nicht (${e.message}) – du siehst den letzten bekannten Stand.`);
+        return;
+      }
       // Live-Abruf klappt gerade nicht (z. B. Kursquelle gesperrt): den zuletzt verschickten Bericht zeigen
       try {
         const saved = await api.get("/reports/latest");
-        setReport({ errors: {}, ...saved });
+        setRep({ data: { errors: {}, ...saved }, at: null, refreshing: false });
         setFallback(`Aktuelle Daten gerade nicht abrufbar (${e.message}) – du siehst den Bericht vom ${saved.created}.`);
       } catch {
+        setRep((r) => ({ ...r, refreshing: false }));
         setError(e.message);
       }
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 
@@ -292,7 +331,7 @@ export default function Home() {
   async function saveLayout(l) {
     const value = JSON.stringify(l);
     await api.put("/settings", { home_layout: value });
-    setSettings((x) => x && { ...x, fields: { ...x.fields, home_layout: { ...(x.fields.home_layout || {}), value } } });
+    settingsQ.set((x) => x && { ...x, fields: { ...x.fields, home_layout: { ...(x.fields.home_layout || {}), value } } });
   }
   const hasEntries = report && report.entries.length > 0;
   function widget(w) {
@@ -321,7 +360,7 @@ export default function Home() {
           </section>
         );
       }
-      case "news": return report && <NewsSection hasStocks={report.entries.length > 0} />;
+      case "news": return report && <NewsSection hasStocks={report.entries.length > 0} refreshKey={refreshKey} />;
       case "alerts": return log.length > 0 && (
         <section className="home-block">
           <div className="list-head"><h2><Icon name="bell" className="h-icon" /> Letzte Alarme</h2><Link className="small more-link" to="/alerts">Alle <Icon name="arrow" /></Link></div>
@@ -352,10 +391,13 @@ export default function Home() {
                 {report.profile && <> · Strategie <Link to="/settings">{report.profile}</Link></>}
               </>
             ) : "Deine Werte auf einen Blick"}
+            {report && (rep.refreshing
+              ? <span className="refresh-state"><span className="spinner" aria-hidden="true" /> aktualisiere …</span>
+              : rep.at && <span className="refresh-state">{standLabel(rep.at)}</span>)}
           </p>
         </div>
         <div className="actions">
-          <button className="btn hide-sm" onClick={() => load(true)} disabled={!report && !error}><Icon name="refresh" /> Aktualisieren</button>
+          <button className="btn hide-sm" onClick={() => load(true)} disabled={rep.refreshing}><Icon name="refresh" /> Aktualisieren</button>
           <button className="btn" onClick={() => setShowReport("latest")}><Icon name="report" /> Bericht</button>
           <button className="btn icon-only" onClick={() => setEditing(true)} title="Startseite anpassen" aria-label="Startseite anpassen"><Icon name="sliders" /></button>
           <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}><Icon name="phone" /> {sending ? "Sende …" : "Aufs Handy"}</button>
@@ -367,11 +409,11 @@ export default function Home() {
 
       <ErrorText error={error} />
       {fallback && <p className="note fallback-note"><Icon name="clock" /> {fallback}</p>}
-      {report?.data_status?.paused && (
+      {!rep.refreshing && report?.data_status?.paused && (
         <p className="note fallback-note"><Icon name="alert" /> onvista sperrt die Kursabfrage gerade – TradeHelper pausiert noch
           {" "}{Math.ceil(report.data_status.seconds_left / 60)} min und zeigt so lange den letzten bekannten Stand.</p>
       )}
-      {!report && !error && <Loading text="Schaue mir deine Werte und die Nachrichten an …" />}
+      {!report && !error && <Loading text="Schaue mir deine Werte zum ersten Mal an …" />}
 
       {report && !report.entries.length && !Object.keys(report.errors).length && (
         <div className="empty hero-empty">

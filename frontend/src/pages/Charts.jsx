@@ -22,12 +22,13 @@ const RANGES = [
   { id: "5y", label: "5 J", period: "5y", interval: "1wk" },
 ];
 const TOOLS = [
-  { id: null, label: "Bewegen", icon: "✋", help: "Chart verschieben und zoomen" },
-  { id: "hline", label: "Waagrechte Linie", icon: "—", help: "Ein Klick setzt eine Linie, z. B. Unterstützung oder Widerstand" },
-  { id: "trend", label: "Trendlinie", icon: "╱", help: "Zwei Klicks: Anfang und Ende" },
-  { id: "ray", label: "Strahl", icon: "↗", help: "Wie Trendlinie, aber bis heute verlängert" },
-  { id: "fib", label: "Fibonacci", icon: "≡", help: "Zwei Klicks: Tief und Hoch – zeigt typische Rücksetzer-Marken" },
+  { id: null, label: "Bewegen", short: "Bewegen", icon: "✋", help: "Chart verschieben und zoomen" },
+  { id: "hline", label: "Waagrechte Linie", short: "Linie", icon: "—", help: "Antippen setzt die Linie – beim Ziehen wandert sie mit" },
+  { id: "trend", label: "Trendlinie", short: "Trend", icon: "╱", help: "Vom Anfang zum Ende ziehen – oder beide Punkte antippen" },
+  { id: "ray", label: "Strahl", short: "Strahl", icon: "↗", help: "Wie Trendlinie, aber bis heute verlängert" },
+  { id: "fib", label: "Fibonacci", short: "Fibo", icon: "≡", help: "Vom Tief zum Hoch ziehen – zeigt typische Rücksetzer-Marken" },
 ];
+const MAGNET_KEY = "tradehelper_chart_magnet";
 const PALETTE = ["#f2b84b", "#6fd3c3", "#7aa7ff", "#c792ea", "#ff9f6b", "#ff6b6b", "#e6edf3"];
 const uid = () => Math.random().toString(36).slice(2, 10);
 const fmtP = (v) => (v == null ? "" : Number(v).toLocaleString("de-DE", { maximumFractionDigits: v < 10 ? 4 : 2 }));
@@ -123,25 +124,33 @@ function Workspace({ symbol }) {
 
   const update = useCallback((fn) => { dirty.current = true; setLayout((l) => ({ ...l, ...fn(l) })); }, []);
 
-  const onPoint = useCallback((pt) => {
-    if (!tool) return;
-    const color = PALETTE[0];
-    if (tool === "hline") {
-      const d = { id: uid(), kind: "hline", points: [pt], color, label: "" };
-      update((l) => ({ drawings: [...l.drawings, d] }));
-      setSelected(d.id);
-      return;
-    }
-    if (!pending) { setPending(pt); return; }
-    const d = { id: uid(), kind: tool, points: [pending, pt], color: tool === "fib" ? "#7aa7ff" : color, label: "" };
+  const [magnet, setMagnet] = useState(() => {
+    try { return localStorage.getItem(MAGNET_KEY) !== "0"; } catch { return true; }
+  });
+  const toggleMagnet = () => setMagnet((m) => {
+    try { localStorage.setItem(MAGNET_KEY, m ? "0" : "1"); } catch { /* egal */ }
+    return !m;
+  });
+
+  const onDraw = useCallback((kind, points, { touch } = {}) => {
+    const d = { id: uid(), kind, points, color: kind === "fib" ? "#7aa7ff" : PALETTE[0], label: "" };
     update((l) => ({ drawings: [...l.drawings, d] }));
     setSelected(d.id);
     setPending(null);
-  }, [tool, pending, update]);
+    // Auf dem Handy nach jeder Zeichnung zurück zum Verschieben – sonst wischt man versehentlich neue Linien
+    if (touch) setTool(null);
+  }, [update]);
 
   function pickTool(id) {
     setTool(id);
     setPending(null);
+  }
+
+  function undo() {
+    const last = drawings[drawings.length - 1];
+    if (!last) return;
+    removeDrawing(last.id);
+    if (selected === last.id) setSelected(null);
   }
 
   function addIndicator(kind) {
@@ -155,7 +164,7 @@ function Workspace({ symbol }) {
 
   const setInd = (id, patch) => update((l) => ({ indicators: l.indicators.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
   const setDrawing = (id, patch) => update((l) => ({ drawings: l.drawings.map((d) => (d.id === id ? { ...d, ...patch } : d)) }));
-  const removeDrawing = (id) => update((l) => ({ drawings: l.drawings.filter((d) => d.id !== id) }));
+  const removeDrawing = (id) => { update((l) => ({ drawings: l.drawings.filter((d) => d.id !== id) })); if (selected === id) setSelected(null); };
 
   async function alarmAt(d) {
     const last = rows?.[rows.length - 1]?.close;
@@ -173,6 +182,7 @@ function Workspace({ symbol }) {
   const intraday = interval === "1s" ? "seconds" : INTRADAY.has(interval);
   const help = TOOLS.find((t) => t.id === tool)?.help;
   const drawings = layout?.drawings || [];
+  const sel = drawings.find((d) => d.id === selected);
   const indicators = useMemo(() => layout?.indicators || [], [layout?.indicators]);
   const name = meta?.name || symbol.replace(/\.GTX$/, "");
 
@@ -218,10 +228,18 @@ function Workspace({ symbol }) {
       </div>
       <div className="ws-tools" role="toolbar" aria-label="Zeichenwerkzeuge">
         {TOOLS.map((t) => (
-          <button key={t.label} className={`tool ${tool === t.id ? "on" : ""}`} onClick={() => pickTool(t.id)} title={t.help} aria-pressed={tool === t.id}>
-            <span aria-hidden="true">{t.icon}</span> {t.label}
+          <button key={t.label} className={`tool ${tool === t.id ? "on" : ""}`} onClick={() => pickTool(t.id)} title={t.help} aria-pressed={tool === t.id} aria-label={t.label}>
+            <span aria-hidden="true">{t.icon}</span> <em className="tool-long">{t.label}</em><em className="tool-short">{t.short}</em>
           </button>
         ))}
+        <span className="ws-tools-gap" />
+        <button className={`tool ${magnet ? "on" : ""}`} onClick={toggleMagnet} aria-pressed={magnet}
+          title="Magnet: Punkte rasten an Eröffnung, Hoch, Tief oder Schluss der Kerze ein">
+          <span aria-hidden="true">🧲</span> <em className="tool-long">Magnet</em><em className="tool-short">Magnet</em>
+        </button>
+        <button className="tool" onClick={undo} disabled={!drawings.length} title="Letzte Zeichnung entfernen" aria-label="Rückgängig">
+          <span aria-hidden="true">↶</span> <em className="tool-long">Rückgängig</em><em className="tool-short">Zurück</em>
+        </button>
       </div>
       {msg && <p className="ok small" role="status">{msg}</p>}
       <ErrorText error={layout && error} />
@@ -229,12 +247,27 @@ function Workspace({ symbol }) {
       <section className="panel chart-panel ws-panel">
         {tool && (
           <p className="ws-help small" role="status">
-            {pending ? "Jetzt den zweiten Punkt anklicken." : help} <button className="link small" onClick={() => pickTool(null)}>Fertig</button>
+            {pending ? "Jetzt den zweiten Punkt antippen." : help} <button className="link small" onClick={() => pickTool(null)}>Fertig</button>
           </p>
         )}
         {!rows ? <Loading text="Lade Kurse …" /> : (
           <WorkspaceChart rows={rows} type={layout.type} intraday={intraday} indicators={indicators} drawings={drawings}
-            tool={tool} pending={pending} selected={selected} onPoint={onPoint} positions={positions} currency={meta?.currency} />
+            tool={tool} pending={pending} selected={selected} onPending={setPending} onDraw={onDraw} magnet={magnet}
+            positions={positions} currency={meta?.currency} />
+        )}
+        {sel && !tool && (
+          <div className="ws-selbar" role="group" aria-label="Ausgewählte Zeichnung">
+            <strong>{TOOLS.find((t) => t.id === sel.kind)?.label}</strong>
+            <span className="muted small">{sel.kind === "hline" ? fmtP(sel.points[0].price) : `${fmtP(sel.points[0].price)} → ${fmtP(sel.points[1]?.price)}`}</span>
+            <span className="ws-swatches">
+              {PALETTE.map((c) => (
+                <button key={c} className={`swatch ${sel.color === c ? "on" : ""}`} style={{ background: c }} onClick={() => setDrawing(sel.id, { color: c })} aria-label={`Farbe ${c}`} />
+              ))}
+            </span>
+            {sel.kind === "hline" && <button className="btn small" onClick={() => alarmAt(sel)}><Icon name="bell" /> Alarm</button>}
+            <button className="btn small danger" onClick={() => removeDrawing(sel.id)}>Löschen</button>
+            <button className="icon-btn" onClick={() => setSelected(null)} aria-label="Auswahl schließen">✕</button>
+          </div>
         )}
       </section>
 
@@ -262,7 +295,7 @@ function Workspace({ symbol }) {
         </section>
         <section className="panel">
           <h2><Icon name="pencil" className="h-icon" /> Zeichnungen</h2>
-          {!drawings.length && <p className="muted small">Noch keine. Werkzeug wählen und in den Chart klicken.</p>}
+          {!drawings.length && <p className="muted small">Noch keine. Werkzeug wählen und in den Chart tippen oder ziehen.</p>}
           <ul className="ws-list">
             {drawings.map((d) => (
               <li key={d.id} className={selected === d.id ? "sel" : ""} onClick={() => setSelected(d.id)}>

@@ -1315,3 +1315,39 @@ input:focus, select:focus, textarea:focus { border-color: rgba(111, 211, 195, 0.
 .seg-iv::-webkit-scrollbar { display: none; }
 .seg-iv button { min-width: 2.4rem; padding-left: 0.5rem; padding-right: 0.5rem; font-variant-numeric: tabular-nums; }
 .fallback-note { display: flex; gap: 0.45rem; align-items: flex-start; }
+
+/* ---------- Zuletzt geladener Stand / Aktualisieren im Hintergrund ---------- */
+.refresh-state { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.6rem; font-size: 0.8rem; color: var(--mute); white-space: nowrap; vertical-align: middle; }
+.refresh-state .spinner { width: 11px; height: 11px; border-width: 2px; }
+.refresh-state.warn { color: var(--amber); }
+p.muted > .refresh-state:first-child { margin-left: 0; }
+.page-head > div > .refresh-state { margin-left: 0; }
+
+/* ---------- Chart-Arbeitsplatz: Zeichnen, auch mit dem Finger ---------- */
+.tool em { font-style: normal; }
+.tool .tool-short { display: none; }
+.tool:disabled { opacity: 0.45; cursor: default; }
+.ws-tools-gap { flex: 1 1 0; }
+.ws-chart.drawing .ws-main { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.ws-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.7rem; margin-top: 0.5rem; padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.18); }
+.ws-swatches { display: inline-flex; gap: 0.35rem; }
+.swatch { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; }
+.swatch.on { border-color: #fff; }
+.ws-selbar .icon-btn { margin-left: auto; }
+@media (max-width: 700px) {
+  .ws-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0.35rem; margin-left: -0.2rem; margin-right: -0.2rem; padding: 0 0.2rem; }
+  .ws-tools::-webkit-scrollbar { display: none; }
+  .ws-tools-gap { display: none; }
+  .tool { flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center; gap: 0.1rem; min-width: 3.6rem;
+    padding: 0.4rem 0.5rem; font-size: 0.74rem; }
+  .tool span { font-size: 1.05rem; width: auto; }
+  .tool .tool-long { display: none; }
+  .tool .tool-short { display: inline; }
+  .ws-toolbar .seg:not(.seg-iv) { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .ws-toolbar .seg::-webkit-scrollbar { display: none; }
+  .ws-help { top: auto; bottom: 2.2rem; font-size: 0.8rem; }
+  .ws-panel { padding: 0.3rem; }
+  .ws-main { height: 58vh; min-height: 300px; }
+  .swatch { width: 1.8rem; height: 1.8rem; }
+}

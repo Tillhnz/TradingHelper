@@ -24,6 +24,8 @@ def client(tmp_path, monkeypatch, uptrend):
     settings.updater_url = ""
     settings.secret_key = "test-secret"
     main._fails.clear()
+    main._REPORT_CACHE.clear()
+    main._LAST_REPORT.clear()
     monkeypatch.setattr(market, "get_history", lambda *a, **k: uptrend)
     monkeypatch.setattr(market, "symbol_info", lambda s: {
         "symbol": s.upper(), "name": "Apple Inc.", "exchange": "NasdaqGS", "currency": "USD", "type": "EQUITY"})
@@ -77,6 +79,18 @@ def test_watchlist_overview_and_report(client):
     client.put("/api/settings", json={"invest_horizon": "long", "risk_profile": "conservative"}, headers=h)
     assert client.get("/api/report", headers=h).json()["profile"] == "Langfristig · Konservativ"
     assert client.post("/api/report/send", headers=h).status_code == 400  # kein Topic
+
+
+def test_report_cached_shows_last_state_immediately(client):
+    h = _login(client)
+    assert client.get("/api/report?cached=1", headers=h).status_code == 404  # noch nichts berechnet
+    client.post("/api/watchlist", json={"symbol": "aapl"}, headers=h)
+    fresh = client.get("/api/report", headers=h).json()
+    # Änderungen verwerfen den 2-Minuten-Zwischenspeicher, der letzte Stand bleibt aber zum Sofort-Anzeigen
+    client.post("/api/watchlist", json={"symbol": "msft"}, headers=h)
+    last = client.get("/api/report?cached=1", headers=h).json()
+    assert [e["symbol"] for e in last["entries"]] == [e["symbol"] for e in fresh["entries"]]
+    assert isinstance(last["cached_at"], int)
 
 
 def test_history_and_analysis(client):

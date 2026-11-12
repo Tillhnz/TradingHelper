@@ -857,9 +857,24 @@ async def _forget_report(request, call_next):
     return await call_next(request)
 
 
+# Zuletzt berechnete Übersicht je Nutzer, ohne Ablaufzeit: wird beim Öffnen sofort gezeigt (?cached=1),
+# während die frische Einschätzung im Hintergrund entsteht. Änderungen löschen sie bewusst nicht.
+_LAST_REPORT: dict[int, tuple[float, dict]] = {}
+
+
 @app.get("/api/report", dependencies=auth)
-def report(fresh: bool = False, st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
-    """Aktuelle Einschätzung aller Werte. 2 Minuten zwischengespeichert, damit die Übersicht sofort da ist."""
+def report(fresh: bool = False, cached: bool = False, st: Storage = Depends(user_storage),
+           settings: Settings = Depends(user_cfg)):
+    """Aktuelle Einschätzung aller Werte. 2 Minuten zwischengespeichert, damit die Übersicht sofort da ist.
+    Mit cached=1 kommt ohne Rechnen der letzte bekannte Stand (oder der letzte verschickte Bericht)."""
+    if cached:
+        last = _LAST_REPORT.get(st.uid)
+        if last:
+            return {**last[1], "cached_at": int(last[0])}
+        rep = st.get_report()
+        if not rep:
+            raise HTTPException(404, "Noch kein gespeicherter Stand.")
+        return rep
     hit = _REPORT_CACHE.get(st.uid)
     if hit and not fresh and time.time() - hit[0] < 120:
         return hit[1]
@@ -867,6 +882,7 @@ def report(fresh: bool = False, st: Storage = Depends(user_storage), settings: S
     data = build_report(st, settings).to_dict()
     data["data_status"] = gettex.throttle_status()
     _REPORT_CACHE[st.uid] = (time.time(), data)
+    _LAST_REPORT[st.uid] = (time.time(), data)
     return data
 
 

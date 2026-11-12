@@ -247,6 +247,15 @@ console.log("trend after 2nd click", await page.locator(".ws-help").textContent(
 await page.getByRole("button", { name: /Fibonacci/ }).click();
 await page.mouse.click(wsBox.x + wsBox.width * 0.3, wsBox.y + wsBox.height * 0.8);
 await page.mouse.click(wsBox.x + wsBox.width * 0.85, wsBox.y + wsBox.height * 0.2);
+// Strahl in einem Zug ziehen (so zeichnet man auf dem Handy)
+await page.getByRole("button", { name: /Strahl/ }).click();
+await page.mouse.move(wsBox.x + wsBox.width * 0.25, wsBox.y + wsBox.height * 0.7);
+await page.mouse.down();
+await page.mouse.move(wsBox.x + wsBox.width * 0.45, wsBox.y + wsBox.height * 0.55, { steps: 8 });
+await page.mouse.move(wsBox.x + wsBox.width * 0.6, wsBox.y + wsBox.height * 0.4, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+console.log("ray by drag", await page.locator(".ws-list li").count(), await page.locator(".ws-selbar").count());
 await page.getByLabel("Kennlinie hinzufügen").selectOption("rsi");
 await page.getByRole("button", { name: /Bewegen/ }).click();
 await page.waitForTimeout(2500);
