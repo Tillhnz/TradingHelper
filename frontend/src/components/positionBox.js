@@ -60,11 +60,19 @@ function pill(ctx, text, x, y, bg, fg, align = "right", maxX = Infinity, small =
   ctx.fillText(text, left + (small ? 4.5 : 6), y + 0.5);
 }
 
-/** Beschriftungen, die sich überlappen würden, auseinanderschieben (Abstand mind. eine Pillenhöhe). */
-function spread(items, gap) {
+/**
+ * Beschriftungen, die sich überlappen würden, auseinanderschieben (Abstand mind. eine Pillenhöhe) – auch über
+ * mehrere Positionen im selben Chart hinweg („taken“ sammelt die schon belegten Höhen dieses Bildaufbaus).
+ */
+function spread(items, gap, taken = []) {
   const sorted = [...items].sort((a, b) => a.y - b.y);
-  for (let i = 1; i < sorted.length; i += 1) {
-    if (sorted[i].y - sorted[i - 1].y < gap) sorted[i].y = sorted[i - 1].y + gap;
+  for (const it of sorted) {
+    let guard = 0;
+    while (taken.some((y) => Math.abs(y - it.y) < gap) && guard < 40) {
+      it.y += gap / 2;
+      guard += 1;
+    }
+    taken.push(it.y);
   }
   return items;
 }
@@ -201,7 +209,15 @@ export class PositionBox {
       // Alle Beschriftungen rechts übereinander – im freien Bereich hinter der letzten Kerze statt mitten im Verlauf
       items.push({ y: g.yEntry + (up ? 11 : -11), x: right, align: "right", bg: "rgba(242, 184, 75, 0.95)",
         text: small ? `${short || label}${now ? ` · ${fmtPct(pc(price))}` : ""}` : `${label}${now ? ` · ${now}` : ""}` });
-      spread(items, gap).forEach((i) => pill(ctx, i.text, i.x, i.y, i.bg, C.text, i.align, W, small));
+      const grp = this.o.group;
+      let taken = [];
+      if (grp) {
+        const now = performance.now();
+        if (now - (grp.ts || 0) > 25) grp.taken = []; // neuer Bildaufbau
+        grp.ts = now;
+        taken = grp.taken;
+      }
+      spread(items, gap, taken).forEach((i) => pill(ctx, i.text, i.x, i.y, i.bg, C.text, i.align, W, small));
     });
   }
 }

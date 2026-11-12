@@ -55,11 +55,12 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
 
     // Eigene Käufe als Positions-Box (Ziel grün, Stopp rot, aktueller Gewinn/Verlust)
     const times = rows.map((r) => r.time);
+    const labelGroup = { taken: [], ts: 0 }; // Beschriftungen aller Positionen weichen einander aus
     for (const p of positions) {
       if (!p.buy_price) continue;
       const end = sellTimestamp(p);
       price.attachPrimitive(new PositionBox({
-        times, start: buyTimestamp(p), end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
+        group: labelGroup, times, start: buyTimestamp(p), end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
         price: end ? p.sell_price : rows[rows.length - 1].close, qty: p.quantity, fees: p.fees || 0,
         fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
         label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)}`,

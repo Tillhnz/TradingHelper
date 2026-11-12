@@ -169,13 +169,14 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
     const times = rows.map((r) => r.time);
     const lastClose = rows[rows.length - 1].close;
     const boxes = [];
+    const labelGroup = { taken: [], ts: 0 }; // Beschriftungen aller Positionen weichen einander aus
     positions.forEach((p) => {
       if (!p.buy_price) return;
       const start = buyTimestamp(p);
       const end = sellTimestamp(p);
       if (start > times[times.length - 1] + 86400 * 3 || (end && end < times[0])) return; // außerhalb des Zeitraums
       const box = new PositionBox({
-        times, start, end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
+        group: labelGroup, times, start, end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
         price: end ? p.sell_price : lastClose, qty: p.quantity, fees: p.fees || 0,
         fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
         label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)} · ${shortDate(p.buy_date)}${p.buy_time ? ` ${p.buy_time}` : ""}`,
