@@ -97,7 +97,12 @@ def evaluate(pos: dict, profile: analysis.Profile) -> dict:
         out["chance_to_target"] = round((target - price) * qty, 2)
         out["pl_at_target"] = round((target - buy) * qty - fees, 2)
     if stop and price <= stop:
-        hints.append({"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"})
+        v = below_stop(a, rec, price, stop, buy, atr, ccy)
+        out["below_stop"] = v
+        hint = {"level": "bad" if v["verdict"] == "sell" else "warn", "text": v["text"], "reason": "stop", "why": v["why"]}
+        if v.get("new_stop"):
+            hint["suggested_stop"] = v["new_stop"]
+        hints.append(hint)
 
     hints.extend(target_hints(pos, profile, a, rec, price, target, ccy))
 
@@ -135,6 +140,53 @@ def suggested_target(profile: analysis.Profile, a: analysis.Analysis, price: flo
     if atr:
         return round(price + 2 * profile.h["stop_atr"] * atr, 2), "kein Widerstand in Sicht, Ziel aus der üblichen Schwankung"
     return None, ""
+
+
+def below_stop(a: analysis.Analysis, rec, price: float, stop: float, buy: float, atr: float | None, ccy: str) -> dict:
+    """Kurs unter dem Stopp: verkaufen oder (ausnahmsweise) halten?
+
+    Grundsatz: Der Stopp ist dafür da, eingehalten zu werden – im Zweifel verkaufen. Halten empfehlen wir nur, wenn
+    deutlich mehr für einen Fehlausbruch spricht: Kurs nur knapp unter dem Stopp, Signale insgesamt positiv,
+    überverkauft (RSI unter 30), Unterstützung direkt darunter, Aufwärtstrend intakt. Dann mit neuem, engem Stopp –
+    fällt der Kurs auch darunter, wird verkauft.
+    """
+    m = a.metrics
+    sell, hold = [], []
+    depth = (stop - price) / atr if atr else None  # wie weit unter dem Stopp, in Tagesschwankungen
+    if depth is not None and depth > 0.5:
+        sell.append(f"deutlich unter dem Stopp ({(stop / price - 1) * 100:.1f} %)")
+    elif depth is not None and depth < 0.25:
+        hold.append("nur knapp unter dem Stopp")
+    if rec.action == analysis.SELL or rec.combined < -0.1:
+        sell.append("Signale negativ")
+    elif rec.action == analysis.BUY or rec.combined > 0.15:
+        hold.append("Signale insgesamt positiv")
+    s50, s200 = m.get("sma50"), m.get("sma200")
+    if s50 and s200 and price < s50 < s200:
+        sell.append("Abwärtstrend (unter 50- und 200-Tage-Linie)")
+    elif s200 and price > s200 and s50 and s50 > s200:
+        hold.append("langfristiger Aufwärtstrend intakt")
+    rsi = m.get("rsi")
+    if rsi is not None and rsi < 30:
+        hold.append(f"überverkauft (RSI {rsi:.0f}) – Gegenbewegung möglich")
+    if a.support and atr and 0 <= price - a.support <= atr:
+        hold.append(f"Unterstützung bei {fmt(a.support, ccy)} direkt darunter")
+    bo = a.breakout
+    if bo and bo.get("tilt") == "down":
+        sell.append(f"Rutsch-Risiko erhöht ({bo['down'] * 100:.0f} %)")
+    elif bo and bo.get("tilt") == "up":
+        hold.append("Erholung wahrscheinlicher als weiterer Rutsch")
+
+    if len(hold) >= len(sell) + 2:
+        floor = a.support if a.support and a.support < price else price
+        new_stop = round(min(price - 0.5 * (atr or price * 0.02), floor - 0.25 * (atr or 0)), 2)
+        return {"verdict": "hold", "why": hold + sell, "new_stop": new_stop,
+                "text": f"Unter dem Stopp – Empfehlung: halten, aber mit neuem Stopp {fmt(new_stop, ccy)} "
+                        f"({', '.join(hold[:3])})"}
+    why = sell or ["der Stopp ist gerissen – Verluste begrenzen, bevor sie größer werden"]
+    loss = " – Verlust jetzt begrenzen" if price < buy else " – Gewinn sichern"
+    return {"verdict": "sell", "why": why + hold,
+            "text": f"Unter dem Stopp – Empfehlung: verkaufen{loss} ({', '.join(why[:3])})"}
 
 
 def target_hints(pos: dict, profile: analysis.Profile, a: analysis.Analysis, rec, price: float,
@@ -188,7 +240,10 @@ def watch(storage, settings, send=None) -> list[str]:
         stop = ev.get("stop")
         if stop and ev["price"] <= stop and state.get("stop_hit") != stop:
             kind = "mitlaufender Stopp" if ev.get("stop_dynamic") else "Stopp"
-            msgs.append(f"**{name}**: {kind} {fmt(stop, ccy)} erreicht (Kurs {fmt(ev['price'], ccy)}) – Verkauf prüfen")
+            v = ev.get("below_stop") or {}
+            verdict = (f"Empfehlung: {'verkaufen' if v.get('verdict') == 'sell' else 'halten mit neuem Stopp ' + fmt(v['new_stop'], ccy)}"
+                       f" – {', '.join(v.get('why', [])[:2])}") if v else "Verkauf prüfen"
+            msgs.append(f"**{name}**: {kind} {fmt(stop, ccy)} unterschritten (Kurs {fmt(ev['price'], ccy)}). {verdict}")
             state["stop_hit"] = stop
         sugg = next((h for h in ev["hints"] if h.get("suggested_target") and h.get("reason") != "missing"), None)
         last = state.get("target_sent")
@@ -326,8 +381,9 @@ def rethink(open_: list[dict]) -> dict | None:
 def advice(open_: list[dict], action: str | None) -> dict:
     """Ein klarer Satz für den Halter, abgeleitet aus Einschätzung und den Hinweisen der Käufe."""
     texts = [h["text"] for p in open_ for h in p.get("hints", [])]
-    if any(t.startswith("Stopp erreicht") for t in texts):
-        return {"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"}
+    stop_hint = next((h for p in open_ for h in p.get("hints", []) if h.get("reason") == "stop"), None)
+    if stop_hint:
+        return {"level": stop_hint["level"], "text": stop_hint["text"], "reason": "stop"}
     if action == analysis.SELL:
         return {"level": "bad", "text": "Signale negativ – Bestand reduzieren oder Stopp eng setzen"}
     sell_now = rethink(open_)

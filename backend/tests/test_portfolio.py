@@ -47,7 +47,9 @@ def test_evaluate_closed_and_stop_hit(fake_market):
                                 Profile())
     assert closed["closed"] and closed["pl"] == 100.0
     hit = portfolio.evaluate(_pos("BBB", fake_market, 50.0, stop=42.0), Profile())
-    assert hit["pl"] == -100.0 and any("Stopp erreicht" in h["text"] for h in hit["hints"])
+    stop_hint = next(h for h in hit["hints"] if h.get("reason") == "stop")
+    assert hit["pl"] == -100.0 and stop_hint["text"].startswith("Unter dem Stopp – Empfehlung:")
+    assert hit["below_stop"]["verdict"] in ("sell", "hold") and hit["below_stop"]["why"]
 
 
 def test_history_sums_and_converts(fake_market):
@@ -104,8 +106,8 @@ def test_summarize_lots_and_advice(fake_market):
 
 
 def test_advice_priorities():
-    stop_hit = [{"stop": 90, "hints": [{"level": "bad", "text": "Stopp erreicht – Verkauf prüfen"}]}]
-    assert portfolio.advice(stop_hit, analysis.BUY)["text"].startswith("Stopp erreicht")
+    stop_hit = [{"stop": 90, "hints": [{"level": "bad", "reason": "stop", "text": "Unter dem Stopp – Empfehlung: verkaufen"}]}]
+    assert portfolio.advice(stop_hit, analysis.BUY)["text"].startswith("Unter dem Stopp")
     assert portfolio.advice([{"stop": 90, "hints": []}], analysis.SELL)["level"] == "bad"
     assert portfolio.advice([{"stop": 90, "hints": []}], analysis.BUY)["text"] == "Halten – Nachkauf möglich"
     assert "Stopp hinterlegen" in portfolio.advice([{"stop": None, "hints": []}], analysis.HOLD)["text"]
@@ -192,3 +194,31 @@ def test_rethink_takes_profit_when_momentum_fades():
     assert portfolio.advice(lot, analysis.HOLD)["text"].startswith("Gewinn mitnehmen")
     lot[0]["score"] = 0.3
     assert portfolio.advice(lot, analysis.HOLD)["text"].startswith("Halten")
+
+
+
+def _below(metrics, action=analysis.HOLD, combined=0.0, support=None, breakout=None):
+    from types import SimpleNamespace
+    a = SimpleNamespace(metrics=metrics, support=support, breakout=breakout)
+    return a, SimpleNamespace(action=action, combined=combined)
+
+
+def test_below_stop_sells_when_trend_broken():
+    a, rec = _below({"sma50": 110, "sma200": 120, "rsi": 40}, analysis.SELL, -0.3,
+                    breakout={"tilt": "down", "down": 0.45})
+    v = portfolio.below_stop(a, rec, price=95, stop=100, buy=105, atr=2, ccy="EUR")
+    assert v["verdict"] == "sell" and "verkaufen" in v["text"] and "Verlust jetzt begrenzen" in v["text"]
+    assert any("Abwärtstrend" in w for w in v["why"])
+
+
+def test_below_stop_holds_on_likely_false_break():
+    a, rec = _below({"sma50": 105, "sma200": 95, "rsi": 27}, analysis.BUY, 0.3, support=99.5,
+                    breakout={"tilt": "up", "up": 0.4})
+    v = portfolio.below_stop(a, rec, price=99.8, stop=100, buy=90, atr=2, ccy="EUR")
+    assert v["verdict"] == "hold" and v["new_stop"] < 99.8 and "neuem Stopp" in v["text"]
+
+
+def test_below_stop_defaults_to_sell():
+    a, rec = _below({}, analysis.HOLD, 0.0)
+    v = portfolio.below_stop(a, rec, price=99, stop=100, buy=110, atr=None, ccy="EUR")
+    assert v["verdict"] == "sell"  # im Zweifel gilt der Stopp

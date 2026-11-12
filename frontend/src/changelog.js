@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.18.4",
+    date: "12.11.2026",
+    title: "Unter dem Stopp: verkaufen oder halten?",
+    items: [
+      "Fällt ein Wert unter deinen Stopp, gibt TradeHelper jetzt eine klare Empfehlung mit Begründung: verkaufen – oder ausnahmsweise halten mit neuem, engem Stopp.",
+      "Halten wird nur empfohlen, wenn deutlich mehr für einen Fehlausbruch spricht: Kurs nur knapp unter dem Stopp, Signale positiv, überverkauft, Unterstützung direkt darunter, Aufwärtstrend intakt. Im Zweifel gilt der Stopp.",
+      "Den vorgeschlagenen neuen Stopp übernimmst du mit einem Tipp im Block. Auch die Push-Nachricht nennt die Empfehlung.",
+    ],
+  },
+  {
     version: "0.18.3",
     date: "12.11.2026",
     title: "Schonender Umgang mit onvista",
