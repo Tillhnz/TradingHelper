@@ -1,22 +1,23 @@
-import json, time
+import time
 import requests
 B = "https://api.onvista.de/api/v1"
 H = {"User-Agent": "Mozilla/5.0 (TradeHelper)", "Accept": "application/json"}
-def get(path, **kw):
-    r = requests.get(B + path, headers=H, timeout=20, **kw)
-    return r.status_code, r
-for i in range(3):
-    c, r = get("/stocks/ISIN:DE0007164600/snapshot")
-    print("stock snap try", i, c, r.headers.get("retry-after"), {k: v for k, v in r.headers.items() if "limit" in k.lower() or "retry" in k.lower()})
-    time.sleep(5)
-for isin in ["DE0005200000", "NL0000235190", "US0079031078"]:
-    print(isin, get(f"/stocks/ISIN:{isin}/snapshot")[0])
-c, r = get("/instruments/query", params={"searchValue": "DE0007164600", "limit": 3})
-hit = r.json()["list"][0]
-print("query keys", list(hit), json.dumps(hit, ensure_ascii=False)[:800])
-ev = hit.get("entityValue")
-for path in [f"/stocks/{ev}/snapshot", f"/instruments/STOCK/{ev}/snapshot", f"/instruments/STOCK/{ev}", f"/stocks/ISIN:DE0007164600",
-             f"/instruments/STOCK/ISIN:DE0007164600/snapshot", f"/instruments/STOCK/{ev}/quote", f"/instruments/STOCK/{ev}/quotes",
-             f"/stocks/{ev}/quote_list", f"/instruments/STOCK/{ev}/notations", f"/stocks/ISIN:DE0007164600/quote_list"]:
-    c, r = get(path)
-    print("ALT", path, c, r.text[:250].replace("\n", " "))
+isins = ["DE0007164600", "DE0005200000", "DE0005936124", "DE0006070006", "DE000A1K0235", "DE000BAY0017", "NL0000235190", "US0378331005"]
+t0 = time.time()
+codes = []
+for i in range(80):
+    isin = isins[i % len(isins)]
+    r = requests.get(f"{B}/instruments/STOCK/ISIN:{isin}/snapshot", headers=H, timeout=20)
+    codes.append(r.status_code)
+    if r.status_code == 429 and codes.count(429) == 1:
+        print(f"first 429 after {i} requests, {time.time()-t0:.1f}s", dict(r.headers))
+    time.sleep(0.3)
+print("codes", "".join("." if c == 200 else "X" if c == 429 else "?" for c in codes))
+for wait in [15, 30, 60, 120]:
+    time.sleep(wait)
+    r = requests.get(f"{B}/instruments/STOCK/ISIN:DE0007164600/snapshot", headers=H, timeout=20)
+    print(f"after +{wait}s:", r.status_code)
+# leichtere Endpunkte?
+for path in ["/instruments/STOCK/82849/quote", "/instruments/STOCK/82849/quotes", "/instruments/query?searchValue=DE0007164600&limit=1"]:
+    r = requests.get(B + path, headers=H, timeout=20)
+    print("light", path, r.status_code, r.text[:600].replace("\n", " "))
