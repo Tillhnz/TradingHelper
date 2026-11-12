@@ -1309,3 +1309,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(111, 211, 195, 0.
 .chart-legend span { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
 .chart-legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
 .error-group { display: flex; gap: 0.4rem; align-items: flex-start; flex-wrap: wrap; }
+
+/* Kerzenlänge: kompakte Knöpfe, am Handy waagerecht wischbar */
+.seg-iv { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+.seg-iv::-webkit-scrollbar { display: none; }
+.seg-iv button { min-width: 2.4rem; padding-left: 0.5rem; padding-right: 0.5rem; font-variant-numeric: tabular-nums; }

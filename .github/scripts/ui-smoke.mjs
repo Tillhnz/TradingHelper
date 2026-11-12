@@ -135,6 +135,15 @@ await mobile.screenshot({ path: "shots/mobile-etf-today.png", fullPage: true });
 await mobile.getByRole("button", { name: "Profi" }).first().click();
 await mobile.waitForTimeout(5000);
 await mobile.locator(".chart-panel").screenshot({ path: "shots/mobile-etf-pro-chart.png" });
+for (const iv of ["1 Minute", "1 Sekunde", "2 Stunden"]) {
+  const b = mobile.locator(`.chart-panel button[title="${iv}"]`);
+  if (!(await b.count())) { console.log("no interval button", iv); continue; }
+  await b.click();
+  await mobile.waitForTimeout(4000);
+  const err = await mobile.locator(".chart-panel .error").count();
+  console.log("interval", iv, "error", err, await mobile.locator(".chart-panel .error").first().textContent().catch(() => ""));
+  await mobile.locator(".chart-panel").screenshot({ path: `shots/mobile-etf-${iv.replace(/ /g, "")}.png` });
+}
 await mobile.getByRole("button", { name: "Einfach" }).first().click();
 await mobile.goto(`${base}/chart/DE0007164600.GTX`);
 await mobile.waitForTimeout(9000);

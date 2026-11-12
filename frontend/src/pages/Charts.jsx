@@ -9,6 +9,7 @@ import { dateTime, money } from "../fmt.js";
 import { indicatorTitle, INDICATORS, PARAM_LABEL } from "../indicators.js";
 import { displayName, displayTicker } from "../texts.js";
 import Icon from "../components/Icon.jsx";
+import { INTRADAY, intervalsFor, PERIOD_LABEL, periodsFor, pickPeriod } from "../intervals.js";
 
 const RANGES = [
   { id: "1d", label: "1 T", period: "1d", interval: "5m" },
@@ -168,7 +169,8 @@ function Workspace({ symbol }) {
   }
 
   const rangeId = RANGES.find((r) => r.period === period && r.interval === interval)?.id;
-  const intraday = ["5m", "15m", "1h"].includes(interval);
+  const ivMeta = { intraday_limit: symbol?.endsWith(".GTX") ? "5d" : null };
+  const intraday = interval === "1s" ? "seconds" : INTRADAY.has(interval);
   const help = TOOLS.find((t) => t.id === tool)?.help;
   const drawings = layout?.drawings || [];
   const indicators = useMemo(() => layout?.indicators || [], [layout?.indicators]);
@@ -195,6 +197,17 @@ function Workspace({ symbol }) {
             <button key={r.id} className={rangeId === r.id ? "on" : ""} onClick={() => update(() => ({ period: r.period, interval: r.interval }))}>{r.label}</button>
           ))}
         </div>
+        <div className="seg seg-iv" role="group" aria-label="Kerzenlänge">
+          {intervalsFor(ivMeta).map((iv) => (
+            <button key={iv.id} className={iv.id === interval ? "on" : ""} title={iv.title}
+              onClick={() => update(() => ({ interval: iv.id, period: pickPeriod(iv.id, period, ivMeta) }))}>{iv.label}</button>
+          ))}
+        </div>
+        {!rangeId && (
+          <select value={period} onChange={(e) => update(() => ({ period: e.target.value }))} aria-label="Zeitraum">
+            {periodsFor(interval, ivMeta).map((x) => <option key={x} value={x}>{PERIOD_LABEL[x]}</option>)}
+          </select>
+        )}
         <select value={layout.type} onChange={(e) => update(() => ({ type: e.target.value }))} aria-label="Darstellung">
           {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>

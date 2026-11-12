@@ -32,6 +32,7 @@ const tickFormatter = (t, kind) => {
   if (kind === 0) return fmtTime(t, { year: "numeric" });
   if (kind === 1) return fmtTime(t, { month: "short" });
   if (kind === 2) return fmtTime(t, { day: "numeric", month: "numeric" });
+  if (kind === 4) return fmtTime(t, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   return fmtTime(t, { hour: "2-digit", minute: "2-digit" });
 };
 
@@ -42,18 +43,20 @@ export const CHART_TYPES = [
   { id: "bars", label: "Balken" },
 ];
 
+/** intraday: false, true (Minuten/Stunden) oder "seconds" (Sekundenkerzen) */
 export const baseOptions = (locked, intraday) => ({
   autoSize: true,
   localization: {
     locale: "de-DE",
     timeFormatter: (t) => (typeof t === "number"
-      ? fmtTime(t, intraday ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", year: "2-digit" })
+      ? fmtTime(t, intraday ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", ...(intraday === "seconds" ? { second: "2-digit" } : {}) }
+        : { day: "2-digit", month: "2-digit", year: "2-digit" })
       : String(t)),
   },
   layout: { background: { color: COLORS.bg }, textColor: COLORS.text, fontFamily: "Barlow, system-ui, sans-serif" },
   grid: { vertLines: { color: COLORS.grid }, horzLines: { color: COLORS.grid } },
   rightPriceScale: { borderColor: COLORS.line },
-  timeScale: { borderColor: COLORS.line, timeVisible: true, secondsVisible: false, tickMarkFormatter: tickFormatter },
+  timeScale: { borderColor: COLORS.line, timeVisible: true, secondsVisible: intraday === "seconds", tickMarkFormatter: tickFormatter },
   crosshair: { mode: CrosshairMode.Normal },
   ...interaction(locked),
 });

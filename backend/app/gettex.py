@@ -165,7 +165,7 @@ def _range_for(period: str) -> tuple[str, date]:
     return ("Y1" if days <= 366 else "Y5" if days <= 1827 else "Y10"), date.today() - timedelta(days=days)
 
 
-INTRADAY_RULES = {"1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h"}
+INTRADAY_RULES = {"1s": "1s", "1m": "1min", "3m": "3min", "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "2h": "2h"}
 INTRADAY_DAYS = {"1d": 1, "5d": 5}
 _TAS: dict[tuple[str, str], tuple[float, tuple[list, list, list]]] = {}
 _TAS_TTL = 15

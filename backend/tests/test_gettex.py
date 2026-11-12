@@ -103,6 +103,10 @@ def test_intraday_from_trades(fake, monkeypatch):
     assert list(df["open"]) == [10.0, 10.5] and list(df["high"]) == [11.0, 10.5]
     assert list(df["low"]) == [9.5, 10.5] and list(df["volume"]) == [6.0, 4.0]
     assert str(df.index.tz) == "Europe/Berlin"
+    sec = gettex.history("DE0007164600.GTX", "1d", "1s")  # Sekundenkerzen: jedes Geschäft eine eigene Kerze
+    assert len(sec) == 4 and list(sec["close"]) == [10.0, 11.0, 9.5, 10.5]
+    assert list(gettex.history("DE0007164600.GTX", "1d", "3m")["close"]) == [11.0, 9.5, 10.5]
+    assert len(gettex.history("DE0007164600.GTX", "1d", "2h")) == 1
 
 
 def test_live_quote_with_bid_ask(fake):

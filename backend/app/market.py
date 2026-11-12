@@ -232,9 +232,12 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
         if q.get("time"):
             _META[symbol.upper()] = {"market_time": q["time"]}
         return df.copy()
+    if interval == "1s":
+        raise MarketDataError("Sekundenkerzen gibt es nur für Werte an gettex.")
+    fetch, rule = _YF_RESAMPLE.get(interval, (interval, None))
     try:
         t = _yf().Ticker(symbol)
-        df = t.history(period=period, interval=interval, auto_adjust=True)
+        df = t.history(period=period, interval=fetch, auto_adjust=True)
     except Exception as exc:  # noqa: BLE001
         raise MarketDataError(f"Kursabruf für {symbol} fehlgeschlagen: {exc}") from exc
     if df is None or df.empty:
@@ -246,6 +249,8 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
     except Exception:  # noqa: BLE001
         pass
     df = df.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
+    if rule:
+        df = df.resample(rule).agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}).dropna(subset=["close"])
     _CACHE[key] = (time.time(), df)
     return df.copy()
 
@@ -290,7 +295,9 @@ def convert_history(df: pd.DataFrame, native: str | None, target: str | None, pe
     return out
 
 
-INTRADAY = {"1m", "5m", "15m", "30m", "1h"}
+INTRADAY = {"1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h"}
+# Yahoo kennt kein 3m und 2h: aus 1m bzw. 1h zusammengefasst. Sekundenkerzen gibt es nur bei gettex.
+_YF_RESAMPLE = {"3m": ("1m", "3min"), "2h": ("1h", "2h")}
 
 
 def supports_intraday(symbol: str) -> bool:

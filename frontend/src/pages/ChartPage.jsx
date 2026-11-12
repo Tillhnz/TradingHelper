@@ -7,6 +7,7 @@ import HoldingPanel from "../components/HoldingPanel.jsx";
 import BreakoutMeter from "../components/BreakoutMeter.jsx";
 import CompanyPanel from "../components/CompanyPanel.jsx";
 import Icon from "../components/Icon.jsx";
+import { BAR_SECONDS, INTRADAY, intervalsFor, PERIOD_LABEL, periodsFor, pickPeriod } from "../intervals.js";
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
 import PriceChart, { CHART_TYPES } from "../components/PriceChart.jsx";
@@ -26,19 +27,8 @@ const RANGES = [
   { id: "1y", label: "1 J", period: "1y", interval: "1d" },
   { id: "5y", label: "5 J", period: "5y", interval: "1wk" },
 ];
-const PRO_PERIODS = {
-  "1d": ["3mo", "6mo", "1y", "2y", "5y"],
-  "1wk": ["1y", "2y", "5y", "10y"],
-  "1h": ["5d", "1mo", "3mo", "6mo"],
-  "15m": ["1d", "5d", "1mo"],
-  "5m": ["1d", "5d"],
-};
-const INTRADAY = new Set(["1h", "15m", "5m"]);
-const BAR_SECONDS = { "5m": 300, "15m": 900, "1h": 3600 };
 const TYPE_KEY = "tradehelper_chart_type";
 const loadType = () => { try { return localStorage.getItem(TYPE_KEY) || null; } catch { return null; } };
-const LABEL = { "1d": "1 Tag", "5d": "5 Tage", "1mo": "1 Monat", "3mo": "3 Monate", "6mo": "6 Monate", "1y": "1 Jahr", "2y": "2 Jahre", "5y": "5 Jahre", "10y": "10 Jahre" };
-const INTERVAL_LABEL = { "1d": "Tag", "1wk": "Woche", "1h": "Stunde", "15m": "15 Min", "5m": "5 Min" };
 const REFRESH_MS = 60 * 1000;
 const KIND_COLOR = { pullback: "#6fd3c3", breakout: "#f2b84b", rebound: "#ff9f6b", now: "#6fd3c3" };
 const KIND_TITLE = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound", now: "Einstieg" };
@@ -154,8 +144,6 @@ export default function ChartPage() {
     }
   }
 
-  const limited = !!meta?.intraday_limit;
-  const periodsFor = (iv) => PRO_PERIODS[iv].filter((x) => !limited || !INTRADAY.has(iv) || ["1d", "5d"].includes(x));
 
   function pickType(t) {
     setChartType(t);
@@ -163,8 +151,7 @@ export default function ChartPage() {
   }
 
   function setProInterval(iv) {
-    const periods = periodsFor(iv);
-    setView((v) => ({ interval: iv, period: periods.includes(v.period) ? v.period : periods[Math.min(1, periods.length - 1)] }));
+    setView((v) => ({ interval: iv, period: pickPeriod(iv, v.period, meta) }));
   }
 
   const quotes = useLiveQuotes([symbol], { currency: ccy, every: 15000 });
@@ -196,7 +183,7 @@ export default function ChartPage() {
   const shownAction = rec && held && adv?.reason === "rethink" && adv.level === "bad" ? "Reduzieren prüfen" : rec?.action;
   const ui = shownAction ? ACTION_UI[shownAction] : null;
   const rangeId = RANGES.find((r) => r.period === view.period && r.interval === view.interval)?.id;
-  const intervals = ["5m", "15m", "1h", "1d", "1wk"].filter((iv) => meta?.intraday !== false || !INTRADAY.has(iv));
+  const intervals = intervalsFor(meta);
   const ranges = RANGES;
 
   return (
@@ -274,11 +261,11 @@ export default function ChartPage() {
         <div className={`toolbar ${optsOpen ? "opts-open" : ""}`}>
           {pro ? (
             <>
-              <div className="seg" role="group" aria-label="Kerzen">
-                {intervals.map((iv) => <button key={iv} className={iv === view.interval ? "on" : ""} onClick={() => setProInterval(iv)}>{INTERVAL_LABEL[iv]}</button>)}
+              <div className="seg seg-iv" role="group" aria-label="Kerzen">
+                {intervals.map((iv) => <button key={iv.id} className={iv.id === view.interval ? "on" : ""} title={iv.title} onClick={() => setProInterval(iv.id)}>{iv.label}</button>)}
               </div>
               <select value={view.period} onChange={(e) => setView((v) => ({ ...v, period: e.target.value }))} aria-label="Zeitraum">
-                {periodsFor(view.interval).map((x) => <option key={x} value={x}>{LABEL[x]}</option>)}
+                {periodsFor(view.interval, meta).map((x) => <option key={x} value={x}>{PERIOD_LABEL[x]}</option>)}
               </select>
             </>
           ) : (
@@ -308,7 +295,7 @@ export default function ChartPage() {
         {!rows && !error && <Loading text="Lade Kurse …" />}
         {rows && (
           <PriceChart key={`${symbol}-${view.interval}-${view.period}-${ccy}-${mode}`} rows={rows} simple={!pro}
-            type={chartType || undefined} live={liveBar} intraday={INTRADAY.has(view.interval)}
+            type={chartType || undefined} live={liveBar} intraday={view.interval === "1s" ? "seconds" : INTRADAY.has(view.interval)}
             showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} currency={cur} />
         )}
         <p className="legend small">

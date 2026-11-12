@@ -1,3 +1,3 @@
 """TradeHelper – selbst gehosteter Trading-Assistent."""
 
-__version__ = "0.18.4"
+__version__ = "0.19.0"

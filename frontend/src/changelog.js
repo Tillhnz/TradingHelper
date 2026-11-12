@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.19.0",
+    date: "12.11.2026",
+    title: "Mehr Kerzenlängen",
+    items: [
+      "Im Profi-Modus und im großen Chart wählst du die Kerzenlänge: 1 Sekunde, 1, 3, 5 und 15 Minuten, 1 und 2 Stunden, Tag oder Woche.",
+      "Sekundenkerzen gibt es für gettex-Werte – sie entstehen direkt aus den Einzelgeschäften des Tages.",
+      "Zu jeder Kerzenlänge bietet die Auswahl nur Zeiträume an, für die es auch Daten gibt.",
+    ],
+  },
+  {
     version: "0.18.4",
     date: "12.11.2026",
     title: "Unter dem Stopp: verkaufen oder halten?",
