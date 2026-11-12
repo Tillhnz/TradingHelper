@@ -63,7 +63,12 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
         price: end ? p.sell_price : rows[rows.length - 1].close, qty: p.quantity, fees: p.fees || 0,
         fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
         label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)}`,
+        short: `Kauf ${money(p.buy_price, currency)}`,
       }));
+      // Werte an der Preisachse statt großer Beschriftungen im Chart
+      price.createPriceLine({ price: p.buy_price, color: COLORS.amber, lineVisible: false, axisLabelVisible: true, title: "" });
+      if (!end && p.stop) price.createPriceLine({ price: p.stop, color: COLORS.down, lineVisible: false, axisLabelVisible: true, title: "" });
+      if (!end && p.target) price.createPriceLine({ price: p.target, color: COLORS.up, lineVisible: false, axisLabelVisible: true, title: "" });
     }
 
     const charts = [main];
@@ -72,13 +77,13 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       const thin = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
       if (ind.kind === "sma" || ind.kind === "ema") {
         const n = Math.max(1, Math.round(p.period || 20));
-        const s = main.addLineSeries({ ...thin, color: ind.color, lineWidth: 2, title: indicatorTitle(ind) });
+        // Name steht in der Legende oben links – nicht als Etikett im Chart
+        const s = main.addLineSeries({ ...thin, color: ind.color, lineWidth: 2 });
         s.setData(series(rows, (ind.kind === "sma" ? sma : ema)(closes, n)));
       } else if (ind.kind === "bb") {
         const b = bollinger(closes, Math.max(2, Math.round(p.period || 20)), p.mult || 2);
         for (const [key, style] of [["upper", LineStyle.Solid], ["mid", LineStyle.Dotted], ["lower", LineStyle.Solid]]) {
-          const s = main.addLineSeries({ ...thin, color: ind.color, lineWidth: 1, lineStyle: style,
-            title: key === "upper" ? indicatorTitle(ind) : "" });
+          const s = main.addLineSeries({ ...thin, color: ind.color, lineWidth: 1, lineStyle: style });
           s.setData(series(rows, b[key]));
         }
       } else if (ind.kind === "volume" && rows.some((r) => r.volume)) {
@@ -120,6 +125,10 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       if (c === main) state.current.range = range;
     }));
     // Startansicht: alle Kurse; die Unterfenster folgen dem Hauptchart
+    // Mit offener Position etwas Platz rechts lassen: dort stehen Ziel und Stopp, ohne die letzten Kerzen zu verdecken
+    if (positions.some((p) => p.buy_price && !p.sell_date)) {
+      main.timeScale().applyOptions({ rightOffset: Math.max(4, Math.round(rows.length * 0.12)) });
+    }
     if (state.current.range) main.timeScale().setVisibleLogicalRange(state.current.range);
     else main.timeScale().fitContent();
     const r0 = main.timeScale().getVisibleLogicalRange();
@@ -193,7 +202,16 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
 
   return (
     <div className={`ws-chart ${tool ? "drawing" : ""}`}>
-      <div className="ws-main" ref={mainRef} />
+      <div className="ws-main-wrap">
+        <div className="ws-main" ref={mainRef} />
+        {indicators.some((i) => INDICATORS[i.kind]?.pane !== "sub") && (
+          <div className="chart-legend" aria-label="Kennlinien">
+            {indicators.filter((i) => INDICATORS[i.kind]?.pane !== "sub").map((i) => (
+              <span key={i.id}><i style={{ background: i.color }} />{indicatorTitle(i)}</span>
+            ))}
+          </div>
+        )}
+      </div>
       {subs.map((s) => (
         <div key={s.id} className="ws-sub">
           <span className="ws-sub-label">{indicatorTitle(s)}</span>

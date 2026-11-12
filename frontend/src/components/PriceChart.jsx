@@ -179,6 +179,7 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
         price: end ? p.sell_price : lastClose, qty: p.quantity, fees: p.fees || 0,
         fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
         label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)} · ${shortDate(p.buy_date)}${p.buy_time ? ` ${p.buy_time}` : ""}`,
+        short: `Kauf ${money(p.buy_price, currency)}`,
       });
       priceSeries.attachPrimitive(box);
       if (!end) boxes.push(box);

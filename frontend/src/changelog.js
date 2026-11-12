@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.18.1",
+    date: "12.11.2026",
+    title: "Charts aufgeräumt",
+    items: [
+      "Die Positions-Box verdeckt den Kurs nicht mehr: zartere Flächen, kleinere Beschriftungen, die sich nicht mehr überlappen.",
+      "Gewinn/Verlust steht jetzt mit am Kaufkurs statt als eigene Marke auf der Kurslinie. Am Handy reichen kurze Beschriftungen („Ziel +18,8 %“).",
+      "Großer Chart: Kennlinien stehen in einer kleinen Legende oben links statt als Etiketten im Chart; Kaufkurs, Stopp und Ziel stehen an der Preisachse, und rechts bleibt Platz für die Beschriftungen.",
+    ],
+  },
+  {
     version: "0.18.0",
     date: "11.11.2026",
     title: "Nachrichten-Stimmung deutlich treffsicherer – und lernfähig",

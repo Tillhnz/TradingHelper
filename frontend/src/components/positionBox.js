@@ -2,11 +2,13 @@
 // Ziel und ein roter bis zum Stopp, dazu der aktuelle Gewinn/Verlust als kräftigere Fläche zwischen Kaufkurs und
 // aktuellem Kurs. Umgesetzt als „Series Primitive“ von lightweight-charts (eigenes Zeichnen auf der Zeichenfläche).
 
+// Flächen bewusst zart, damit die Kerzen darunter lesbar bleiben
 const C = {
-  win: "rgba(111, 211, 195, 0.16)", winEdge: "rgba(111, 211, 195, 0.55)", winStrong: "rgba(111, 211, 195, 0.38)",
-  loss: "rgba(255, 107, 107, 0.16)", lossEdge: "rgba(255, 107, 107, 0.55)", lossStrong: "rgba(255, 107, 107, 0.38)",
+  win: "rgba(111, 211, 195, 0.06)", winEdge: "rgba(111, 211, 195, 0.5)", winStrong: "rgba(111, 211, 195, 0.13)",
+  loss: "rgba(255, 107, 107, 0.06)", lossEdge: "rgba(255, 107, 107, 0.5)", lossStrong: "rgba(255, 107, 107, 0.13)",
   entry: "#f2b84b", text: "#0e1620", label: "#e6edf3",
 };
+const COMPACT = 640; // schmaler als das: kurze Beschriftungen
 
 /** Index der letzten Kerze, die zum Zeitpunkt t schon begonnen hatte (Kerzen sind aufsteigend sortiert). */
 export function barIndex(times, t) {
@@ -42,18 +44,29 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function pill(ctx, text, x, y, bg, fg, align = "right") {
-  ctx.font = "600 11px system-ui, -apple-system, Segoe UI, sans-serif";
-  const w = ctx.measureText(text).width + 12;
-  const maxX = ctx.canvas.width / (window.devicePixelRatio || 1);
+function pill(ctx, text, x, y, bg, fg, align = "right", maxX = Infinity, small = false) {
+  ctx.font = `600 ${small ? 10 : 11}px system-ui, -apple-system, Segoe UI, sans-serif`;
+  const h = small ? 15 : 17;
+  const w = ctx.measureText(text).width + (small ? 9 : 12);
   // immer ganz sichtbar halten (z. B. Kauf von heute ganz rechts im Chart)
   const left = Math.max(2, Math.min(align === "right" ? x - w : x, maxX - w - 2));
+  ctx.globalAlpha = 0.82;
   ctx.fillStyle = bg;
-  roundRect(ctx, left, y - 9, w, 18, 5);
+  roundRect(ctx, left, y - h / 2, w, h, 4);
   ctx.fill();
+  ctx.globalAlpha = 1;
   ctx.fillStyle = fg;
   ctx.textBaseline = "middle";
-  ctx.fillText(text, left + 6, y + 0.5);
+  ctx.fillText(text, left + (small ? 4.5 : 6), y + 0.5);
+}
+
+/** Beschriftungen, die sich überlappen würden, auseinanderschieben (Abstand mind. eine Pillenhöhe). */
+function spread(items, gap) {
+  const sorted = [...items].sort((a, b) => a.y - b.y);
+  for (let i = 1; i < sorted.length; i += 1) {
+    if (sorted[i].y - sorted[i - 1].y < gap) sorted[i].y = sorted[i - 1].y + gap;
+  }
+  return items;
 }
 
 export class PositionBox {
@@ -166,24 +179,29 @@ export class PositionBox {
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
       const g = this.geometry(mediaSize.width);
       if (!g || g.yEntry === null) return;
-      const { entry, stop, target: tgt, price, qty, fees = 0, fmt, fmtPct, end, label } = this.o;
+      const { entry, stop, target: tgt, price, qty, fees = 0, fmt, fmtPct, end, label, short } = this.o;
       const pl = (v) => qty * (v - entry) - fees;
       const pc = (v) => (v / entry - 1) * 100;
-      const right = Math.min(g.xEnd, mediaSize.width) - 6;
+      const W = mediaSize.width;
+      const small = W < COMPACT;
+      const right = Math.min(g.xEnd, W) - 4;
+      const x = Math.max(4, g.x0 + 4);
+      const gap = small ? 17 : 19;
+      // Gewinn/Verlust steht mit am Kaufkurs – keine eigene Marke auf der Kurslinie, die den Verlauf verdeckt
+      const now = price != null ? `${end ? "Ergebnis " : ""}${fmt(pl(price), true)} (${fmtPct(pc(price))})` : "";
+      const items = [];
       if (!end && g.yTarget !== null && tgt) {
-        pill(ctx, `Ziel ${fmt(tgt)} · ${fmtPct(pc(tgt))} · ${fmt(pl(tgt), true)}`, right, g.yTarget + (g.yTarget < g.yEntry ? 12 : -12), "rgba(111, 211, 195, 0.9)", C.text);
+        items.push({ y: g.yTarget + (g.yTarget < g.yEntry ? 11 : -11), x: right, align: "right", bg: "rgba(111, 211, 195, 0.95)",
+          text: small ? `Ziel ${fmtPct(pc(tgt))}` : `Ziel ${fmt(tgt)} · ${fmtPct(pc(tgt))} · ${fmt(pl(tgt), true)}` });
       }
       if (!end && g.yStop !== null && stop) {
-        pill(ctx, `Stopp ${fmt(stop)} · ${fmtPct(pc(stop))} · ${fmt(pl(stop), true)}`, right, g.yStop + (g.yStop > g.yEntry ? -12 : 12), "rgba(255, 107, 107, 0.9)", C.text);
+        items.push({ y: g.yStop + (g.yStop > g.yEntry ? -11 : 11), x: right, align: "right", bg: "rgba(255, 107, 107, 0.95)",
+          text: small ? `Stopp ${fmtPct(pc(stop))}` : `Stopp ${fmt(stop)} · ${fmtPct(pc(stop))} · ${fmt(pl(stop), true)}` });
       }
-      const x = Math.max(4, g.x0 + 4);
-      pill(ctx, label, x, g.yEntry + (price != null && price < entry ? -12 : 12), "rgba(242, 184, 75, 0.92)", C.text, "left");
-      if (price != null && g.yPrice !== null) {
-        const v = pl(price);
-        const txt = `${end ? "Ergebnis " : ""}${fmt(v, true)} (${fmtPct(pc(price))})`;
-        const xr = Math.min(g.xNow + 6 + 120, mediaSize.width - 70);
-        pill(ctx, txt, Math.max(xr, x + 140), g.yPrice, v >= 0 ? "#6fd3c3" : "#ff6b6b", C.text);
-      }
+      const up = price != null && price >= entry;
+      items.push({ y: g.yEntry + (up ? 11 : -11), x, align: "left", bg: "rgba(242, 184, 75, 0.95)",
+        text: small ? `${short || label}${now ? ` · ${fmtPct(pc(price))}` : ""}` : `${label}${now ? ` · ${now}` : ""}` });
+      spread(items, gap).forEach((i) => pill(ctx, i.text, i.x, i.y, i.bg, C.text, i.align, W, small));
     });
   }
 }
