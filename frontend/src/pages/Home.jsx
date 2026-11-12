@@ -182,6 +182,21 @@ function LayoutEditor({ layout, onClose, onSave }) {
   );
 }
 
+/** Gleiche Fehler bei vielen Werten nur einmal nennen („onvista bremst gerade“ statt 16 roter Zeilen). */
+function ErrorGroups({ errors }) {
+  const groups = {};
+  for (const [sym, err] of Object.entries(errors || {})) {
+    const msg = String(err).replace(/^[A-Z0-9]{12}:\s*/, "");
+    (groups[msg] = groups[msg] || []).push(sym.replace(/\.GTX$/, ""));
+  }
+  return Object.entries(groups).map(([msg, syms]) => (
+    <p key={msg} className="error small error-group">
+      <Icon name="alert" /> {syms.length > 2 ? <><strong>{syms.length} Werte</strong> ohne aktuelle Daten: {msg}</> : <>{syms.join(", ")}: {msg}</>}
+      {syms.length > 2 && /bremst/.test(msg) && <span className="muted"> Das legt sich meist von selbst nach einigen Minuten.</span>}
+    </p>
+  ));
+}
+
 function rowFor(e, q, pro) {
   const live = q && q.currency === e.currency ? q : null;
   const price = live ? live.price : e.analysis.last_close;
@@ -350,7 +365,7 @@ export default function Home() {
           <p className="muted">Such oben nach einer Aktie oder einem ETF, zum Beispiel „Apple“ oder „MSCI World“. Auf der Seite des Werts tippst du auf „Beobachten“.</p>
         </div>
       )}
-      {report && Object.entries(report.errors).map(([sym, err]) => <p key={sym} className="error small">{sym}: {err}</p>)}
+      {report && <ErrorGroups errors={report.errors} />}
 
       {layout.order.filter((w) => !layout.hidden.includes(w)).map((w) => <Fragment key={w}>{widget(w)}</Fragment>)}
     </>

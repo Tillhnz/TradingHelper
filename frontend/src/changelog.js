@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.18.3",
+    date: "12.11.2026",
+    title: "Schonender Umgang mit onvista",
+    items: [
+      "onvista sperrt Server zeitweise, die zu viele Anfragen schicken. TradeHelper fragt jetzt höchstens etwa dreimal pro Sekunde an, merkt sich Kurse länger und legt nach einer Sperre eine Pause ein (1 bis 15 Minuten), statt weiter anzuklopfen.",
+      "Während einer Sperre bleibt der letzte bekannte Stand (bis zu einem Tag) sichtbar.",
+      "Statt einer roten Zeile pro Wert erscheint nur noch ein Hinweis, wenn viele Werte gleichzeitig betroffen sind.",
+    ],
+  },
+  {
     version: "0.18.2",
     date: "12.11.2026",
     title: "Kurse wieder da",

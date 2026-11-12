@@ -10,6 +10,7 @@ aus den Einzelgeschäften der letzten Handelstage gebaut. Die heutige Tageskerze
 
 from __future__ import annotations
 
+import threading
 import time
 from datetime import date, timedelta
 
@@ -23,7 +24,14 @@ MARKET = "_TRO"  # gettex in der onvista-Systematik
 KINDS = {"STOCK": "stocks", "FUND": "funds"}
 SEARCH_TYPES = {"STOCK": "Aktie", "FUND": "ETF/Fonds"}
 _SNAP: dict[str, tuple[float, dict]] = {}
-_SNAP_TTL = 10
+_SNAP_TTL = 30
+_STALE_MAX = 24 * 3600  # bei Drosselung: letzter Stand bis zu einem Tag
+
+# Schonender Umgang mit onvista: höchstens ~3 Anfragen pro Sekunde, und nach „429 Too many requests“ eine
+# Pause für alle Anfragen (1 Minute, bei Wiederholung doppelt so lang bis 15 Minuten) statt weiter anzuklopfen.
+_MIN_GAP = 0.35
+_LOCK = threading.Lock()
+_STATE = {"last": 0.0, "cool_until": 0.0, "cool": 60.0}
 _EOD: dict[tuple, tuple[float, pd.DataFrame]] = {}
 _EOD_TTL = 600
 
@@ -46,15 +54,35 @@ def to_symbol(isin: str) -> str:
     return f"{isin.upper()}{SUFFIX}"
 
 
+def throttle_status() -> dict:
+    left = _STATE["cool_until"] - time.time()
+    return {"paused": left > 0, "seconds_left": max(0, int(left))}
+
+
 def _get(path: str, params: dict | None = None) -> dict:
+    with _LOCK:
+        now = time.time()
+        if now < _STATE["cool_until"]:
+            left = int(_STATE["cool_until"] - now) + 1
+            raise GettexError(f"onvista bremst gerade – neuer Versuch in {left // 60} min {left % 60} s"
+                              if left >= 60 else f"onvista bremst gerade – neuer Versuch in {left} s", 429)
+        wait = _STATE["last"] + _MIN_GAP - now
+        if wait > 0:
+            time.sleep(wait)
+        _STATE["last"] = time.time()
     try:
         r = requests.get(BASE + path, params=params, headers=HEADERS, timeout=15)
     except requests.RequestException as exc:
         raise GettexError(f"onvista nicht erreichbar: {exc}") from exc
+    if r.status_code == 429:
+        with _LOCK:
+            _STATE["cool_until"] = time.time() + _STATE["cool"]
+            _STATE["cool"] = min(_STATE["cool"] * 2, 900.0)
+        raise GettexError("onvista bremst gerade (zu viele Anfragen) – TradeHelper pausiert kurz", 429)
+    if r.ok:
+        _STATE["cool"] = 60.0
     if r.status_code == 404:
         raise GettexError("Wert bei onvista nicht gefunden", 404)
-    if r.status_code == 429:
-        raise GettexError("onvista bremst gerade (zu viele Anfragen)", 429)
     if not r.ok:
         raise GettexError(f"onvista meldet Fehler {r.status_code}", r.status_code)
     try:
@@ -70,20 +98,22 @@ def snapshot(isin: str) -> dict:
         return cached[1]
     # Seit November 2026 bremst onvista den alten Pfad /stocks/…/snapshot für alle mit „429 Too many requests“.
     # Der gleichwertige Pfad über /instruments/{Typ}/… liefert denselben Snapshot – der alte bleibt nur als Rückfall.
-    paths = [f"/instruments/STOCK/ISIN:{isin}/snapshot", f"/instruments/FUND/ISIN:{isin}/snapshot",
-             f"/stocks/ISIN:{isin}/snapshot", f"/funds/ISIN:{isin}/snapshot"]
+    # (Den alten Pfad nicht mehr probieren: jedes 429 dort würde die Pause für alle Werte auslösen.)
+    paths = [f"/instruments/STOCK/ISIN:{isin}/snapshot", f"/instruments/FUND/ISIN:{isin}/snapshot"]
     errors: list[GettexError] = []
     for path in paths:
         try:
             snap = _get(path)
         except GettexError as exc:
             errors.append(exc)
+            if exc.status == 429:
+                break  # gebremst: nicht noch den nächsten Pfad anfragen
             continue
         if snap.get("instrument"):
             _SNAP[isin] = (time.time(), snap)
             return snap
     # Nur gebremst oder gestört (nicht „gibt es nicht“)? Dann lieber den letzten bekannten Stand der letzten Stunden
-    if cached and any(e.status != 404 for e in errors) and time.time() - cached[0] < 6 * 3600:
+    if cached and any(e.status != 404 for e in errors) and time.time() - cached[0] < _STALE_MAX:
         return cached[1]
     real = next((e for e in errors if e.status not in (404, None)), None) or (errors[-1] if errors else None)
     if real is not None and real.status != 404:

@@ -1308,3 +1308,4 @@ input:focus, select:focus, textarea:focus { border-color: rgba(111, 211, 195, 0.
   background: rgba(10, 16, 26, 0.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .chart-legend span { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
 .chart-legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.error-group { display: flex; gap: 0.4rem; align-items: flex-start; flex-wrap: wrap; }

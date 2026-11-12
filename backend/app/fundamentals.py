@@ -63,18 +63,12 @@ def _short(text: str, limit: int = 700) -> str:
 
 
 def _onvista(kind: str, isin: str) -> dict | None:
-    # /instruments/{STOCK|FUND}/… statt /stocks|funds/… – den alten Pfad bremst onvista mit 429
+    """Über gettex._get – so gelten dieselbe Drosselung und Pause wie für die Kurse."""
     typ = {"stocks": "STOCK", "funds": "FUND"}[kind]
     try:
-        r = requests.get(f"{ONVISTA}/instruments/{typ}/ISIN:{isin}/snapshot", headers=HEADERS, timeout=15)
-    except requests.RequestException as exc:
-        log.info("onvista %s %s: %s", kind, isin, exc)
-        return None
-    if r.status_code != 200:
-        return None
-    try:
-        data = r.json()
-    except ValueError:
+        data = gettex._get(f"/instruments/{typ}/ISIN:{isin}/snapshot")
+    except gettex.GettexError as exc:
+        log.info("onvista %s %s: %s", typ, isin, exc)
         return None
     return data if data.get("instrument") else None
 
@@ -255,5 +249,6 @@ def get(symbol: str, name: str | None = None) -> dict:
             if wiki:
                 out["description"] = wiki
     out = out or {"kind": None}
-    _CACHE[key] = (time.time(), out)
+    if out.get("kind") or not gettex.throttle_status()["paused"]:
+        _CACHE[key] = (time.time(), out)  # während onvista bremst nichts „Leeres“ für 12 Stunden merken
     return out

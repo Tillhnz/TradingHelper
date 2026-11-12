@@ -160,7 +160,7 @@ def test_snapshot_uses_instruments_path_and_survives_throttling(monkeypatch):
     assert gettex.snapshot("DE0007164600")["instrument"]["name"] == "SAP"
     assert seen[0] == "/instruments/STOCK/ISIN:DE0007164600/snapshot"
 
-    # Alles gebremst: letzter Stand (jünger als 6 Stunden) statt Fehler
+    # Alles gebremst: letzter Stand (jünger als ein Tag) statt Fehler
     gettex._SNAP["DE0007164600"] = (_t.time() - 600, SNAP)
     monkeypatch.setattr(gettex, "_get", lambda path, params=None: (_ for _ in ()).throw(gettex.GettexError("429", 429)))
     assert gettex.snapshot("DE0007164600") is SNAP
@@ -168,3 +168,28 @@ def test_snapshot_uses_instruments_path_and_survives_throttling(monkeypatch):
     with pytest.raises(gettex.GettexError) as e:
         gettex.snapshot("DE0007164600")
     assert e.value.status == 429 and "nicht gefunden" not in str(e.value)
+
+
+def test_pause_after_429(monkeypatch):
+    """Nach einem 429 fragt TradeHelper eine Weile gar nicht mehr an – sonst verlängert sich die Sperre."""
+    calls = []
+
+    class R:
+        def __init__(self, code):
+            self.status_code, self.ok = code, code == 200
+
+        def json(self):
+            return {"instrument": {"name": "X"}}
+
+    codes = iter([429, 200])
+    monkeypatch.setattr(gettex.requests, "get", lambda *a, **k: (calls.append(a[0]), R(next(codes)))[1])
+    monkeypatch.setattr(gettex, "_STATE", {"last": 0.0, "cool_until": 0.0, "cool": 60.0})
+    with pytest.raises(gettex.GettexError):
+        gettex._get("/x")
+    assert gettex.throttle_status()["paused"] and gettex._STATE["cool"] == 120
+    with pytest.raises(gettex.GettexError) as e:
+        gettex._get("/y")
+    assert e.value.status == 429 and len(calls) == 1  # in der Pause keine Anfrage
+    gettex._STATE["cool_until"] = 0
+    assert gettex._get("/z")["instrument"]["name"] == "X"
+    assert gettex._STATE["cool"] == 60 and len(calls) == 2
