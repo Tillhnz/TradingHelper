@@ -1,16 +1,15 @@
-import json
 import requests
-H = {"User-Agent": "Mozilla/5.0 (TradeHelper probe)", "Accept": "application/json"}
 B = "https://api.onvista.de/api/v1"
-snap = requests.get(f"{B}/stocks/ISIN:DE0007164600/snapshot", headers=H, timeout=20).json()
-print("FUND 2025", json.dumps(snap["stocksCnFundamentalList"]["list"][1], ensure_ascii=False))
-print("FIN 2025", json.dumps(snap["stocksCnFinancialList"]["list"][3], ensure_ascii=False))
-for path in ["/etfs/ISIN:IE00B4L5Y983/snapshot", "/funds/ISIN:IE00B4L5Y983/snapshot"]:
-    r = requests.get(B + path, headers=H, timeout=20)
-    print("ETF", path, r.status_code)
-    if r.ok:
-        j = r.json()
-        print(" keys", list(j))
-        for k in j:
-            if k not in ("quoteList", "chart", "cnPerformance", "chartBenchmark", "relatedInstrumentItemList", "quote"):
-                print(" ", k, json.dumps(j[k], ensure_ascii=False)[:1500])
+for ua in ["Mozilla/5.0 (TradeHelper)", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36"]:
+    H = {"User-Agent": ua, "Accept": "application/json"}
+    for path in ["/stocks/ISIN:DE0007164600/snapshot", "/funds/ISIN:IE00B4L5Y983/snapshot", "/instruments/query?searchValue=SAP&limit=2",
+                 "/stocks/ISIN:DE0007164600/eod_history?idNotation=0&range=Y1"]:
+        try:
+            r = requests.get(B + path, headers=H, timeout=20)
+            print(ua[:25], path, r.status_code, r.headers.get("content-type"), r.text[:300].replace("\n", " "))
+        except Exception as e:
+            print(path, "ERR", e)
+r = requests.get("https://www.onvista.de/aktien/SAP-Aktie-DE0007164600", headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+print("web", r.status_code, len(r.text))
+import re
+print(sorted(set(re.findall(r"https://api\.onvista\.de/api/v\d+/[a-zA-Z_/{}:.-]+", r.text)))[:30])
