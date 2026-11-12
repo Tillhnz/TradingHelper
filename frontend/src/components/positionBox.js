@@ -185,7 +185,6 @@ export class PositionBox {
       const W = mediaSize.width;
       const small = W < COMPACT;
       const right = Math.min(g.xEnd, W) - 4;
-      const x = Math.max(4, g.x0 + 4);
       const gap = small ? 17 : 19;
       // Gewinn/Verlust steht mit am Kaufkurs – keine eigene Marke auf der Kurslinie, die den Verlauf verdeckt
       const now = price != null ? `${end ? "Ergebnis " : ""}${fmt(pl(price), true)} (${fmtPct(pc(price))})` : "";
@@ -199,7 +198,8 @@ export class PositionBox {
           text: small ? `Stopp ${fmtPct(pc(stop))}` : `Stopp ${fmt(stop)} · ${fmtPct(pc(stop))} · ${fmt(pl(stop), true)}` });
       }
       const up = price != null && price >= entry;
-      items.push({ y: g.yEntry + (up ? 11 : -11), x, align: "left", bg: "rgba(242, 184, 75, 0.95)",
+      // Alle Beschriftungen rechts übereinander – im freien Bereich hinter der letzten Kerze statt mitten im Verlauf
+      items.push({ y: g.yEntry + (up ? 11 : -11), x: right, align: "right", bg: "rgba(242, 184, 75, 0.95)",
         text: small ? `${short || label}${now ? ` · ${fmtPct(pc(price))}` : ""}` : `${label}${now ? ` · ${now}` : ""}` });
       spread(items, gap).forEach((i) => pill(ctx, i.text, i.x, i.y, i.bg, C.text, i.align, W, small));
     });
