@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from datetime import date
 
-from . import __version__, alerts, analysis, entry, events, fundamentals, indicators, learn, market, news, notify, paper, portfolio, scheduler
+from . import __version__, alerts, analysis, entry, events, fundamentals, gettex, indicators, learn, market, news, notify, paper, portfolio, scheduler
 from . import settings_store
 from . import updater_client
 from .config import Settings
@@ -846,10 +846,28 @@ def chart_delete(symbol: str, st: Storage = Depends(user_storage)):
 
 # ---------- Morgenreport ----------
 
+_REPORT_CACHE: dict[int, tuple[float, dict]] = {}
+
+
+@app.middleware("http")
+async def _forget_report(request, call_next):
+    """Jede Änderung (Kauf, Verkauf, Watchlist …) macht die zwischengespeicherte Übersicht ungültig."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        _REPORT_CACHE.clear()
+    return await call_next(request)
+
+
 @app.get("/api/report", dependencies=auth)
-def report(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
+def report(fresh: bool = False, st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
+    """Aktuelle Einschätzung aller Werte. 2 Minuten zwischengespeichert, damit die Übersicht sofort da ist."""
+    hit = _REPORT_CACHE.get(st.uid)
+    if hit and not fresh and time.time() - hit[0] < 120:
+        return hit[1]
     _sync_watchlist(st)
-    return build_report(st, settings).to_dict()
+    data = build_report(st, settings).to_dict()
+    data["data_status"] = gettex.throttle_status()
+    _REPORT_CACHE[st.uid] = (time.time(), data)
+    return data
 
 
 @app.get("/api/reports/latest", dependencies=auth)

@@ -236,17 +236,26 @@ export default function Home() {
     if (params.get("bericht")) { params.delete("bericht"); setParams(params, { replace: true }); }
   };
 
-  const load = useCallback(async () => {
+  const [fallback, setFallback] = useState("");
+  const load = useCallback(async (fresh = false) => {
     setError("");
+    setFallback("");
     setReport(null);
     api.get("/settings").then(setSettings).catch(() => {});
     api.get("/positions").then(setDepot).catch(() => {});
     api.get("/paper").then(setShadow).catch(() => {});
     api.get("/alerts/log?limit=6").then(setLog).catch(() => {});
     try {
-      setReport(await api.get("/report"));
+      setReport(await api.get(`/report${fresh === true ? "?fresh=1" : ""}`));
     } catch (e) {
-      setError(e.message);
+      // Live-Abruf klappt gerade nicht (z. B. Kursquelle gesperrt): den zuletzt verschickten Bericht zeigen
+      try {
+        const saved = await api.get("/reports/latest");
+        setReport({ errors: {}, ...saved });
+        setFallback(`Aktuelle Daten gerade nicht abrufbar (${e.message}) – du siehst den Bericht vom ${saved.created}.`);
+      } catch {
+        setError(e.message);
+      }
     }
   }, []);
 
@@ -346,7 +355,7 @@ export default function Home() {
           </p>
         </div>
         <div className="actions">
-          <button className="btn hide-sm" onClick={load} disabled={!report && !error}><Icon name="refresh" /> Aktualisieren</button>
+          <button className="btn hide-sm" onClick={() => load(true)} disabled={!report && !error}><Icon name="refresh" /> Aktualisieren</button>
           <button className="btn" onClick={() => setShowReport("latest")}><Icon name="report" /> Bericht</button>
           <button className="btn icon-only" onClick={() => setEditing(true)} title="Startseite anpassen" aria-label="Startseite anpassen"><Icon name="sliders" /></button>
           <button className="btn primary" onClick={send} disabled={sending || !report?.entries.length}><Icon name="phone" /> {sending ? "Sende …" : "Aufs Handy"}</button>
@@ -357,6 +366,11 @@ export default function Home() {
       {editing && <LayoutEditor layout={layout} onClose={() => setEditing(false)} onSave={saveLayout} />}
 
       <ErrorText error={error} />
+      {fallback && <p className="note fallback-note"><Icon name="clock" /> {fallback}</p>}
+      {report?.data_status?.paused && (
+        <p className="note fallback-note"><Icon name="alert" /> onvista sperrt die Kursabfrage gerade – TradeHelper pausiert noch
+          {" "}{Math.ceil(report.data_status.seconds_left / 60)} min und zeigt so lange den letzten bekannten Stand.</p>
+      )}
       {!report && !error && <Loading text="Schaue mir deine Werte und die Nachrichten an …" />}
 
       {report && !report.entries.length && !Object.keys(report.errors).length && (

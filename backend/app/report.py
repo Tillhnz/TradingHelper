@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -122,7 +123,8 @@ def build_report(storage: Storage, settings: Settings) -> Report:
         lots.setdefault(p["symbol"], []).append(p)
     entries: list[ReportEntry] = []
     errors: dict[str, str] = {}
-    for w in storage.watchlist():
+
+    def one(w) -> tuple[str, ReportEntry | None, str | None]:
         sym = w["symbol"]
         try:
             df = market.get_history(sym, profile.period, "1d", currency=target)
@@ -136,11 +138,19 @@ def build_report(storage: Storage, settings: Settings) -> Report:
             holding = None
             if lots.get(sym):
                 holding = portfolio.summarize([portfolio.evaluate(p, profile) for p in lots[sym]], rec.action)
-            entries.append(ReportEntry(rec, a, items[:3], shown, w.get("name"), w.get("exchange"),
-                                       entry.plan(a, rec, currency=shown), holding, w.get("ticker")))
+            return sym, ReportEntry(rec, a, items[:3], shown, w.get("name"), w.get("exchange"),
+                                    entry.plan(a, rec, currency=shown), holding, w.get("ticker")), None
         except Exception as exc:  # noqa: BLE001
             log.warning("Report für %s fehlgeschlagen: %s", sym, exc)
-            errors[sym] = str(exc)
+            return sym, None, str(exc)
+
+    # Mehrere Werte gleichzeitig (Nachrichten kommen von vielen Quellen); onvista drosselt gettex.py selbst
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for sym, e, err in pool.map(one, storage.watchlist()):
+            if e:
+                entries.append(e)
+            else:
+                errors[sym] = err
     created = datetime.now(ZoneInfo(settings.timezone)).strftime("%d.%m.%Y %H:%M")
     return Report(created, entries, errors, profile.label)
 

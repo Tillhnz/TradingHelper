@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "0.19.1",
+    date: "12.11.2026",
+    title: "Übersicht lädt schneller und zuverlässiger",
+    items: [
+      "Die Übersicht prüft mehrere Werte gleichzeitig und merkt sich das Ergebnis 2 Minuten – beim Wiederöffnen ist sie sofort da („Aktualisieren“ holt frische Daten).",
+      "Antwortet onvista nicht, wartet TradeHelper nicht mehr bei jedem Wert bis zur Zeitüberschreitung, sondern pausiert kurz und zeigt den letzten Stand.",
+      "Klappt der Abruf gar nicht, siehst du statt „Server nicht erreichbar“ den zuletzt verschickten Bericht mit Hinweis.",
+    ],
+  },
+  {
     version: "0.19.0",
     date: "12.11.2026",
     title: "Mehr Kerzenlängen",

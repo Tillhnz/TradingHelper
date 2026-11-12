@@ -54,6 +54,14 @@ def to_symbol(isin: str) -> str:
     return f"{isin.upper()}{SUFFIX}"
 
 
+def _pause() -> None:
+    with _LOCK:
+        if time.time() < _STATE["cool_until"]:
+            return  # schon in der Pause (mehrere gleichzeitige Fehlschläge zählen einmal)
+        _STATE["cool_until"] = time.time() + _STATE["cool"]
+        _STATE["cool"] = min(_STATE["cool"] * 2, 900.0)
+
+
 def throttle_status() -> dict:
     left = _STATE["cool_until"] - time.time()
     return {"paused": left > 0, "seconds_left": max(0, int(left))}
@@ -66,18 +74,21 @@ def _get(path: str, params: dict | None = None) -> dict:
             left = int(_STATE["cool_until"] - now) + 1
             raise GettexError(f"onvista bremst gerade – neuer Versuch in {left // 60} min {left % 60} s"
                               if left >= 60 else f"onvista bremst gerade – neuer Versuch in {left} s", 429)
-        wait = _STATE["last"] + _MIN_GAP - now
-        if wait > 0:
-            time.sleep(wait)
-        _STATE["last"] = time.time()
+        slot = max(now, _STATE["last"] + _MIN_GAP)  # eigenen Zeitschlitz reservieren, gewartet wird außerhalb der Sperre
+        _STATE["last"] = slot
+    if slot > now:
+        time.sleep(slot - now)
+        if time.time() < _STATE["cool_until"]:  # während des Wartens hat eine andere Anfrage die Pause ausgelöst
+            raise GettexError("onvista bremst gerade – TradeHelper pausiert kurz", 429)
     try:
-        r = requests.get(BASE + path, params=params, headers=HEADERS, timeout=15)
+        r = requests.get(BASE + path, params=params, headers=HEADERS, timeout=(5, 10))
     except requests.RequestException as exc:
-        raise GettexError(f"onvista nicht erreichbar: {exc}") from exc
+        # Keine Antwort (Zeitüberschreitung, Verbindung abgelehnt): ebenfalls pausieren – sonst wartet jede Anfrage
+        # bis zur Zeitüberschreitung und Seiten wie die Übersicht laden minutenlang
+        _pause()
+        raise GettexError(f"onvista antwortet nicht ({type(exc).__name__}) – TradeHelper pausiert kurz", 503) from exc
     if r.status_code == 429:
-        with _LOCK:
-            _STATE["cool_until"] = time.time() + _STATE["cool"]
-            _STATE["cool"] = min(_STATE["cool"] * 2, 900.0)
+        _pause()
         raise GettexError("onvista bremst gerade (zu viele Anfragen) – TradeHelper pausiert kurz", 429)
     if r.ok:
         _STATE["cool"] = 60.0

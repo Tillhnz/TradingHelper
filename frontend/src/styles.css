@@ -1314,3 +1314,4 @@ input:focus, select:focus, textarea:focus { border-color: rgba(111, 211, 195, 0.
 .seg-iv { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
 .seg-iv::-webkit-scrollbar { display: none; }
 .seg-iv button { min-width: 2.4rem; padding-left: 0.5rem; padding-right: 0.5rem; font-variant-numeric: tabular-nums; }
+.fallback-note { display: flex; gap: 0.45rem; align-items: flex-start; }
