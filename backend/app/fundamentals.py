@@ -63,8 +63,10 @@ def _short(text: str, limit: int = 700) -> str:
 
 
 def _onvista(kind: str, isin: str) -> dict | None:
+    # /instruments/{STOCK|FUND}/… statt /stocks|funds/… – den alten Pfad bremst onvista mit 429
+    typ = {"stocks": "STOCK", "funds": "FUND"}[kind]
     try:
-        r = requests.get(f"{ONVISTA}/{kind}/ISIN:{isin}/snapshot", headers=HEADERS, timeout=15)
+        r = requests.get(f"{ONVISTA}/instruments/{typ}/ISIN:{isin}/snapshot", headers=HEADERS, timeout=15)
     except requests.RequestException as exc:
         log.info("onvista %s %s: %s", kind, isin, exc)
         return None

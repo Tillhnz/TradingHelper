@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: "0.18.2",
+    date: "12.11.2026",
+    title: "Kurse wieder da",
+    items: [
+      "onvista hat den bisherigen Zugang für Aktiendaten gedrosselt – dadurch kam bei allen gettex-Aktien „kein Wert gefunden“. TradeHelper nutzt jetzt einen anderen, gleichwertigen Zugang.",
+      "Bremst onvista künftig wieder, zeigt TradeHelper den letzten bekannten Stand statt einer Fehlermeldung.",
+    ],
+  },
+  {
     version: "0.18.1",
     date: "12.11.2026",
     title: "Charts aufgeräumt",

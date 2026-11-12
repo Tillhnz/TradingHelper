@@ -35,9 +35,9 @@ def fake(monkeypatch):
     def fake_get(path, params=None):
         calls.append((path, params))
         if path.endswith("/snapshot"):
-            if "stocks" in path:
+            if "/instruments/STOCK/" in path:
                 return SNAP
-            raise gettex.GettexError("404")
+            raise gettex.GettexError("404", 404)
         if "eod_history" in path:
             return EOD
         if "times_and_sales" in path:
@@ -140,3 +140,31 @@ def test_eod_cache_independent_of_period(fake, monkeypatch):
     full = gettex.history("DE0007164600.GTX", "1y", "1d")
     assert len([c for c in fake if "eod_history" in c[0]]) == 1  # aus dem Zwischenspeicher
     assert len(full) == 4  # alle Tageskurse plus heute
+
+
+def test_snapshot_uses_instruments_path_and_survives_throttling(monkeypatch):
+    """onvista bremst /stocks/…/snapshot mit 429 – wir nehmen /instruments/STOCK/…, bei Störung den letzten Stand."""
+    import time as _t
+    gettex._SNAP.clear()
+    seen = []
+
+    def throttled(path, params=None):
+        seen.append(path)
+        if path.startswith("/stocks/"):
+            raise gettex.GettexError("zu viele Anfragen", 429)
+        if path.startswith("/instruments/STOCK/"):
+            return SNAP
+        raise gettex.GettexError("404", 404)
+
+    monkeypatch.setattr(gettex, "_get", throttled)
+    assert gettex.snapshot("DE0007164600")["instrument"]["name"] == "SAP"
+    assert seen[0] == "/instruments/STOCK/ISIN:DE0007164600/snapshot"
+
+    # Alles gebremst: letzter Stand (jünger als 6 Stunden) statt Fehler
+    gettex._SNAP["DE0007164600"] = (_t.time() - 600, SNAP)
+    monkeypatch.setattr(gettex, "_get", lambda path, params=None: (_ for _ in ()).throw(gettex.GettexError("429", 429)))
+    assert gettex.snapshot("DE0007164600") is SNAP
+    gettex._SNAP.clear()
+    with pytest.raises(gettex.GettexError) as e:
+        gettex.snapshot("DE0007164600")
+    assert e.value.status == 429 and "nicht gefunden" not in str(e.value)

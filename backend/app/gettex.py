@@ -29,7 +29,9 @@ _EOD_TTL = 600
 
 
 class GettexError(RuntimeError):
-    pass
+    def __init__(self, msg: str, status: int | None = None):
+        super().__init__(msg)
+        self.status = status
 
 
 def is_gettex(symbol: str) -> bool:
@@ -50,9 +52,11 @@ def _get(path: str, params: dict | None = None) -> dict:
     except requests.RequestException as exc:
         raise GettexError(f"onvista nicht erreichbar: {exc}") from exc
     if r.status_code == 404:
-        raise GettexError("Wert bei onvista nicht gefunden")
+        raise GettexError("Wert bei onvista nicht gefunden", 404)
+    if r.status_code == 429:
+        raise GettexError("onvista bremst gerade (zu viele Anfragen)", 429)
     if not r.ok:
-        raise GettexError(f"onvista meldet Fehler {r.status_code}")
+        raise GettexError(f"onvista meldet Fehler {r.status_code}", r.status_code)
     try:
         return r.json()
     except ValueError as exc:
@@ -64,17 +68,27 @@ def snapshot(isin: str) -> dict:
     cached = _SNAP.get(isin)
     if cached and time.time() - cached[0] < _SNAP_TTL:
         return cached[1]
-    last_exc: Exception | None = None
-    for kind in ("stocks", "funds"):
+    # Seit November 2026 bremst onvista den alten Pfad /stocks/…/snapshot für alle mit „429 Too many requests“.
+    # Der gleichwertige Pfad über /instruments/{Typ}/… liefert denselben Snapshot – der alte bleibt nur als Rückfall.
+    paths = [f"/instruments/STOCK/ISIN:{isin}/snapshot", f"/instruments/FUND/ISIN:{isin}/snapshot",
+             f"/stocks/ISIN:{isin}/snapshot", f"/funds/ISIN:{isin}/snapshot"]
+    errors: list[GettexError] = []
+    for path in paths:
         try:
-            snap = _get(f"/{kind}/ISIN:{isin}/snapshot")
+            snap = _get(path)
         except GettexError as exc:
-            last_exc = exc
+            errors.append(exc)
             continue
         if snap.get("instrument"):
             _SNAP[isin] = (time.time(), snap)
             return snap
-    raise GettexError(f"{isin}: kein Wert gefunden ({last_exc})")
+    # Nur gebremst oder gestört (nicht „gibt es nicht“)? Dann lieber den letzten bekannten Stand der letzten Stunden
+    if cached and any(e.status != 404 for e in errors) and time.time() - cached[0] < 6 * 3600:
+        return cached[1]
+    real = next((e for e in errors if e.status not in (404, None)), None) or (errors[-1] if errors else None)
+    if real is not None and real.status != 404:
+        raise GettexError(f"{isin}: {real}", real.status)
+    raise GettexError(f"{isin}: kein Wert gefunden ({real})", 404)
 
 
 def gettex_quote(snap: dict) -> dict:
