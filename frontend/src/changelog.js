@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: "0.20.1",
+    date: "14.11.2026",
+    title: "Besser auf dem Laptop",
+    items: [
+      "Die Seitenleiste lässt sich auf niedrigen Laptop-Bildschirmen scrollen – Abmelden und Version sind nicht mehr abgeschnitten.",
+      "Auf üblichen Laptop-Breiten ist die Seitenleiste etwas schmaler und der Rand kleiner, dadurch bleibt mehr Platz für Charts und Tabellen.",
+    ],
+  },
+  {
     version: "0.20.0",
     date: "12.11.2026",
     title: "Sofort da – und Zeichnen mit dem Finger",
