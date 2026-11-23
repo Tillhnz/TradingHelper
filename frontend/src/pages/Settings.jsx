@@ -91,15 +91,6 @@ const GROUPS = [
     },
   },
   {
-    id: "brokers",
-    title: "Bankzugang (FinTS)",
-    intro: "Für den lesenden Depotabruf bei Consorsbank, Commerzbank & Co. braucht jede Software eine kostenlose Produkt-Registrierungsnummer der Deutschen Kreditwirtschaft (hbci-zka.de → Registrierung). Ohne sie funktionieren Depots per Import (CSV/PDF).",
-    fields: {
-      fints_product_id: { label: "Produkt-Registrierungsnummer", hint: "25 Zeichen, von der Deutschen Kreditwirtschaft" },
-      broker_sync_hours: { label: "Depots mit gespeicherter PIN abrufen alle … Stunden", type: "number", hint: "0 = nur von Hand" },
-    },
-  },
-  {
     id: "security",
     title: "Sicherheit (alle Nutzer)",
     intro: "Gilt für alle Konten auf diesem Server.",

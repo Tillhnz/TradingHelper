@@ -1597,7 +1597,6 @@ label { font-weight: 500; font-size: 0.88rem; color: var(--chalk-2); }
 .acc.add:hover { border-color: rgba(var(--accent-rgb), 0.5); color: var(--accent); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 0.35rem; background: var(--neutral); transform: translateY(-1px); }
 .status-dot.ok { background: var(--celeste); }
-.status-dot.tan, .status-dot.tan_needed { background: var(--amber); }
 .status-dot.error { background: var(--signal); }
 .bank-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
 .bank-pick button { font: inherit; text-align: left; padding: 0.7rem 0.8rem; border-radius: 10px; border: 1px solid var(--line); background: var(--ink-2); cursor: pointer; color: var(--chalk); }
@@ -1605,8 +1604,6 @@ label { font-weight: 500; font-size: 0.88rem; color: var(--chalk-2); }
 .bank-pick small { display: block; color: var(--mute); font-size: 0.76rem; margin-top: 0.15rem; }
 .dropzone { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 1.5rem; text-align: center; color: var(--mute); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
 .dropzone.over, .dropzone:hover { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.05); color: var(--chalk); }
-.tan-box { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; }
-.tan-box img { max-width: 240px; border-radius: 8px; border: 1px solid var(--line); background: #fff; padding: 6px; }
 .pf-table td.nm { max-width: 260px; }
 .pf-table .acc-tag { font-size: 0.74rem; color: var(--mute); }
 

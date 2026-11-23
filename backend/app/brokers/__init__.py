@@ -1,54 +1,28 @@
-"""Depots bei Banken und Brokern – ausschließlich lesend.
+"""Depots bei Banken und Brokern – per Upload von Umsatzlisten (CSV) oder Wertpapierabrechnungen (PDF).
 
-Es gibt drei Wege, je nachdem, was die Bank anbietet:
-* FinTS/HBCI (offizieller Bankzugang, nur Abfragen „Depotaufstellung“, nie Aufträge): Consorsbank, Commerzbank,
-  comdirect und alle anderen Banken mit FinTS-PIN/TAN-Zugang. → fints_sync.py
-* Import von Abrechnungen bzw. Umsatzlisten (CSV oder PDF), z. B. finanzen.net zero (Depotbank Baader Bank), das keine
-  Schnittstelle hat. Jeder Kauf wird ein Block im Depot, jeder Verkauf schließt einen Block. → importer.py
-* Manuell erfasste Käufe wie bisher.
-
-TradeHelper schickt niemals Aufträge an eine Bank. Der FinTS-Teil benutzt nur die Geschäftsvorfälle Kontenliste
-(HKSPA) und Depotaufstellung (HKWPD).
+Jeder Kauf wird ein Block im Depot, jeder Verkauf schließt einen Block. Doppelt hochgeladene Dateien werden erkannt.
+Eine CSV ohne Kauf/Verkauf-Spalte, aber mit ISIN und Stückzahl, gilt als Bestandsliste (Depotaufstellung).
+TradeHelper verbindet sich mit keiner Bank und kann keine Aufträge erteilen.
 """
 
 from __future__ import annotations
 
 import re
 
-# Bekannte Zugänge. blz=None: die eigene Bankleitzahl eintragen (z. B. Commerzbank je nach Filiale).
+_HINT = ("Umsatzliste als CSV oder Wertpapierabrechnungen als PDF hochladen – auch viele auf einmal. Doppelte Käufe "
+         "erkennt TradeHelper. Eine CSV mit ISIN und Stückzahl ohne Kauf/Verkauf gilt als aktueller Bestand.")
+
 BANKS: dict[str, dict] = {
-    "consorsbank": {
-        "name": "Consorsbank", "kind": "fints", "blz": "76030080", "url": "https://brokerage-hbci.consorsbank.de/hbci",
-        "login_label": "Kontonummer + Berechtigtennummer", "login_hint": "z. B. 1234567890001 (Berechtigte meist 001)",
-        "pin_label": "Online-Banking-PIN", "tan_hint": "Freigabe in der Consorsbank-App",
-    },
-    "commerzbank": {
-        "name": "Commerzbank", "kind": "fints", "blz": None, "url": "https://fints.commerzbank.de/fints",
-        "login_label": "Teilnehmernummer", "login_hint": "Teilnehmernummer aus dem Online-Banking",
-        "pin_label": "PIN", "tan_hint": "photoTAN-App: Grafik scannen oder in der App freigeben",
-        "setup_hint": "FinTS mit PIN/TAN muss bei der Commerzbank einmalig freigeschaltet sein (Online-Banking → "
-                      "Einstellungen → HBCI/FinTS).",
-    },
-    "comdirect": {
-        "name": "comdirect", "kind": "fints", "blz": "20041111", "url": "https://fints.comdirect.de/fints",
-        "login_label": "Zugangsnummer", "login_hint": "8-stellige Zugangsnummer", "pin_label": "PIN",
-        "tan_hint": "photoTAN-App",
-    },
-    "fints": {
-        "name": "Andere Bank (FinTS)", "kind": "fints", "blz": None, "url": None,
-        "login_label": "Anmeldename / Kundennummer", "login_hint": "wie im Online-Banking", "pin_label": "PIN",
-        "tan_hint": "TAN-Verfahren deiner Bank",
-    },
-    "finanzen_zero": {
-        "name": "finanzen.net zero", "kind": "import",
-        "import_hint": "In der App bzw. auf finanzen.net/zero unter Depot → Umsätze die CSV-Datei laden oder die "
-                       "PDF-Abrechnungen (Postfach) hochladen. Beides darf wiederholt hochgeladen werden – doppelte "
-                       "Käufe erkennt TradeHelper.",
-    },
-    "import": {
-        "name": "Anderer Broker (Import)", "kind": "import",
-        "import_hint": "CSV-Umsatzliste (Datum, ISIN, Stück, Kurs, Kauf/Verkauf) oder PDF-Abrechnungen hochladen.",
-    },
+    "consorsbank": {"name": "Consorsbank", "kind": "import",
+                    "import_hint": "Im Online-Banking unter Depot → Umsätze bzw. Depotübersicht als CSV exportieren "
+                                   "oder die Abrechnungen (PDF) aus dem Postfach laden. " + _HINT},
+    "commerzbank": {"name": "Commerzbank", "kind": "import",
+                    "import_hint": "Im Online-Banking unter Depot → Umsätze bzw. Bestand als CSV exportieren oder die "
+                                   "Wertpapierabrechnungen (PDF) aus dem Postfach laden. " + _HINT},
+    "finanzen_zero": {"name": "finanzen.net zero", "kind": "import",
+                      "import_hint": "In der App bzw. auf finanzen.net/zero unter Depot → Umsätze die CSV laden oder "
+                                     "die PDF-Abrechnungen (Baader Bank) aus dem Postfach. " + _HINT},
+    "import": {"name": "Anderer Broker", "kind": "import", "import_hint": _HINT},
 }
 
 

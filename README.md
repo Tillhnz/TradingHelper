@@ -9,7 +9,7 @@ Selbst gehosteter Trading-Assistent für Proxmox: Gesamtportfolio über alle Dep
 - **Schnell:** Kurse liegen dauerhaft auf dem Server (`data/market.db`) und werden von einem Hintergrunddienst aktuell gehalten. Jede Seite antwortet nach spätestens ~1,5 s; was dann noch rechnet, kommt kurz danach nach.
 - **Startseite selbst gestalten:** Bausteine hinzufügen, ziehen, Größe wählen (Vermögen, Aufteilung, Heute wichtig, Märkte, Konjunktur, Stimmung, Modell, Rückblick, Nachrichten, Mini-Charts …).
 - **Neues Design** im Stil von Claude: warmes Papier, eine Akzentfarbe, Serifen-Überschriften (Source Serif 4) und Inter – hell, dunkel oder wie das System.
-- **Gesamtportfolio:** Consorsbank und Commerzbank (und jede andere FinTS-Bank) lesend per FinTS, finanzen.net zero per CSV-/PDF-Import, dazu manuell erfasste Käufe – ohne Doppelzählung.
+- **Gesamtportfolio:** Depots von Consorsbank, Commerzbank, finanzen.net zero & Co. per CSV-/PDF-Upload, dazu manuell erfasste Käufe – ohne Doppelzählung.
 - **Zwei-Faktor-Anmeldung** (Authenticator-App) mit Wiederherstellungscodes und „Gerät merken“ – standardmäßig Pflicht.
 - **Selbstlernendes Modell**, das seine Entscheidungen nachrechnet („Wäre Verkaufen besser gewesen?“) – siehe unten.
 - **Markt:** Indizes und Rohstoffe, Konjunktur (EZB, Eurostat, FRED, Weltbank), Börsenstimmung (Fear & Greed) und Stimmung im Netz (StockTwits, Bluesky, Reddit, Wikipedia-Aufmerksamkeit).
@@ -98,7 +98,7 @@ cd ~/tradinghelper
                  └───────────────────┬──────────────────────┘
                                      │ /api (nginx)
 ┌────────────────────────────────────▼───────────────────────────────────────┐
-│ FastAPI   routes: Auth/2FA · Portfolio/Broker · Markt/Modell · bisherige     │
+│ FastAPI   routes: Auth/2FA · Portfolio/Upload · Markt/Modell · bisherige     │
 │           liest NUR aus Speichern – Antwort nach spätestens ~1,5 s          │
 ├──────────────────────────────┬─────────────────────────────────────────────┤
 │ snapshot.py  vorberechnete   │ refresher.py  Hintergrunddienst              │
@@ -110,10 +110,10 @@ cd ~/tradinghelper
 ├────────────────────────────────────────────────────────────────────────────┤
 │ Quellen: onvista/gettex · Yahoo · Google News/Finnhub · EZB · Eurostat ·   │
 │ FRED · Weltbank · CNN Fear&Greed · StockTwits · Bluesky · Reddit · Wiki    │
-│ Banken: FinTS (nur Depotaufstellung) · Import CSV/PDF                      │
+│ Depots: Upload von Umsätzen/Abrechnungen (CSV/PDF)                         │
 ├────────────────────────────────────────────────────────────────────────────┤
 │ scheduler.py  Berichte · Alarme · Schattendepot · Modell lernen 02:40 ·    │
-│               Entscheidungen festhalten 22:40 · Depots abrufen             │
+│               Entscheidungen festhalten 22:40                              │
 └────────────────────────────────────────────────────────────────────────────┘
 
 backend/    FastAPI, Analyse, Modell (brain.py), Broker (brokers/), Hintergrunddienst, SQLite
@@ -123,18 +123,15 @@ proxmox/    Skript für den Proxmox-Host
 install.sh  Installation und Wartung
 ```
 
-## Depots verbinden (nur lesend)
+## Depots hochladen (CSV/PDF)
 
-| Bank/Broker | Weg | Was du brauchst |
-|---|---|---|
-| Consorsbank | FinTS (`https://brokerage-hbci.consorsbank.de/hbci`, BLZ 76030080) | Kontonummer + Berechtigtennummer (meist 001), PIN, Freigabe in der Consorsbank-App |
-| Commerzbank | FinTS (`https://fints.commerzbank.de/fints`) | eigene BLZ, Teilnehmernummer, PIN, photoTAN; FinTS-PIN/TAN im Online-Banking freischalten |
-| Andere Banken (comdirect, ING, DKB, Sparkasse …) | FinTS | Zugangsdaten wie in StarMoney & Co. |
-| finanzen.net zero | Import | CSV-Umsatzliste oder PDF-Abrechnungen (Baader Bank) – Mehrfach-Upload wird erkannt |
+Unter **Portfolio → Depot hinzufügen** Broker wählen (Consorsbank, Commerzbank, finanzen.net zero oder „Anderer Broker“) und Dateien hochladen:
 
-**FinTS-Produktnummer:** Jede FinTS-Software braucht eine kostenlose Registrierung bei der Deutschen Kreditwirtschaft ([hbci-zka.de → Registrierung](https://www.hbci-zka.de/register/prod_register.htm)). Die Nummer trägst du unter *Einstellungen → Bankzugang* ein. Bis dahin funktionieren Depots per Import.
+- **Umsatzliste als CSV** (Datum, ISIN, Stück, Kurs, Kauf/Verkauf) – Trennzeichen, deutsche/englische Zahlen und Spaltennamen werden erkannt.
+- **Wertpapierabrechnungen als PDF** – auch viele auf einmal.
+- **Bestandsliste als CSV** (ISIN und Stückzahl ohne Kauf/Verkauf) – wird als aktueller Bestand des Depots übernommen.
 
-TradeHelper nutzt von FinTS ausschließlich „Kontenliste“ und „Depotaufstellung“ und kann keine Aufträge erteilen. Die PIN wird nur gespeichert, wenn du es ankreuzt (verschlüsselt mit einem aus `SECRET_KEY` abgeleiteten Schlüssel). Etwa alle 90 Tage verlangt die Bank eine neue Freigabe; dann kommt eine Push-Nachricht.
+Jeder Kauf wird ein Block, ein Verkauf schließt bevorzugt den Block mit gleicher Stückzahl (sonst die ältesten). Dateien dürfen mehrfach hochgeladen werden – bereits importierte Käufe werden übersprungen. TradeHelper verbindet sich mit keiner Bank.
 
 ## Zwei-Faktor-Anmeldung
 

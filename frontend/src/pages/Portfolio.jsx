@@ -8,27 +8,25 @@ import { ErrorText, Loading, RefreshState } from "../components/ui.jsx";
 import { LineArea, Stack } from "../components/viz.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 
-const STATUS = { ok: "aktuell", new: "noch nicht abgerufen", tan: "wartet auf Freigabe", tan_needed: "Freigabe nötig", error: "Fehler" };
+const STATUS = { ok: "hochgeladen", new: "noch leer", error: "Fehler" };
 
-// ---------- Depot verbinden ----------
+// ---------- Depot anlegen ----------
 function ConnectDialog({ onClose, onCreated }) {
   const banksQ = useCachedGet("/portfolio/banks");
   const [bank, setBank] = useState(null);
-  const [f, setF] = useState({ label: "", blz: "", login: "", customer_id: "", url: "", pin: "", save_pin: false });
-  const [advanced, setAdvanced] = useState(false);
+  const [label, setLabel] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const banks = banksQ.data?.banks || [];
   const b = banks.find((x) => x.id === bank);
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const r = await api.post("/portfolio/accounts", { bank, ...f, blz: f.blz || b.blz || "", url: f.url || b.url || "" });
-      onCreated(r.id, b, f.pin);
+      const r = await api.post("/portfolio/accounts", { bank, label });
+      onCreated(r.id, label || b.name);
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -36,128 +34,24 @@ function ConnectDialog({ onClose, onCreated }) {
   }
 
   return (
-    <Modal title="Depot verbinden" onClose={onClose} wide>
-      <p className="muted small">TradeHelper liest nur – es kann keine Aufträge erteilen und kein Geld bewegen.</p>
+    <Modal title="Depot hinzufügen" onClose={onClose} wide>
+      <p className="muted small">Bestände und Käufe kommen per Upload (CSV oder PDF) – TradeHelper verbindet sich mit keiner Bank.</p>
       {!banksQ.data ? <Loading /> : (
         <div className="bank-pick">
           {banks.map((x) => (
-            <button key={x.id} className={bank === x.id ? "on" : ""} onClick={() => { setBank(x.id); setF((v) => ({ ...v, label: x.name, blz: x.blz || "" })); }}>
-              <strong>{x.name}</strong><small>{x.kind === "fints" ? "Bankzugang (FinTS), automatisch" : "Import von CSV/PDF"}</small>
+            <button key={x.id} className={bank === x.id ? "on" : ""} onClick={() => { setBank(x.id); setLabel(x.name); }}>
+              <strong>{x.name}</strong><small>CSV oder PDF hochladen</small>
             </button>
           ))}
         </div>
       )}
-      {b && b.kind === "fints" && (
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-          {!banksQ.data.fints_ready && (
-            <p className="note small"><Icon name="info" /> Für den Bankzugang fehlt noch die kostenlose FinTS-Produkt-Registrierungsnummer
-              (Einstellungen → Bankzugang). Die Verbindung lässt sich trotzdem schon anlegen.</p>
-          )}
-          {b.setup_hint && <p className="muted small">{b.setup_hint}</p>}
-          <div className="form-grid">
-            <label>Name<input value={f.label} onChange={set("label")} /></label>
-            {!b.blz && <label>Bankleitzahl<input value={f.blz} onChange={set("blz")} inputMode="numeric" placeholder="8 Ziffern" required /></label>}
-            <label>{b.login_label} <span className="hint">{b.login_hint}</span><input value={f.login} onChange={set("login")} autoComplete="username" required /></label>
-            <label>{b.pin_label}<input type="password" value={f.pin} onChange={set("pin")} autoComplete="current-password" /></label>
-          </div>
-          <label className="check"><input type="checkbox" checked={f.save_pin} onChange={set("save_pin")} />
-            PIN verschlüsselt speichern – dann ruft TradeHelper das Depot regelmäßig selbst ab</label>
-          <button type="button" className="link small" style={{ alignSelf: "flex-start" }} onClick={() => setAdvanced((x) => !x)}>{advanced ? "Weniger" : "Erweitert (FinTS-Adresse, Kundennummer)"}</button>
-          {advanced && (
-            <div className="form-grid">
-              <label>FinTS-Adresse<input value={f.url || b.url || ""} onChange={set("url")} /></label>
-              <label>Kundennummer <span className="hint">nur falls abweichend</span><input value={f.customer_id} onChange={set("customer_id")} /></label>
-              {b.blz && <label>Bankleitzahl<input value={f.blz} onChange={set("blz")} /></label>}
-            </div>
-          )}
-          <p className="muted small">{b.tan_hint}. Die Bank fragt etwa alle 90 Tage nach einer neuen Freigabe.</p>
-          <ErrorText error={error} />
-          <div className="actions"><button className="btn primary" disabled={busy}>{busy ? "Lege an …" : "Verbinden und abrufen"}</button></div>
-        </form>
-      )}
-      {b && b.kind === "import" && (
+      {b && (
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
           <p className="muted small">{b.import_hint}</p>
-          <label>Name<input value={f.label} onChange={set("label")} /></label>
+          <label>Name<input value={label} onChange={(e) => setLabel(e.target.value)} /></label>
           <ErrorText error={error} />
           <div className="actions"><button className="btn primary" disabled={busy}>Anlegen und Dateien wählen</button></div>
         </form>
-      )}
-    </Modal>
-  );
-}
-
-// ---------- Abrufen mit Freigabe ----------
-function SyncDialog({ account, pin: initialPin, onClose, onDone }) {
-  const [pin, setPin] = useState(initialPin || "");
-  const [step, setStep] = useState(account.pin_saved || initialPin ? "run" : "pin");
-  const [tan, setTan] = useState("");
-  const [ch, setCh] = useState(null);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const started = useRef(false);
-
-  async function run(p = pin) {
-    setBusy(true);
-    setError("");
-    try {
-      handle(await api.post(`/portfolio/accounts/${account.id}/sync`, { pin: p }));
-    } catch (e) { setError(e.message); setStep("pin"); } finally { setBusy(false); }
-  }
-  function handle(r) {
-    if (r.status === "tan") { setCh(r); setTan(""); setStep("tan"); } else { setResult(r); setStep("done"); onDone(); }
-  }
-  async function sendTan(e) {
-    e?.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      handle(await api.post(`/portfolio/accounts/${account.id}/tan`, { session: ch.session, tan }));
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
-  useEffect(() => {
-    if (step === "run" && !started.current) { started.current = true; run(); }
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
-  function close() {
-    if (ch?.session && step === "tan") api.del(`/portfolio/tan/${ch.session}`).catch(() => {});
-    onClose();
-  }
-
-  return (
-    <Modal title={`${account.label} abrufen`} onClose={close}>
-      {step === "pin" && (
-        <form onSubmit={(e) => { e.preventDefault(); setStep("run"); started.current = true; run(pin); }} style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-          <label>PIN<input type="password" value={pin} onChange={(e) => setPin(e.target.value)} autoFocus required /></label>
-          <ErrorText error={error} />
-          <div className="actions"><button className="btn primary" disabled={busy}>Abrufen</button></div>
-        </form>
-      )}
-      {step === "run" && <Loading text="Verbinde mit der Bank …" />}
-      {step === "tan" && ch && (
-        <form className="tan-box" onSubmit={sendTan}>
-          <p style={{ margin: 0 }}>{ch.challenge.text}</p>
-          {ch.challenge.image && <img src={ch.challenge.image} alt="photoTAN-Grafik zum Scannen" />}
-          {ch.challenge.decoupled ? (
-            <>
-              <p className="muted small">Öffne die App deiner Bank und gib den Zugriff frei. Danach hier bestätigen.</p>
-              <button className="btn primary" disabled={busy}>{busy ? "Prüfe …" : "In der App freigegeben"}</button>
-            </>
-          ) : (
-            <>
-              <label style={{ width: "100%" }}>TAN<input value={tan} onChange={(e) => setTan(e.target.value)} inputMode="numeric" autoFocus required /></label>
-              <button className="btn primary" disabled={busy || !tan}>{busy ? "Sende …" : "Bestätigen"}</button>
-            </>
-          )}
-          <ErrorText error={error} />
-        </form>
-      )}
-      {step === "done" && result && (
-        <>
-          <p><Icon name="check" /> {result.holdings} Positionen aus {result.accounts} {result.accounts === 1 ? "Konto" : "Konten"} übernommen.
-            {result.assigned ? ` ${result.assigned} erfasste Käufe wurden diesem Depot zugeordnet.` : ""}</p>
-          <div className="actions"><button className="btn primary" onClick={onClose}>Fertig</button></div>
-        </>
       )}
     </Modal>
   );
@@ -196,7 +90,7 @@ function ImportDialog({ account, onClose, onDone }) {
   const fresh = preview?.trades.filter((t) => !t.duplicate) || [];
 
   return (
-    <Modal title={`Import: ${account.label}`} onClose={onClose} wide>
+    <Modal title={`Hochladen: ${account.label}`} onClose={onClose} wide>
       {!preview && !result && (
         <>
           <div className={`dropzone ${over ? "over" : ""}`} onClick={() => input.current?.click()}
@@ -268,19 +162,16 @@ export default function Portfolio() {
   const pf = q.data;
   const [by, setBy] = useState("type");
   const [connect, setConnect] = useState(false);
-  const [sync, setSync] = useState(null);
   const [imp, setImp] = useState(null);
   const [error, setError] = useState("");
 
-  function created(id, bank, pin) {
+  function created(id, label) {
     setConnect(false);
     q.reload();
-    const acc = { id, label: bank.name, pin_saved: false };
-    if (bank.kind === "fints") setSync({ account: acc, pin });
-    else setImp(acc);
+    setImp({ id, label });
   }
   async function remove(a) {
-    if (!window.confirm(`Verbindung „${a.label}“ löschen? Abgerufene Bestände verschwinden, importierte Käufe bleiben.`)) return;
+    if (!window.confirm(`Depot „${a.label}“ löschen? Hochgeladene Bestände verschwinden, importierte Käufe bleiben.`)) return;
     try { await api.del(`/portfolio/accounts/${a.id}`); q.reload(); } catch (e) { setError(e.message); }
   }
 
@@ -289,11 +180,11 @@ export default function Portfolio() {
       <div className="page-head">
         <div>
           <h1>Portfolio</h1>
-          <p className="muted">Alle Depots zusammen – nur lesend verbunden. <RefreshState q={q} /></p>
+          <p className="muted">Alle Depots zusammen – aus deinen hochgeladenen Umsätzen und Abrechnungen. <RefreshState q={q} /></p>
         </div>
         <div className="actions" style={{ marginTop: 0 }}>
           <Link className="btn" to="/depot"><Icon name="briefcase" /> Käufe & Blöcke</Link>
-          <button className="btn primary" onClick={() => setConnect(true)}><Icon name="plus" /> Depot verbinden</button>
+          <button className="btn primary" onClick={() => setConnect(true)}><Icon name="plus" /> Depot hinzufügen</button>
         </div>
       </div>
       <ErrorText error={error || q.error} />
@@ -325,17 +216,15 @@ export default function Portfolio() {
               <div key={a.id} className="acc">
                 <header><strong>{a.label}</strong>{a.bank_name !== a.label && <span className="muted small">{a.bank_name}</span>}</header>
                 <span className="val">{money(a.value, pf.currency)}</span>
-                <span className="small muted"><span className={`status-dot ${a.status}`} />{STATUS[a.status] || a.status}{a.last_sync ? ` · ${dateTime(a.last_sync)}` : ""} · {a.positions} Positionen</span>
+                <span className="small muted"><span className={`status-dot ${a.status}`} />{STATUS[a.status] || a.status}{a.last_sync ? ` ${dateTime(a.last_sync)}` : ""} · {a.positions} Positionen</span>
                 {a.last_error && a.status === "error" && <span className="small error">{a.last_error}</span>}
                 <div className="actions">
-                  {a.kind === "fints"
-                    ? <button className="btn small" onClick={() => setSync({ account: a })}><Icon name="refresh" /> Abrufen</button>
-                    : <button className="btn small" onClick={() => setImp(a)}><Icon name="upload" /> Importieren</button>}
+                  <button className="btn small" onClick={() => setImp(a)}><Icon name="upload" /> Hochladen</button>
                   <button className="link danger small" onClick={() => remove(a)}>Löschen</button>
                 </div>
               </div>
             ))}
-            <button className="acc add" onClick={() => setConnect(true)}><Icon name="plus" size="1.4em" /> Depot verbinden</button>
+            <button className="acc add" onClick={() => setConnect(true)}><Icon name="plus" size="1.4em" /> Depot hinzufügen</button>
           </div>
 
           {pf.lines.length > 0 && (
@@ -366,7 +255,6 @@ export default function Portfolio() {
         </>
       )}
       {connect && <ConnectDialog onClose={() => setConnect(false)} onCreated={created} />}
-      {sync && <SyncDialog account={sync.account} pin={sync.pin} onClose={() => { setSync(null); q.reload(); }} onDone={() => q.reload()} />}
       {imp && <ImportDialog account={imp} onClose={() => { setImp(null); q.reload(); }} onDone={() => q.reload()} />}
     </>
   );

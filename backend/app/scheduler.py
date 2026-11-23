@@ -85,11 +85,6 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
         sched.add_job(lambda: _brain_daily(storage, settings),
                       CronTrigger(day_of_week="mon-fri", hour=22, minute=40, timezone=tz), id="model_daily",
                       max_instances=1, coalesce=True, misfire_grace_time=3 * 3600)
-    # Bankdepots mit gespeicherter PIN regelmäßig abrufen (nur lesend)
-    if getattr(settings, "broker_sync_hours", 0):
-        sched.add_job(lambda: _each_user(storage, settings, _broker_sync, "Depotabruf"),
-                      IntervalTrigger(hours=int(settings.broker_sync_hours), timezone=tz), id="broker_sync",
-                      max_instances=1, coalesce=True)
     # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
     sched.add_job(
         lambda: _each_user(storage, settings, lambda st, cfg: cfg.paper_enabled and paper.run_backtest(st, cfg),
@@ -242,9 +237,3 @@ def _brain_daily(storage: Storage, settings: Settings) -> None:
     except Exception as exc:  # noqa: BLE001
         storage.job_finish(jid, "error", f"{type(exc).__name__}: {exc}")
         log.exception("Modell-Tageslauf fehlgeschlagen")
-
-
-def _broker_sync(storage: Storage, settings: Settings) -> None:
-    from .routes_portfolio import background_sync
-
-    background_sync(storage, settings)

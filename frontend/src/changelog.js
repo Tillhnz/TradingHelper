@@ -10,7 +10,7 @@ export const CHANGELOG = [
       "Neues, ruhiges Design mit hellem und dunklem Modus (Einstellungen → Ansicht) und neuen Schriften.",
       "Startseite selbst gestalten: „Anpassen“ antippen, Bausteine hinzufügen, verschieben und in der Größe ändern – z. B. Vermögen, Märkte, Konjunktur, Stimmung, Modell oder Mini-Charts einzelner Werte.",
       "Viel schneller: Kurse liegen jetzt dauerhaft auf dem Server und werden im Hintergrund aktuell gehalten. Seiten antworten in unter zwei Sekunden, auch direkt nach einem Neustart.",
-      "Gesamtportfolio: Consorsbank und Commerzbank per FinTS anbinden (nur lesend), finanzen.net zero per CSV- oder PDF-Import. Alle Depots zusammen mit Aufteilung nach Depot, Anlageart und Land.",
+      "Gesamtportfolio: Depots von Consorsbank, Commerzbank, finanzen.net zero und anderen per CSV- oder PDF-Upload (doppelte Käufe werden erkannt). Alle Depots zusammen mit Aufteilung nach Depot, Anlageart und Land.",
       "Zwei-Faktor-Anmeldung mit Authenticator-App, Wiederherstellungscodes und „Gerät merken“.",
       "Selbstlernendes Modell: lernt aus Kursen, Marktumfeld, Konjunkturzahlen, Nachrichten und sozialen Netzwerken, prüft jede Nacht seine eigenen Entscheidungen („Wäre Verkaufen besser gewesen?“) und bekommt nur so viel Gewicht, wie es nachweislich kann.",
       "Neue Seite „Markt“: Indizes, Rohstoffe, Konjunktur (EZB, Eurostat, FRED, Weltbank) und Stimmung (Fear & Greed, StockTwits, Bluesky, Reddit, Wikipedia-Aufmerksamkeit).",

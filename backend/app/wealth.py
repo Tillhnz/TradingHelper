@@ -1,8 +1,8 @@
-"""Gesamtportfolio: alle Depots zusammen – Bankbestände (FinTS), importierte und manuell erfasste Käufe.
+"""Gesamtportfolio: alle Depots zusammen – hochgeladene Bestände, importierte und manuell erfasste Käufe.
 
 Doppelzählung wird vermieden: Käufe, die einem Bankdepot zugeordnet sind, stecken schon in dessen Bestand und zählen
-dort. Manuell erfasste Käufe ohne Depot werden beim ersten Abruf eines Bankdepots automatisch zugeordnet, wenn die
-Bank denselben Wert (ISIN) mit mindestens dieser Stückzahl meldet.
+dort. Manuell erfasste Käufe ohne Depot werden einem Depot zugeordnet, wenn dessen hochgeladene Bestandsliste denselben
+Wert (ISIN) mit mindestens dieser Stückzahl enthält.
 """
 
 from __future__ import annotations
@@ -176,12 +176,6 @@ def overview(storage, settings, budget: float = 1.4) -> dict:
         if (top["weight"] or 0) > 25:
             hints.append({"level": "warn", "text": f"{top['name']} macht {top['weight']:.0f} % des Vermögens aus – "
                                                    "ein Klumpenrisiko."})
-    for a in accounts.values():
-        if a["status"] in ("tan_needed", "error"):
-            hints.append({"level": "warn", "account_id": a["id"],
-                          "text": f"{a['label'] or a['bank']}: " + ("Freigabe nötig – bitte neu abrufen."
-                                                                    if a["status"] == "tan_needed"
-                                                                    else (a.get("last_error") or "Abruf fehlgeschlagen"))})
     result = {
         "currency": ccy, "value": round(total, 2), "cost": round(cost, 2), "pl": round(pl, 2),
         "pl_pct": round(pl / cost * 100, 2) if cost else None, "day_change": round(day_abs, 2),
@@ -200,10 +194,7 @@ def _account_public(a: dict, lines: list[dict]) -> dict:
     mine = [x for x in lines if x.get("account_id") == a["id"]]
     return {"id": a["id"], "bank": a["bank"], "bank_name": bank.get("name", a["bank"]), "kind": a["kind"],
             "label": a["label"] or bank.get("name", a["bank"]), "status": a["status"], "last_sync": a["last_sync"],
-            "last_error": a["last_error"], "positions": len(mine), "value": round(sum(x["value"] or 0 for x in mine), 2),
-            "pin_saved": bool(a.get("secret")) and a["kind"] == "fints" and a["config"].get("save_pin", False),
-            "config": {k: v for k, v in a["config"].items() if k in ("blz", "login", "url", "customer_id", "save_pin",
-                                                                       "tan_mechanism")}}
+            "last_error": a["last_error"], "positions": len(mine), "value": round(sum(x["value"] or 0 for x in mine), 2)}
 
 
 def record(uid: int, value: float) -> list[dict]:

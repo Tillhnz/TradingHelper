@@ -6,7 +6,7 @@ import { dateTime } from "../fmt.js";
 const JOB_LABEL = {
   morning_report: "Morgenbericht", afternoon_report: "Nachmittagsbericht", alert_check: "Alarmprüfung",
   paper_orders: "Schattendepot-Orders", paper_backtest: "Rückblick", update_watch: "Update-Prüfung",
-  model_train: "Modell lernt", model_daily: "Modell: Entscheidungen festhalten", broker_sync: "Depots abrufen",
+  model_train: "Modell lernt", model_daily: "Modell: Entscheidungen festhalten",
 };
 const RUN_STATUS = { ok: ["ok", "erledigt"], warn: ["warn", "mit Problem"], error: ["bad", "Fehler"], running: ["warn", "läuft"] };
 

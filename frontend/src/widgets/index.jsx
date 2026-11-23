@@ -58,8 +58,8 @@ function PortfolioW({ shared, size }) {
   if (!pf) return <Card title="Vermögen" icon="wallet" link="/portfolio"><Loading text="Rechne alle Depots zusammen …" /></Card>;
   if (!pf.lines?.length) {
     return (
-      <Card title="Vermögen" icon="wallet" link="/portfolio" linkLabel="Depot verbinden">
-        <p className="wempty">Noch keine Bestände. Verbinde ein Depot (Consorsbank, Commerzbank …), importiere Abrechnungen von finanzen.net zero oder erfasse Käufe.</p>
+      <Card title="Vermögen" icon="wallet" link="/portfolio" linkLabel="Depot hinzufügen">
+        <p className="wempty">Noch keine Bestände. Lade Umsätze (CSV) oder Abrechnungen (PDF) von Consorsbank, Commerzbank oder finanzen.net zero hoch – oder erfasse Käufe.</p>
       </Card>
     );
   }
@@ -417,7 +417,7 @@ function SetupW({ shared }) {
   if (!s || hidden) return null;
   const steps = [
     { done: (shared.rows || []).length > 0, title: "Werte hinzufügen", to: "/watchlist" },
-    { done: (shared.portfolio?.lines || []).length > 0, title: "Depot verbinden", to: "/portfolio" },
+    { done: (shared.portfolio?.lines || []).length > 0, title: "Depot hochladen", to: "/portfolio" },
     { done: s.fields.ntfy_topic?.value, title: "Push aufs Handy", to: "/settings#notify" },
     { done: s.fields.invest_horizon?.from_ui, title: "Strategie festlegen", to: "/settings#strategy" },
   ];

@@ -47,7 +47,7 @@ def test_import_flow_and_portfolio(client):
     h = _login(client)
     assert client.get("/api/portfolio", headers=h).json()["value"] == 0
     banks = client.get("/api/portfolio/banks", headers=h).json()
-    assert any(b["id"] == "consorsbank" for b in banks["banks"]) and banks["fints_ready"] is False
+    assert any(b["id"] == "consorsbank" for b in banks["banks"]) and all(b["kind"] == "import" for b in banks["banks"])
     aid = client.post("/api/portfolio/accounts", json={"bank": "finanzen_zero"}, headers=h).json()["id"]
     csv = "Datum;Typ;ISIN;Stück;Kurs\n01.02.2026;Kauf;DE0007164600;10;100\n"
     files = [{"name": "umsaetze.csv", "content": base64.b64encode(csv.encode()).decode()}]
@@ -59,11 +59,9 @@ def test_import_flow_and_portfolio(client):
     assert pv2["trades"][0]["duplicate"] is True
     pf = client.get("/api/portfolio", headers=h).json()
     assert pf["value"] > 0 and pf["lines"][0]["account"] == "finanzen.net zero" and pf["allocation"]["account"]
-    # FinTS ohne Produkt-ID: verständliche Meldung statt Absturz
-    fid = client.post("/api/portfolio/accounts", json={"bank": "consorsbank", "login": "1234567890001", "pin": "x"},
-                      headers=h).json()["id"]
-    r = client.post(f"/api/portfolio/accounts/{fid}/sync", json={"pin": "1"}, headers=h)
-    assert r.status_code == 409 and "Produkt" in r.json()["detail"]
+    cid = client.post("/api/portfolio/accounts", json={"bank": "consorsbank"}, headers=h).json()["id"]
+    assert client.patch(f"/api/portfolio/accounts/{cid}", json={"label": "Consors"}, headers=h).status_code == 200
+    assert client.post("/api/portfolio/accounts", json={"bank": "gibtsnicht"}, headers=h).status_code == 422
     assert client.delete(f"/api/portfolio/accounts/{aid}", headers=h).status_code == 200
 
 
@@ -80,7 +78,7 @@ def test_insight_endpoints(client):
     a = client.get("/api/analysis/AAPL?with_news=false", headers=h).json()
     assert "model" in a  # ohne trainiertes Modell: None
     st = client.get("/api/admin/status", headers=h).json()
-    assert "data" in st and any("FinTS" in c["label"] for c in st["checks"])
+    assert "data" in st
 
 
 def test_home_layout_roundtrip(client):

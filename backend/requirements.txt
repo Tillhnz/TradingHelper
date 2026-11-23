@@ -9,6 +9,5 @@ apscheduler==3.11.3
 tzdata
 scikit-learn>=1.6
 cryptography>=44
-fints>=4.2
 pypdf>=5.0
 segno>=1.6

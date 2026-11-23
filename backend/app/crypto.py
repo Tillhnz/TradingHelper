@@ -1,4 +1,4 @@
-"""Verschlüsselung von Geheimnissen in der Datenbank (2FA-Schlüssel, Bank-PIN, FinTS-Sitzungsdaten).
+"""Verschlüsselung von Geheimnissen in der Datenbank (2FA-Schlüssel).
 
 Schlüssel: aus SECRET_KEY abgeleitet (SHA-256 mit eigenem Zweck-Präfix), Verfahren: Fernet (AES-128-CBC + HMAC).
 Wer die Datenbank allein in die Hände bekommt, kann damit nichts anfangen; wer zusätzlich die .env hat, schon –

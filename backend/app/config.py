@@ -75,9 +75,6 @@ class Settings:
     # Sicherheit
     require_2fa: bool = field(default_factory=lambda: _bool(_env("require_2fa", "true")))
     trusted_device_days: int = field(default_factory=lambda: int(_env("trusted_device_days", "30")))
-    # Broker (FinTS): Produkt-Registrierungsnummer der Deutschen Kreditwirtschaft (kostenlos, siehe README)
-    fints_product_id: str = field(default_factory=lambda: _env("fints_product_id", ""))
-    broker_sync_hours: int = field(default_factory=lambda: int(_env("broker_sync_hours", "12")))
     # Weitere Datenquellen (alle optional)
     social_enabled: bool = field(default_factory=lambda: _bool(_env("social_enabled", "true")))
     reddit_client_id: str = field(default_factory=lambda: _env("reddit_client_id", ""))

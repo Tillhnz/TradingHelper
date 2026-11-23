@@ -49,8 +49,6 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "home_layout": ("home_layout", "home", False),
     "require_2fa": ("bool", "security", False),
     "trusted_device_days": ("int:1:365", "security", False),
-    "fints_product_id": ("str:40", "brokers", True),
-    "broker_sync_hours": ("int:0:168", "brokers", False),
     "social_enabled": ("bool", "data", False),
     "reddit_client_id": ("str:100", "data", True),
     "reddit_client_secret": ("str:200", "data", True),
@@ -74,8 +72,7 @@ _OLD_TO_NEW = {"setup": ("setup", "xl"), "tiles": ("portfolio", "l"), "important
 # Diese Einstellungen hat jeder Nutzer für sich
 USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
              "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency", "home_layout"}
-SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "model_time", "model_enabled",
-                                                                     "broker_sync_hours"}
+SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "model_time", "model_enabled"}
 
 
 class SettingError(ValueError):

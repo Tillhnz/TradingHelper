@@ -967,9 +967,6 @@ def admin_status(st: Storage = Depends(user_storage), settings: Settings = Depen
         checks.append({"label": "Update-Dienst", "ok": True, "text": "läuft"})
     except HTTPException as exc:
         checks.append({"label": "Update-Dienst", "ok": False, "text": exc.detail})
-    checks.append({"label": "FinTS (Bankzugang)", "ok": bool(base_settings.fints_product_id),
-                   "text": "Produkt-ID hinterlegt" if base_settings.fints_product_id
-                   else "keine Produkt-Registrierungsnummer – Bankdepots nur per Import"})
     return {
         "version": __version__,
         "checks": checks,
