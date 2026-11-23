@@ -29,7 +29,7 @@ const TOOLS = [
   { id: "fib", label: "Fibonacci", short: "Fibo", icon: "≡", help: "Vom Tief zum Hoch ziehen – zeigt typische Rücksetzer-Marken" },
 ];
 const MAGNET_KEY = "tradehelper_chart_magnet";
-const PALETTE = ["#f2b84b", "#6fd3c3", "#7aa7ff", "#c792ea", "#ff9f6b", "#ff6b6b", "#e6edf3"];
+const PALETTE = ["#d9962b", "#2f9e6e", "#4a72d9", "#9a5bd6", "#e07a3f", "#d64b3c", "#7a786f"];
 const uid = () => Math.random().toString(36).slice(2, 10);
 const fmtP = (v) => (v == null ? "" : Number(v).toLocaleString("de-DE", { maximumFractionDigits: v < 10 ? 4 : 2 }));
 
@@ -133,7 +133,7 @@ function Workspace({ symbol }) {
   });
 
   const onDraw = useCallback((kind, points, { touch } = {}) => {
-    const d = { id: uid(), kind, points, color: kind === "fib" ? "#7aa7ff" : PALETTE[0], label: "" };
+    const d = { id: uid(), kind, points, color: kind === "fib" ? "#4a72d9" : PALETTE[0], label: "" };
     update((l) => ({ drawings: [...l.drawings, d] }));
     setSelected(d.id);
     setPending(null);

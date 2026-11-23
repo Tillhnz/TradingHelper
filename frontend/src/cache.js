@@ -47,7 +47,7 @@ export function clearCache() {
  * Liefert { data, at (ms, Stand der gezeigten Daten), refreshing, error, reload }.
  * `error` ist nur gesetzt, wenn gar nichts gezeigt werden kann; sonst `refreshError`.
  */
-export function useCachedGet(path, { enabled = true } = {}) {
+export function useCachedGet(path, { enabled = true, pollWhile = null, every = 1500, maxPolls = 8 } = {}) {
   const [state, setState] = useState(() => {
     const c = enabled && path ? readCache(path) : null;
     return { data: c ? c.data : null, at: c ? c.at : null, refreshing: !!(enabled && path), error: "", refreshError: "" };
@@ -77,6 +77,16 @@ export function useCachedGet(path, { enabled = true } = {}) {
     if (c) setState((s) => (s.data === c.data ? s : { ...s, data: c.data, at: c.at }));
     reload();
   }, [path, enabled, reload]);
+
+  // Der Server antwortet spätestens nach ~1,5 s; was dann noch rechnet, ist als „pending“ markiert → kurz nachfragen
+  const polls = useRef(0);
+  useEffect(() => {
+    if (!pollWhile || state.refreshing || state.data == null) return undefined;
+    if (!pollWhile(state.data)) { polls.current = 0; return undefined; }
+    if (polls.current >= maxPolls) return undefined;
+    const id = setTimeout(() => { polls.current += 1; reload(); }, every);
+    return () => clearTimeout(id);
+  }, [state.data, state.refreshing, pollWhile, every, maxPolls, reload]);
 
   const set = useCallback((fn) => setState((s) => {
     const data = typeof fn === "function" ? fn(s.data) : fn;

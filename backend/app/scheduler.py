@@ -11,7 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from . import alerts, paper, portfolio, report, settings_store, updatewatch
+from . import alerts, market, paper, portfolio, report, settings_store, updatewatch
 from .config import Settings
 from .storage import Storage
 
@@ -35,11 +35,12 @@ def _hours(start: int, end: int) -> str:
 
 def _each_user(storage: Storage, base: Settings, job, label: str) -> None:
     """Führt einen Job für jeden Nutzer mit seinen Daten und Einstellungen aus. Fehler eines Nutzers stoppen die
-    anderen nicht."""
+    anderen nicht. Kurse werden dabei frisch gelesen (veraltete Daten im Speicher werden vorher nachgeladen)."""
     for u in storage.users():
         st = storage.for_user(u["id"])
         try:
-            job(st, settings_store.for_user(st, base))
+            with market.fresh_reads():
+                job(st, settings_store.for_user(st, base))
         except Exception:  # noqa: BLE001
             log.exception("%s für Nutzer %s fehlgeschlagen", label, u["username"])
 
@@ -75,6 +76,20 @@ def _plan(sched: BackgroundScheduler, storage: Storage, settings: Settings) -> N
     # Neue Version auf GitHub? Administratoren per Push informieren
     sched.add_job(lambda: updatewatch.run(storage, settings), IntervalTrigger(hours=6, timezone=tz),
                   id="update_watch", max_instances=1, coalesce=True)
+    # Selbstlernendes Modell: nachts neu lernen (inkl. Vorhersagen und Journal), werktags abends Entscheidungen festhalten
+    if getattr(settings, "model_enabled", True):
+        mh, mm = (int(x) for x in (settings.model_time or "02:40").split(":"))
+        sched.add_job(lambda: _brain_train(storage, settings),
+                      CronTrigger(hour=mh, minute=mm, timezone=tz), id="model_train", max_instances=1, coalesce=True,
+                      misfire_grace_time=4 * 3600)
+        sched.add_job(lambda: _brain_daily(storage, settings),
+                      CronTrigger(day_of_week="mon-fri", hour=22, minute=40, timezone=tz), id="model_daily",
+                      max_instances=1, coalesce=True, misfire_grace_time=3 * 3600)
+    # Bankdepots mit gespeicherter PIN regelmäßig abrufen (nur lesend)
+    if getattr(settings, "broker_sync_hours", 0):
+        sched.add_job(lambda: _each_user(storage, settings, _broker_sync, "Depotabruf"),
+                      IntervalTrigger(hours=int(settings.broker_sync_hours), timezone=tz), id="broker_sync",
+                      max_instances=1, coalesce=True)
     # Einmal pro Woche den Rückblick neu rechnen, damit neue Kurse und Werte einfließen
     sched.add_job(
         lambda: _each_user(storage, settings, lambda st, cfg: cfg.paper_enabled and paper.run_backtest(st, cfg),
@@ -201,3 +216,35 @@ def _paper(storage: Storage, settings: Settings) -> None:
         log.info("Schattendepot: %d Order(s), Wert %.2f", len(res["trades"]), res["equity"])
     except Exception:  # noqa: BLE001
         log.exception("Schattendepot-Lauf fehlgeschlagen")
+
+
+def _brain_train(storage: Storage, settings: Settings) -> None:
+    from . import brain
+
+    jid = storage.job_start("model_train")
+    try:
+        res = brain.run_training(storage, settings)
+        storage.job_finish(jid, "ok", ", ".join(f"{h}: Können {v.get('skill')}" for h, v in res.items()
+                                                if isinstance(v, dict) and "skill" in v)[:400])
+    except Exception as exc:  # noqa: BLE001
+        storage.job_finish(jid, "error", f"{type(exc).__name__}: {exc}")
+        log.exception("Modelltraining fehlgeschlagen")
+
+
+def _brain_daily(storage: Storage, settings: Settings) -> None:
+    from . import brain
+
+    jid = storage.job_start("model_daily")
+    try:
+        with market.fresh_reads():
+            res = brain.daily(storage, settings)
+        storage.job_finish(jid, "ok", f"{res['decisions']} Entscheidungen, {res['evaluated']} bewertet")
+    except Exception as exc:  # noqa: BLE001
+        storage.job_finish(jid, "error", f"{type(exc).__name__}: {exc}")
+        log.exception("Modell-Tageslauf fehlgeschlagen")
+
+
+def _broker_sync(storage: Storage, settings: Settings) -> None:
+    from .routes_portfolio import background_sync
+
+    background_sync(storage, settings)

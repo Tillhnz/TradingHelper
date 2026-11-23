@@ -6,6 +6,7 @@ import { dateTime } from "../fmt.js";
 const JOB_LABEL = {
   morning_report: "Morgenbericht", afternoon_report: "Nachmittagsbericht", alert_check: "Alarmprüfung",
   paper_orders: "Schattendepot-Orders", paper_backtest: "Rückblick", update_watch: "Update-Prüfung",
+  model_train: "Modell lernt", model_daily: "Modell: Entscheidungen festhalten", broker_sync: "Depots abrufen",
 };
 const RUN_STATUS = { ok: ["ok", "erledigt"], warn: ["warn", "mit Problem"], error: ["bad", "Fehler"], running: ["warn", "läuft"] };
 
@@ -54,6 +55,22 @@ function Status() {
           <ul className="muted small plain-list">
             {Object.entries(st.next_runs).map(([k, v]) => <li key={k}>{JOB_LABEL[k] || k}: nächster Lauf {v ? dateTime(v) : "–"}</li>)}
           </ul>
+          {st.data && (
+            <>
+              <h3 className="sub-head">Hintergrunddienst (Kurse, Nachrichten, Makro, Stimmung)</h3>
+              <p className="muted small">
+                {st.data.running ? "läuft" : "aus"} · {st.data.tracked} Werte im Blick · Kurse alle {Math.round(st.data.quote_interval)} s
+                {st.data.store && <> · Speicher: {st.data.store.symbols} Werte, {st.data.store.candles.toLocaleString("de-DE")} Tageskerzen, {(st.data.store.bytes / 1048576).toFixed(1)} MB</>}
+              </p>
+              <ul className="muted small plain-list">
+                {Object.entries(st.data.cycles || {}).map(([k, c]) => (
+                  <li key={k}>{{ quotes: "Kurse", daily: "Tageskerzen", overview: "Übersichten", news: "Nachrichten", social: "Stimmung", macro: "Makrozahlen" }[k] || k}:
+                    {" "}{dateTime(new Date(c.at * 1000).toISOString())} · {c.seconds} s{c.count != null ? ` · ${c.count}` : ""}
+                    {st.data.errors?.[k] && <span className="error"> · {st.data.errors[k].error}</span>}</li>
+                ))}
+              </ul>
+            </>
+          )}
           <h3 className="sub-head">Letzte Berichte</h3>
           <JobRuns runs={st.job_runs} />
         </>
@@ -217,6 +234,11 @@ function Users() {
     try { await navigator.share({ title: "Einladung zu TradeHelper", text: "Hier kannst du dein TradeHelper-Konto anlegen:", url: link }); } catch { /* abgebrochen */ }
   }
 
+  async function reset2fa(u) {
+    if (!window.confirm(`Zwei-Faktor-Anmeldung von ${u.username} zurücksetzen?`)) return;
+    try { await api.post(`/users/${u.id}/reset-2fa`); } catch (e) { setError(e.message); }
+  }
+
   async function removeUser(u) {
     if (!window.confirm(`${u.username} mit Watchlist, Depot, Alarmen und Schattendepot endgültig löschen?`)) return;
     await api.del(`/users/${u.id}`).catch((e) => setError(e.message));
@@ -244,6 +266,7 @@ function Users() {
             <li key={u.id}>
               <strong>{u.username}</strong>
               <span className="muted small">{u.is_admin ? "Admin" : `seit ${dateTime(u.created_at)}`}</span>
+              <button className="link small" onClick={() => reset2fa(u)} title="Handy verloren? Danach richtet die Person die Zwei-Faktor-Anmeldung neu ein.">2FA zurücksetzen</button>
               {!u.is_admin && <button className="link danger small" onClick={() => removeUser(u)}>Löschen</button>}
             </li>
           ))}

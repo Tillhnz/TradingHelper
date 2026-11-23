@@ -1,4 +1,5 @@
 // Rauchtest der Oberfläche mit echten Kursen: meldet JavaScript-Fehler und macht Screenshots (Artefakt "screenshots").
+import { createHmac } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
 
@@ -8,6 +9,23 @@ const json = (r) => r.json().catch(() => ({}));
 
 let token = (await json(await fetch(`${base}/api/auth/setup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "ci", password: "geheim123" }) }))).token;
 if (!token) token = (await json(await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "ci", password: "geheim123" }) }))).token;
+// Zwei-Faktor-Anmeldung ist Pflicht: einrichten (Code wie eine Authenticator-App berechnen)
+function totp(secret) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const ch of secret.replace(/=+$/, "")) bits += alphabet.indexOf(ch).toString(2).padStart(5, "0");
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const step = Buffer.alloc(8);
+  step.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const h = createHmac("sha1", key).update(step).digest();
+  const o = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1000000).padStart(6, "0");
+}
+const auth = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+const s2 = await json(await fetch(`${base}/api/auth/2fa/setup`, { method: "POST", headers: auth, body: "{}" }));
+const en = await json(await fetch(`${base}/api/auth/2fa/enable`, { method: "POST", headers: auth, body: JSON.stringify({ pending: s2.pending, code: totp(s2.secret), remember: true }) }));
+const device = en.device;
+console.log("2fa", !!s2.qr_svg, en.recovery_codes?.length, !!device);
 const H = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 const api = (path, body) => fetch(`${base}/api${path}`, body ? { method: "POST", headers: H, body: JSON.stringify(body) } : { headers: H }).then(json);
 
@@ -36,7 +54,8 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror ${page.url()}: ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") errors.push(`console ${page.url()}: ${m.text()}`); });
 await page.goto(`${base}/login`);
-await page.evaluate((t) => localStorage.setItem("tradehelper_token", t), token);
+await page.screenshot({ path: "shots/login.png" });
+await page.evaluate(([t, d]) => { localStorage.setItem("tradehelper_token", t); localStorage.setItem("tradehelper_device", d || ""); }, [token, device]);
 // Neuerungen-Fenster beim ersten Öffnen: fotografieren und schließen
 await page.goto(`${base}/`);
 await page.waitForTimeout(4000);
@@ -45,11 +64,17 @@ if (await page.getByRole("button", { name: "Alles klar" }).count()) await page.g
 const seenVersion = await page.evaluate(() => localStorage.getItem("tradehelper_seen_version"));
 console.log("whatsnew seen", seenVersion);
 
-for (const [path, name, wait] of [["/", "home", 12000], ["/watchlist", "watchlist", 9000], ["/chart/DE0007164600.GTX", "chart", 9000], ["/depot", "depot", 9000], ["/settings", "settings", 3000]]) {
+for (const [path, name, wait] of [["/", "home", 12000], ["/portfolio", "portfolio", 6000], ["/markt", "markt", 5000],
+  ["/modell", "modell", 3000], ["/watchlist", "watchlist", 9000], ["/chart/DE0007164600.GTX", "chart", 9000], ["/depot", "depot", 9000], ["/settings", "settings", 3000]]) {
   await page.goto(base + path);
   await page.waitForTimeout(wait);
   await page.screenshot({ path: `shots/${name}.png`, fullPage: true });
 }
+await page.evaluate(() => localStorage.setItem("tradehelper_theme", "dark"));
+await page.goto(`${base}/`);
+await page.waitForTimeout(5000);
+await page.screenshot({ path: "shots/home-dark.png", fullPage: true });
+await page.evaluate(() => localStorage.setItem("tradehelper_theme", "light"));
 await page.goto(`${base}/chart/AAPL`);
 await page.waitForTimeout(8000);
 await page.screenshot({ path: "shots/chart-top.png" });

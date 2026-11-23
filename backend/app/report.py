@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import analysis, entry, market, news, notify, portfolio
+from . import analysis, entry, market, news, notify, portfolio, snapshot
 from .config import Settings
 from .storage import Storage
 
@@ -123,12 +123,13 @@ def build_report(storage: Storage, settings: Settings) -> Report:
         lots.setdefault(p["symbol"], []).append(p)
     entries: list[ReportEntry] = []
     errors: dict[str, str] = {}
+    watch = storage.watchlist()
+    market.ensure_fresh([w["symbol"] for w in watch])
 
     def one(w) -> tuple[str, ReportEntry | None, str | None]:
         sym = w["symbol"]
         try:
-            df = market.get_history(sym, profile.period, "1d", currency=target)
-            a = analysis.analyze(sym, df, profile)
+            df, a, _ = snapshot.technical(sym, profile, target)
             items = news.collect(sym, settings, w.get("name"))
             rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
             native = w.get("currency")
@@ -146,7 +147,7 @@ def build_report(storage: Storage, settings: Settings) -> Report:
 
     # Mehrere Werte gleichzeitig (Nachrichten kommen von vielen Quellen); onvista drosselt gettex.py selbst
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for sym, e, err in pool.map(one, storage.watchlist()):
+        for sym, e, err in pool.map(one, watch):
             if e:
                 entries.append(e)
             else:

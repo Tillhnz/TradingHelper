@@ -5,14 +5,21 @@ import { api } from "../api.js";
 import WhatsNew from "./WhatsNew.jsx";
 import { useMode } from "../mode.js";
 import GlobalSearch from "./GlobalSearch.jsx";
+import Icon from "./Icon.jsx";
+import { loadTheme, resolvedTheme, saveTheme } from "../theme.js";
 
+// Hauptmenü in zwei ruhigen Gruppen. „short“ = Beschriftung in der Handy-Leiste, mobile=false = nur am Computer
 const NAV = [
-  { to: "/", label: "Übersicht", end: true, icon: "M3 11 L12 4 L21 11 V20 H14 V14 H10 V20 H3 Z" },
-  { to: "/watchlist", label: "Meine Werte", short: "Werte", icon: "M12 3 L14.6 8.6 L20.8 9.3 L16.2 13.5 L17.5 19.6 L12 16.5 L6.5 19.6 L7.8 13.5 L3.2 9.3 L9.4 8.6 Z" },
-  { to: "/charts", label: "Charts", icon: "M4 20 V4 M4 20 H20 M7 15 L11 10 L14 13 L19 7 M16 7 H19 V10" },
-  { to: "/depot", label: "Depot", icon: "M3 7 H21 V19 H3 Z M3 11 H21 M8 7 V5 H16 V7 M7 15 H11" },
-  { to: "/alerts", label: "Alarme", icon: "M6 17 V11 A6 6 0 0 1 18 11 V17 L20 19 H4 Z M10 21 H14" },
-  { to: "/settings", label: "Einstellungen", short: "Setup", icon: "M12 9 A3 3 0 1 0 12.01 9 M12 3 V5 M12 19 V21 M3 12 H5 M19 12 H21 M5.6 5.6 L7 7 M17 17 L18.4 18.4 M18.4 5.6 L17 7 M7 17 L5.6 18.4" },
+  { to: "/", label: "Übersicht", end: true, icon: "grid", short: "Start" },
+  { to: "/portfolio", label: "Portfolio", icon: "pie" },
+  { to: "/watchlist", label: "Meine Werte", short: "Werte", icon: "star" },
+  { to: "/markt", label: "Markt", icon: "globe" },
+  { to: "/modell", label: "Modell", icon: "brain", mobile: false },
+  { group: "Werkzeuge" },
+  { to: "/charts", label: "Charts", icon: "activity", mobile: false },
+  { to: "/depot", label: "Käufe & Blöcke", short: "Käufe", icon: "briefcase", mobile: false },
+  { to: "/alerts", label: "Alarme", icon: "bell" },
+  { to: "/settings", label: "Einstellungen", short: "Setup", icon: "sliders", mobile: false },
 ];
 
 export function ModeSwitch() {
@@ -22,6 +29,34 @@ export function ModeSwitch() {
       <button className={mode === "simple" ? "on" : ""} onClick={() => setMode("simple")} title="Übersichtlich, ohne Fachdetails">Einfach</button>
       <button className={mode === "pro" ? "on" : ""} onClick={() => setMode("pro")} title="Kerzen, Indikatoren und Kennzahlen">Profi</button>
     </div>
+  );
+}
+
+export function ThemeSwitch() {
+  const [pref, setPref] = useState(loadTheme);
+  const pick = (p) => { setPref(p); saveTheme(p); };
+  return (
+    <div className="seg" role="group" aria-label="Farbmodus">
+      {[["light", "Hell"], ["dark", "Dunkel"], ["system", "System"]].map(([k, l]) => (
+        <button key={k} className={pref === k ? "on" : ""} onClick={() => pick(k)}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+function ThemeToggle() {
+  const [t, setT] = useState(() => resolvedTheme());
+  useEffect(() => {
+    const fn = (e) => setT(e.detail);
+    window.addEventListener("th-theme", fn);
+    return () => window.removeEventListener("th-theme", fn);
+  }, []);
+  const next = t === "dark" ? "light" : "dark";
+  return (
+    <button className="btn ghost icon-only theme-toggle" onClick={() => saveTheme(next)} title={next === "dark" ? "Dunkel" : "Hell"}
+      aria-label={next === "dark" ? "Dunklen Modus einschalten" : "Hellen Modus einschalten"}>
+      <Icon name={t === "dark" ? "sun" : "moon"} />
+    </button>
   );
 }
 
@@ -48,7 +83,8 @@ export default function Shell({ user, onLogout, children }) {
   }, [user.is_admin]);
 
   useEffect(() => {
-    const hit = [...NAV].reverse().find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)));
+    const items = NAV.filter((n) => n.to);
+    const hit = [...items].reverse().find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)));
     if (!pathname.startsWith("/chart")) {
       document.title = pathname.startsWith("/admin") ? "Administration · TradeHelper" : hit ? `${hit.label} · TradeHelper` : "TradeHelper";
     }
@@ -66,17 +102,16 @@ export default function Shell({ user, onLogout, children }) {
           TradeHelper
         </NavLink>
         <nav aria-label="Hauptmenü" className="nav">
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} title={n.label}>
-              <svg viewBox="0 0 24 24" className="nav-icon" aria-hidden="true" focusable="false"><path d={n.icon} /></svg>
+          {NAV.map((n) => (n.group ? <div key={n.group} className="nav-group">{n.group}</div> : (
+            <NavLink key={n.to} to={n.to} end={n.end} title={n.label} className={n.mobile === false ? "mobile-hide" : ""}>
+              <Icon name={n.icon} className="nav-icon" />
               <span className="nav-label">{n.label}</span>
               {n.short && <span className="nav-short" aria-hidden="true">{n.short}</span>}
             </NavLink>
-          ))}
+          )))}
         </nav>
         <div className="sidebar-foot">
-          <ModeSwitch />
-          <span className="muted small">Angemeldet als {user.username}</span>
+          <span className="muted small">{user.username}{user.two_factor && <span title="Zwei-Faktor-Anmeldung aktiv"> · <Icon name="shield" /></span>}</span>
           {user.is_admin && <NavLink className="link small" to="/admin">Administration</NavLink>}
           <button className="link small" onClick={onLogout}>Abmelden</button>
           {ver && (
@@ -93,14 +128,16 @@ export default function Shell({ user, onLogout, children }) {
             <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 17 L9 11 L13 15 L21 7 M15 7 H21 V13" /></svg></span>
           </NavLink>
           <GlobalSearch />
-          <div className="topbar-right compact-only">
+          <div className="topbar-right">
             <ModeSwitch />
-            {ver?.update_available && user.is_admin && <NavLink className="update-hint" to="/admin">Update</NavLink>}
+            <ThemeToggle />
+            <NavLink to="/settings" className="btn ghost icon-only mobile-only" aria-label="Einstellungen"><Icon name="sliders" /></NavLink>
+            {ver?.update_available && user.is_admin && <NavLink className="update-hint compact-only" to="/admin">Update</NavLink>}
           </div>
         </div>
         <div className="page" key={pathname}>{children}</div>
         <footer className="disclaimer muted small">
-          Regelbasierte, automatisch erzeugte Einschätzungen – keine Anlageberatung.
+          Automatisch erzeugte Einschätzungen aus Regeln und einem lernenden Modell – keine Anlageberatung.
           <span className="compact-only">{user.is_admin && <> · <NavLink to="/admin">Administration</NavLink></>} · <button className="link small" onClick={onLogout}>Abmelden</button></span>
         </footer>
         {user.is_admin && <UpdateToast />}

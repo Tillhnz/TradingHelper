@@ -4,6 +4,7 @@ import { bollinger, ema, indicatorTitle, INDICATORS, macd, rsi, sma } from "../i
 import { money, pct, signedMoney } from "../fmt.js";
 import { buyTimestamp, PositionBox, sellTimestamp } from "./positionBox.js";
 import { baseOptions, COLORS } from "./PriceChart.jsx";
+import { alpha } from "../theme.js";
 
 /**
  * Verschieben/Zoomen. Senkrechtes Wischen bleibt beim Seiten-Scrollen (sonst „klebt“ die Seite am Chart);
@@ -65,8 +66,8 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     } else if (type === "line") {
       price = main.addLineSeries({ color: COLORS.up, lineWidth: 2 });
     } else {
-      price = main.addAreaSeries({ lineColor: COLORS.up, lineWidth: 2, topColor: "rgba(111, 211, 195, 0.25)",
-        bottomColor: "rgba(17, 27, 38, 0)" });
+      price = main.addAreaSeries({ lineColor: COLORS.up, lineWidth: 2, topColor: alpha("up", 0.25),
+        bottomColor: "rgba(0, 0, 0, 0)" });
     }
     price.setData(rows.map((r) => (ohlc ? { time: r.time, open: r.open, high: r.high, low: r.low, close: r.close }
       : { time: r.time, value: r.close })));
@@ -109,7 +110,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
         const v = main.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, ...thin });
         main.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
         v.setData(rows.map((r) => ({ time: r.time, value: r.volume || 0,
-          color: r.close >= r.open ? "rgba(111, 211, 195, 0.35)" : "rgba(255, 107, 107, 0.35)" })));
+          color: r.close >= r.open ? alpha("up", 0.35) : alpha("down", 0.35) })));
       }
     }
     for (const ind of indicators.filter((i) => INDICATORS[i.kind]?.pane === "sub")) {
@@ -128,7 +129,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
         const m = macd(closes, p.fast || 12, p.slow || 26, p.signal || 9);
         const h = c.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
         h.setData(rows.map((r, i) => (m.hist[i] === null ? { time: r.time }
-          : { time: r.time, value: m.hist[i], color: m.hist[i] >= 0 ? "rgba(111, 211, 195, 0.5)" : "rgba(255, 107, 107, 0.5)" })));
+          : { time: r.time, value: m.hist[i], color: m.hist[i] >= 0 ? alpha("up", 0.5) : alpha("down", 0.5) })));
         c.addLineSeries({ ...thin, color: ind.color, lineWidth: 2, title: indicatorTitle(ind) }).setData(series(rows, m.line));
         c.addLineSeries({ ...thin, color: COLORS.signal, lineWidth: 1, lastValueVisible: false }).setData(series(rows, m.signal));
       }
@@ -170,12 +171,12 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       if (!preview) preview = {};
       const at = b || a;
       if (!preview.line) {
-        preview.line = price.createPriceLine({ price: at.price, color: "#ffffff", lineWidth: 1, lineStyle: LineStyle.Dashed,
+        preview.line = price.createPriceLine({ price: at.price, color: COLORS.ink, lineWidth: 1, lineStyle: LineStyle.Dashed,
           axisLabelVisible: true, title: "" });
       } else preview.line.applyOptions({ price: at.price });
       if (kind === "hline" || !b) return;
       if (!preview.series) {
-        preview.series = main.addLineSeries({ color: "#ffffff", lineWidth: 2, lineStyle: LineStyle.Dashed, priceLineVisible: false,
+        preview.series = main.addLineSeries({ color: COLORS.ink, lineWidth: 2, lineStyle: LineStyle.Dashed, priceLineVisible: false,
           lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
       }
       const [p1, p2] = a.time <= b.time ? [a, b] : [b, a];
@@ -319,7 +320,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       }
     }
     if (pending) {
-      addLine({ price: pending.price, color: "#ffffff", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "Punkt 1" });
+      addLine({ price: pending.price, color: COLORS.ink, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "Punkt 1" });
     }
     return () => {
       if (state.current.price !== price) return; // Chart wurde schon neu gebaut

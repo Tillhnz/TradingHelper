@@ -23,6 +23,7 @@ def client(tmp_path, monkeypatch, uptrend):
     settings.scheduler_enabled = False
     settings.updater_url = ""
     settings.secret_key = "test-secret"
+    settings.require_2fa = False  # eigene Tests für die Pflicht-2FA: test_twofa.py
     main._fails.clear()
     main._REPORT_CACHE.clear()
     main._LAST_REPORT.clear()

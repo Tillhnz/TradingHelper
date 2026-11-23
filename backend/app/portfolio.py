@@ -59,9 +59,9 @@ def evaluate(pos: dict, profile: analysis.Profile) -> dict:
     out["closed"] = False
     hints: list[dict] = []
     try:
-        df = market.get_history(pos["symbol"], profile.period, "1d", currency=pos.get("currency") or None)
-        a = analysis.analyze(pos["symbol"], df, profile)
-        rec = analysis.recommend(a, None)
+        from . import snapshot
+
+        df, a, rec = snapshot.technical(pos["symbol"], profile, pos.get("currency") or None)
     except Exception as exc:  # noqa: BLE001
         out.update(price=None, value=None, pl=None, pl_pct=None, hints=[], error=str(exc))
         return out

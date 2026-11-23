@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart, LineStyle } from "lightweight-charts";
 import { finePointer, LockButton } from "./PriceChart.jsx";
+import { alpha, C, FONT } from "../theme.js";
 
 /** Gewinn/Verlust über die Zeit: Fläche über null grün, darunter rot. Gesperrt, bis man entsperrt. */
 /** lines: weitere Vergleichslinien [{ points, color, title }]. */
@@ -21,18 +22,18 @@ export default function PnlChart({ points, height = 260, lines = null }) {
     if (!points?.length) return undefined;
     const chart = createChart(ref.current, {
       autoSize: true,
-      layout: { background: { color: "rgba(0, 0, 0, 0)" }, textColor: "#8d9eb0", fontFamily: "Barlow, system-ui, sans-serif" },
-      grid: { vertLines: { color: "#1b2a3a" }, horzLines: { color: "#1b2a3a" } },
-      rightPriceScale: { borderColor: "#263749" },
-      timeScale: { borderColor: "#263749" },
+      layout: { background: { color: "rgba(0, 0, 0, 0)" }, textColor: C.text, fontFamily: FONT },
+      grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
+      rightPriceScale: { borderColor: C.line },
+      timeScale: { borderColor: C.line },
       handleScroll: { mouseWheel: false, pressedMouseMove: finePointer(), horzTouchDrag: false, vertTouchDrag: false },
       handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: finePointer() },
     });
     chartRef.current = chart;
     const s = chart.addBaselineSeries({
       baseValue: { type: "price", price: 0 },
-      topLineColor: "#6fd3c3", topFillColor1: "rgba(111, 211, 195, 0.35)", topFillColor2: "rgba(111, 211, 195, 0.04)",
-      bottomLineColor: "#ff6b6b", bottomFillColor1: "rgba(255, 107, 107, 0.04)", bottomFillColor2: "rgba(255, 107, 107, 0.35)",
+      topLineColor: C.up, topFillColor1: alpha("up", 0.35), topFillColor2: alpha("up", 0.04),
+      bottomLineColor: C.down, bottomFillColor1: alpha("down", 0.04), bottomFillColor2: alpha("down", 0.35),
       lineWidth: 2, priceLineVisible: false,
     });
     s.setData(points);
@@ -42,7 +43,7 @@ export default function PnlChart({ points, height = 260, lines = null }) {
         priceLineVisible: false, lastValueVisible: false, title: l.title || "" });
       ls.setData(l.points);
     }
-    s.createPriceLine({ price: 0, color: "#5d7389", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false });
+    s.createPriceLine({ price: 0, color: C.neutral, lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false });
     chart.timeScale().fitContent();
     return () => { chart.remove(); chartRef.current = null; };
   }, [points, lines]);
