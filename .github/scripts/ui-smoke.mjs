@@ -307,18 +307,25 @@ console.log("report modal", JSON.stringify(await page.evaluate(() => ({
 }))));
 await page.keyboard.press("Escape");
 
-// Startseite anpassen: Beträge verbergen, Nachrichten ausblenden
-await page.getByRole("button", { name: "Startseite anpassen" }).click();
+// Startseite anpassen: Bausteine bearbeiten, Mini-Chart hinzufügen, Beträge verbergen
+await page.getByRole("button", { name: "Anpassen" }).click();
 await page.waitForTimeout(800);
-await page.screenshot({ path: "shots/home-layout.png" });
-await page.locator(".layout-list li", { hasText: "Nachrichten" }).locator(".switch span").click();
-await page.locator(".layout-private .switch span").click();
-await page.getByRole("button", { name: /Speichern/ }).click();
-await page.waitForTimeout(1500);
+await page.screenshot({ path: "shots/home-edit.png" });
+await page.getByRole("button", { name: "Nachrichten zu deinen Werten entfernen" }).click();
+await page.getByRole("button", { name: "Baustein", exact: false }).first().click();
+await page.waitForTimeout(500);
+await page.screenshot({ path: "shots/home-gallery.png" });
+await page.getByRole("button", { name: /Mini-Chart/ }).click();
+await page.getByLabel("Wert suchen").fill("SAP");
+await page.waitForTimeout(4000);
+await page.getByRole("button", { name: "Hinzufügen" }).first().click();
+await page.getByLabel("Beträge verbergen").check();
+await page.getByRole("button", { name: /Fertig/ }).click();
+await page.waitForTimeout(4000);
 console.log("home layout", JSON.stringify(await page.evaluate(() => ({
-  news: !!document.querySelector(".news-grid"), tiles: [...document.querySelectorAll(".summary-tile strong")].map((x) => x.textContent),
+  widgets: [...document.querySelectorAll(".wgrid > .w .wtitle, .wgrid > .w .home-greet")].map((x) => x.textContent),
 }))));
-await page.screenshot({ path: "shots/home-private.png" });
+await page.screenshot({ path: "shots/home-private.png", fullPage: true });
 
 // Unternehmensdaten einer Aktie (SAP)
 console.log("fundamentals SAP", JSON.stringify(await api("/fundamentals/DE0007164600.GTX")).slice(0, 600));
