@@ -2,7 +2,8 @@
 FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+# npm install statt npm ci: neue Pakete aus package.json kommen dazu, auch wenn die Sperrdatei noch älter ist
+RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 

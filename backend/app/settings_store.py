@@ -47,13 +47,32 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "app_url": ("url_or_empty", "general", False),
     "update_notify": ("bool", "general", False),
     "home_layout": ("home_layout", "home", False),
+    "require_2fa": ("bool", "security", False),
+    "trusted_device_days": ("int:1:365", "security", False),
+    "social_enabled": ("bool", "data", False),
+    "reddit_client_id": ("str:100", "data", True),
+    "reddit_client_secret": ("str:200", "data", True),
+    "bluesky_handle": ("str:100", "data", False),
+    "bluesky_app_password": ("str:100", "data", True),
+    "fred_api_key": ("str:100", "data", True),
+    "model_enabled": ("bool", "model", False),
+    "model_time": ("time", "model", False),
+    "model_weight_max": ("float:0:1", "model", False),
 }
-# Bausteine der Startseite (Reihenfolge = Standard)
-HOME_WIDGETS = ["setup", "tiles", "important", "assets", "news", "alerts"]
+# Bausteine der Startseite (frei anordnen, Größe wählen; „chart“ darf mehrfach vorkommen)
+HOME_TYPES = ["greeting", "portfolio", "allocation", "today", "watchlist", "movers", "markets", "macro", "mood",
+              "model", "review", "news", "market_news", "alerts", "shadow", "setup", "chart"]
+HOME_SIZES = ["s", "m", "l", "xl"]
+HOME_DEFAULT = [("setup", "xl"), ("greeting", "xl"), ("portfolio", "l"), ("markets", "s"), ("today", "l"),
+                ("mood", "s"), ("watchlist", "xl"), ("model", "m"), ("macro", "m"), ("news", "m"),
+                ("market_news", "m"), ("review", "m"), ("alerts", "m")]
+HOME_WIDGETS = ["setup", "tiles", "important", "assets", "news", "alerts"]  # altes Format (bis 0.20)
+_OLD_TO_NEW = {"setup": ("setup", "xl"), "tiles": ("portfolio", "l"), "important": ("today", "xl"),
+               "assets": ("watchlist", "xl"), "news": ("news", "m"), "alerts": ("alerts", "m")}
 # Diese Einstellungen hat jeder Nutzer für sich
 USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
              "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency", "home_layout"}
-SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone"}
+SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "model_time", "model_enabled"}
 
 
 class SettingError(ValueError):
@@ -61,7 +80,8 @@ class SettingError(ValueError):
 
 
 def _home_layout(raw) -> str:
-    """{"order": [...], "hidden": [...], "private": bool} – unbekannte Bausteine fliegen raus, fehlende kommen ans Ende."""
+    """{"v": 2, "widgets": [{"id", "type", "size", "config"}], "private": bool}. Das alte Format (order/hidden)
+    wird umgewandelt; unbekannte Bausteine fliegen raus."""
     import json
 
     if raw in (None, ""):
@@ -72,10 +92,38 @@ def _home_layout(raw) -> str:
         raise SettingError("Ungültiges Startseiten-Layout") from exc
     if not isinstance(data, dict):
         raise SettingError("Ungültiges Startseiten-Layout")
-    order = [w for w in data.get("order") or [] if w in HOME_WIDGETS]
-    order = list(dict.fromkeys(order)) + [w for w in HOME_WIDGETS if w not in order]
-    hidden = sorted({w for w in data.get("hidden") or [] if w in HOME_WIDGETS})
-    return json.dumps({"order": order, "hidden": hidden, "private": bool(data.get("private"))}, separators=(",", ":"))
+    if "widgets" not in data and "order" in data:  # altes Format
+        hidden = set(data.get("hidden") or [])
+        widgets = [{"id": f"w{i}", "type": _OLD_TO_NEW[w][0], "size": _OLD_TO_NEW[w][1]}
+                   for i, w in enumerate(data.get("order") or []) if w in _OLD_TO_NEW and w not in hidden]
+    else:
+        widgets = data.get("widgets") or []
+    if not isinstance(widgets, list) or len(widgets) > 40:
+        raise SettingError("Höchstens 40 Bausteine")
+    out, ids, types = [], set(), set()
+    for i, w in enumerate(widgets):
+        if not isinstance(w, dict) or w.get("type") not in HOME_TYPES:
+            continue
+        t = w["type"]
+        if t != "chart" and t in types:
+            continue  # jeden Baustein (außer Mini-Chart) nur einmal
+        wid = str(w.get("id") or f"w{i}")[:24]
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,24}", wid) or wid in ids:
+            wid = f"w{i}x{len(ids)}"
+        cfg = {}
+        if t == "chart":
+            sym = str((w.get("config") or {}).get("symbol") or "").strip().upper()
+            if not re.fullmatch(r"[A-Z0-9^=.\-]{1,30}", sym):
+                continue
+            cfg["symbol"] = sym
+            period = (w.get("config") or {}).get("period")
+            if period in ("1mo", "3mo", "6mo", "1y", "5y"):
+                cfg["period"] = period
+        size = w.get("size") if w.get("size") in HOME_SIZES else "m"
+        out.append({"id": wid, "type": t, "size": size, **({"config": cfg} if cfg else {})})
+        ids.add(wid)
+        types.add(t)
+    return json.dumps({"v": 2, "widgets": out, "private": bool(data.get("private"))}, separators=(",", ":"))
 
 
 def coerce(key: str, raw):

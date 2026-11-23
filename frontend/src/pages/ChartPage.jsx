@@ -10,6 +10,7 @@ import Icon from "../components/Icon.jsx";
 import { BAR_SECONDS, INTRADAY, intervalsFor, PERIOD_LABEL, periodsFor, pickPeriod } from "../intervals.js";
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
+import { ModelCard, SocialCard } from "../components/InsightCards.jsx";
 import PriceChart, { CHART_TYPES } from "../components/PriceChart.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading, Stat } from "../components/ui.jsx";
@@ -17,6 +18,7 @@ import { CURRENCY_LABEL, money, num, pct, signed, tone } from "../fmt.js";
 import { since, useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { ACTION_UI, displayName, displayTicker } from "../texts.js";
+import { alpha, C } from "../theme.js";
 
 const RANGES = [
   { id: "1d", label: "1 T", period: "1d", interval: "5m" },
@@ -30,7 +32,7 @@ const RANGES = [
 const TYPE_KEY = "tradehelper_chart_type";
 const loadType = () => { try { return localStorage.getItem(TYPE_KEY) || null; } catch { return null; } };
 const REFRESH_MS = 60 * 1000;
-const KIND_COLOR = { pullback: "#6fd3c3", breakout: "#f2b84b", rebound: "#ff9f6b", now: "#6fd3c3" };
+const KIND_COLOR = { get pullback() { return C.up; }, get breakout() { return C.amber; }, get rebound() { return C.orange; }, get now() { return C.up; } };
 const KIND_TITLE = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound", now: "Einstieg" };
 
 function freshness(meta) {
@@ -114,16 +116,16 @@ export default function ChartPage() {
   const planLines = useMemo(() => {
     if (!analysis || !showPlan) return [];
     const lines = pro ? [
-      { price: analysis.support, color: "rgba(111, 211, 195, 0.45)", title: "Unterstützung", style: 2 },
-      { price: analysis.resistance, color: "rgba(255, 107, 107, 0.45)", title: "Widerstand", style: 2 },
+      { price: analysis.support, color: alpha("up", 0.45), title: "Unterstützung", style: 2 },
+      { price: analysis.resistance, color: alpha("down", 0.45), title: "Widerstand", style: 2 },
     ] : [];
     if (!analysis.entry) return lines;
     const ok = analysis.entry.setups.filter((x) => x.ok);
     ok.forEach((x) => { if (x.kind !== "now") lines.push({ price: x.entry, color: KIND_COLOR[x.kind], title: KIND_TITLE[x.kind], width: 2, style: 0 }); });
     const best = ok.find((x) => x.status === "now") || [...ok].sort((a, b) => Math.abs(a.distance_pct) - Math.abs(b.distance_pct))[0];
     if (best && !(holding?.summary?.shares > 0)) {
-      lines.push({ price: best.stop, color: "#ff6b6b", title: "Stopp", style: 3 });
-      if (best.target) lines.push({ price: best.target, color: "#6fd3c3", title: "Ziel", style: 3 });
+      lines.push({ price: best.stop, color: C.down, title: "Stopp", style: 3 });
+      if (best.target) lines.push({ price: best.target, color: C.up, title: "Ziel", style: 3 });
     }
     return lines;
   }, [analysis, showPlan, pro, holding]);
@@ -229,7 +231,9 @@ export default function ChartPage() {
         {holding?.items?.length > 0 && <a href="#bestand"><Icon name="briefcase" /> Bestand</a>}
         {analysis && <a href="#plan"><Icon name="target" /> Einstieg</a>}
         <a href="#firma"><Icon name="building" /> Unternehmen</a>
+        {analysis && <a href="#modell"><Icon name="brain" /> Modell</a>}
         {analysis && <a href="#news"><Icon name="news" /> News</a>}
+        <a href="#stimmung"><Icon name="message" /> Stimmung</a>
       </nav>
 
       <div className="stock-layout">
@@ -251,6 +255,7 @@ export default function ChartPage() {
         </section>
       )}
 
+      {analysis && <ModelCard model={analysis.model} />}
       <div id="ausbruch" className="anchor"><BreakoutMeter bo={analysis?.breakout} currency={cur} /></div>
       <div id="bestand" className="anchor" />
       <HoldingPanel holding={holding} onChanged={refreshAll} onBuyMore={() => setBuying(true)} onSell={(id) => setSelling({ id })} />
@@ -299,10 +304,10 @@ export default function ChartPage() {
             showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} currency={cur} />
         )}
         <p className="legend small">
-          {showEvents && <><span className="arrow" style={{ color: "#38bdf8" }}>▲</span>Kaufsignal <span className="arrow" style={{ color: "#e879f9" }}>▼</span>Verkaufssignal</>}
-          {showPlan && <><span className="dot" style={{ background: "#6fd3c3" }} />Rücksetzer-Einstieg <span className="dot" style={{ background: "#f2b84b" }} />Ausbruch</>}
-          {positions.length > 0 && <><span className="swatch gain" />Chance bis Ziel <span className="swatch loss" />Risiko bis Stopp <span className="dot" style={{ background: "#f2b84b" }} />dein Kaufkurs</>}
-          {pro && showSma && <><span className="dot" style={{ background: "#f2b84b" }} />SMA 20 <span className="dot" style={{ background: "#7aa7ff" }} />SMA 50 <span className="dot" style={{ background: "#c792ea" }} />SMA 200</>}
+          {showEvents && <><span className="arrow" style={{ color: C.buySig }}>▲</span>Kaufsignal <span className="arrow" style={{ color: C.sellSig }}>▼</span>Verkaufssignal</>}
+          {showPlan && <><span className="dot" style={{ background: C.up }} />Rücksetzer-Einstieg <span className="dot" style={{ background: C.amber }} />Ausbruch</>}
+          {positions.length > 0 && <><span className="swatch gain" />Chance bis Ziel <span className="swatch loss" />Risiko bis Stopp <span className="dot" style={{ background: C.amber }} />dein Kaufkurs</>}
+          {pro && showSma && <><span className="dot" style={{ background: C.amber }} />SMA 20 <span className="dot" style={{ background: C.sma50 }} />SMA 50 <span className="dot" style={{ background: C.sma200 }} />SMA 200</>}
         </p>
       </section>
 
@@ -348,6 +353,8 @@ export default function ChartPage() {
               </div>
             </div>
           </details>
+
+          <SocialCard symbol={symbol} />
 
           <section className="panel" id="news">
             <div className="panel-head">

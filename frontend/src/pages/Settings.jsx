@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { api, setToken } from "../api.js";
 import { ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime } from "../fmt.js";
-import { ModeSwitch } from "../components/Shell.jsx";
+import { ModeSwitch, ThemeSwitch } from "../components/Shell.jsx";
+import SecurityPanel from "../components/SecurityPanel.jsx";
 
 const GROUPS = [
   {
@@ -64,6 +65,38 @@ const GROUPS = [
       alert_end_hour: { label: "Bis (Uhr)", type: "hour", hint: "kleiner als „Von“ = über Mitternacht" },
       alert_weekends: { label: "Auch am Wochenende (Krypto)", type: "bool" },
       alert_cooldown_minutes: { label: "Pause nach Auslösung (Minuten)", type: "number", hint: "derselbe Alarm meldet sich frühestens danach wieder" },
+    },
+  },
+  {
+    id: "model",
+    title: "Lernendes Modell",
+    intro: "Das Modell lernt jede Nacht aus Kursen, Marktumfeld, Konjunktur und Stimmung und prüft seine eigenen Entscheidungen. Es zählt neben den Regeln nur so stark, wie es auf ungesehenen Daten nachweislich besser war – höchstens mit dem eingestellten Anteil. Käufe brauchen immer zusätzlich die Zustimmung der Regeln.",
+    fields: {
+      model_enabled: { label: "Modell verwenden und nachts neu lernen", type: "bool" },
+      model_time: { label: "Lernen um", type: "time", hint: "dauert je nach Zahl der Werte einige Minuten" },
+      model_weight_max: { label: "Höchstens so viel Gewicht neben den Regeln", type: "number", hint: "0 bis 1, z. B. 0.6 = 60 %" },
+    },
+  },
+  {
+    id: "data",
+    title: "Datenquellen: Stimmung im Netz",
+    intro: "StockTwits und Wikipedia-Aufrufe laufen ohne Schlüssel. Bluesky wird mit einem App-Passwort (Bluesky → Einstellungen → App-Passwörter) zuverlässig. Reddit erlaubt seit Mai 2026 nur angemeldete Apps: Client-ID und Secret einer eigenen „script“-App eintragen. Konjunkturzahlen (EZB, Eurostat, FRED, Weltbank) brauchen keinen Schlüssel.",
+    fields: {
+      social_enabled: { label: "Stimmung aus sozialen Netzwerken einbeziehen", type: "bool" },
+      bluesky_handle: { label: "Bluesky-Handle", hint: "z. B. name.bsky.social" },
+      bluesky_app_password: { label: "Bluesky-App-Passwort", hint: "optional" },
+      reddit_client_id: { label: "Reddit Client-ID", hint: "optional" },
+      reddit_client_secret: { label: "Reddit Secret", hint: "optional" },
+      fred_api_key: { label: "FRED-Schlüssel", hint: "optional, nicht nötig" },
+    },
+  },
+  {
+    id: "security",
+    title: "Sicherheit (alle Nutzer)",
+    intro: "Gilt für alle Konten auf diesem Server.",
+    fields: {
+      require_2fa: { label: "Zwei-Faktor-Anmeldung für alle Pflicht", type: "bool" },
+      trusted_device_days: { label: "Gemerkte Geräte gelten … Tage", type: "number" },
     },
   },
   {
@@ -263,6 +296,10 @@ export default function Settings() {
       <section className="panel">
         <h2>Ansicht</h2>
         <div className="mode-row">
+          <ThemeSwitch />
+          <p className="muted small"><strong>Hell</strong>, <strong>Dunkel</strong> oder wie das Betriebssystem (<strong>System</strong>).</p>
+        </div>
+        <div className="mode-row">
           <ModeSwitch />
           <p className="muted small">
             <strong>Einfach</strong> zeigt eine klare Kurslinie, die Einschätzung in Alltagssprache und die wichtigsten Marken.
@@ -309,6 +346,7 @@ export default function Settings() {
       {msg && <p className="ok" role="status">{msg}</p>}
       <ErrorText error={error} />
 
+      <SecurityPanel />
       <Password />
     </>
   );

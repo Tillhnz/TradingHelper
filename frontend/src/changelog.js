@@ -3,6 +3,20 @@
 
 export const CHANGELOG = [
   {
+    version: "2.0.0",
+    date: "23.11.2026",
+    title: "TradeHelper 2: neu gedacht",
+    items: [
+      "Neues, ruhiges Design mit hellem und dunklem Modus (Einstellungen → Ansicht) und neuen Schriften.",
+      "Startseite selbst gestalten: „Anpassen“ antippen, Bausteine hinzufügen, verschieben und in der Größe ändern – z. B. Vermögen, Märkte, Konjunktur, Stimmung, Modell oder Mini-Charts einzelner Werte.",
+      "Viel schneller: Kurse liegen jetzt dauerhaft auf dem Server und werden im Hintergrund aktuell gehalten. Seiten antworten in unter zwei Sekunden, auch direkt nach einem Neustart.",
+      "Gesamtportfolio: Depots von Consorsbank, Commerzbank, finanzen.net zero und anderen per CSV- oder PDF-Upload (doppelte Käufe werden erkannt). Alle Depots zusammen mit Aufteilung nach Depot, Anlageart und Land.",
+      "Zwei-Faktor-Anmeldung mit Authenticator-App, Wiederherstellungscodes und „Gerät merken“.",
+      "Selbstlernendes Modell: lernt aus Kursen, Marktumfeld, Konjunkturzahlen, Nachrichten und sozialen Netzwerken, prüft jede Nacht seine eigenen Entscheidungen („Wäre Verkaufen besser gewesen?“) und bekommt nur so viel Gewicht, wie es nachweislich kann.",
+      "Neue Seite „Markt“: Indizes, Rohstoffe, Konjunktur (EZB, Eurostat, FRED, Weltbank) und Stimmung (Fear & Greed, StockTwits, Bluesky, Reddit, Wikipedia-Aufmerksamkeit).",
+    ],
+  },
+  {
     version: "0.20.1",
     date: "14.11.2026",
     title: "Besser auf dem Laptop",

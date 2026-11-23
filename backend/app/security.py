@@ -36,8 +36,13 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def create_token(user_id: int, token_version: int, secret: str, days: int = TOKEN_DAYS) -> str:
-    payload = _b64(json.dumps({"sub": user_id, "tv": token_version, "exp": int(time.time()) + days * 86400}).encode())
+def create_token(user_id: int, token_version: int, secret: str, days: int = TOKEN_DAYS, purpose: str | None = None,
+                 seconds: int | None = None) -> str:
+    """Anmelde-Token. Mit purpose (z. B. "2fa") ist es nur für diesen Zweck gültig, nie als normale Anmeldung."""
+    body = {"sub": user_id, "tv": token_version, "exp": int(time.time()) + (seconds if seconds else days * 86400)}
+    if purpose:
+        body["p"] = purpose
+    payload = _b64(json.dumps(body).encode())
     sig = _b64(hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest())
     return f"{payload}.{sig}"
 

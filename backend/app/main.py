@@ -10,33 +10,25 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from datetime import date
 
-from . import __version__, alerts, analysis, entry, events, fundamentals, gettex, indicators, learn, market, news, notify, paper, portfolio, scheduler
+from . import __version__, alerts, analysis, entry, events, fundamentals, gettex, indicators, learn, market, marketstore, news, notify, paper, portfolio, refresher, scheduler, snapshot
 from . import settings_store
 from . import updater_client
 from .config import Settings
 from .config import settings as base_settings
 from .report import build_report, send_report
-from .security import create_token, hash_password, read_token, verify_password
+from .security import create_token, hash_password, verify_password
 from .storage import Storage
+from .deps import (_fail, _fails, _rate_limit, admin_only, auth, current_user, get_storage, needs_2fa_setup,  # noqa: F401
+                   require_admin, user_cfg, user_storage)
+from . import routes_insights, routes_portfolio, routes_security
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("tradehelper")
-
-_storage: Storage | None = None
-
-
-def get_storage() -> Storage:
-    """Datenbank für server-weite Dinge (Anmeldung, Nutzerverwaltung). Nutzerdaten: user_storage."""
-    global _storage
-    if _storage is None or _storage.path != str(base_settings.db_path):
-        _storage = Storage(base_settings.db_path)
-    return _storage
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,74 +39,32 @@ async def lifespan(app: FastAPI):
                       base_settings.db_path)
         raise
     settings_store.apply_overrides(st, base_settings)
+    marketstore.open_store(base_settings.data_dir / "market.db")
+    snapshot.clear()
     try:
         learn.refresh(st)
     except Exception:  # noqa: BLE001
         log.exception("Gelernte Nachrichten-Korrekturen nicht ladbar")
     if base_settings.scheduler_enabled:
         scheduler.start(st, base_settings)
+        refresher.start(st, base_settings)
     yield
+    refresher.stop()
     scheduler.stop()
+    marketstore.close_store()
 
 
 app = FastAPI(title="TradeHelper", version=__version__, lifespan=lifespan, docs_url="/api/docs",
               openapi_url="/api/openapi.json")
-
-
-# ---------- Anmeldung ----------
-
-def current_user(authorization: str | None = Header(default=None), st: Storage = Depends(get_storage)) -> dict:
-    unauthorized = HTTPException(401, "Nicht angemeldet")
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise unauthorized
-    data = read_token(authorization[7:], base_settings.secret_key)
-    if not data:
-        raise unauthorized
-    user = st.get_user(user_id=int(data["sub"]))
-    if not user or user["token_version"] != data.get("tv") or not user["password_hash"]:
-        raise unauthorized
-    return user
-
-
-def user_storage(user: dict = Depends(current_user)) -> Storage:
-    """Datenbank, gebunden an den angemeldeten Nutzer: er sieht nur seine eigenen Daten."""
-    return get_storage().for_user(user["id"])
-
-
-def user_cfg(st: Storage = Depends(user_storage)) -> Settings:
-    """Einstellungen des angemeldeten Nutzers (server-weite plus persönliche)."""
-    return settings_store.for_user(st, base_settings)
-
-
-def require_admin(user: dict = Depends(current_user)) -> dict:
-    if not user.get("is_admin"):
-        raise HTTPException(403, "Nur der Admin darf das.")
-    return user
-
-
-auth = [Depends(current_user)]
-admin_only = [Depends(require_admin)]
-
-_fails: dict[str, list[float]] = {}
-
-
-def _rate_limit(request: Request) -> None:
-    ip = request.client.host if request.client else "?"
-    now = time.time()
-    recent = [t for t in _fails.get(ip, []) if now - t < 600]
-    _fails[ip] = recent
-    if len(recent) >= 8:
-        raise HTTPException(429, "Zu viele Fehlversuche. Bitte in einigen Minuten erneut versuchen.")
-
-
-def _fail(request: Request) -> None:
-    ip = request.client.host if request.client else "?"
-    _fails.setdefault(ip, []).append(time.time())
+app.include_router(routes_security.router)
+app.include_router(routes_portfolio.router)
+app.include_router(routes_insights.router)
 
 
 class Credentials(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
+    device: str | None = Field(default=None, max_length=200)  # Token eines gemerkten Geräts (überspringt den Code)
 
 
 class PasswordChange(BaseModel):
@@ -196,12 +146,13 @@ def auth_login(data: Credentials, request: Request, st: Storage = Depends(get_st
     if not user or not user["password_hash"] or not verify_password(data.password, user["password_hash"]):
         _fail(request)
         raise HTTPException(401, "Benutzername oder Passwort falsch.")
-    return {"token": create_token(user["id"], user["token_version"], base_settings.secret_key)}
+    return routes_security.password_step(st, user, data.device)
 
 
 @app.get("/api/me")
 def me(user: dict = Depends(current_user)):
-    return {"id": user["id"], "username": user["username"], "is_admin": bool(user["is_admin"])}
+    return {"id": user["id"], "username": user["username"], "is_admin": bool(user["is_admin"]),
+            "two_factor": bool(user.get("totp_enabled")), "needs_2fa_setup": needs_2fa_setup(user)}
 
 
 # ---------- Nutzer und Einladungen (nur Admin) ----------
@@ -396,7 +347,8 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
     items = news.collect(symbol, settings, meta.get("name")) if with_news else []
     rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
     return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
-            "news": [n.to_dict() for n in items], "news_sources": news.sources(settings) if with_news else [], **meta}
+            "news": [n.to_dict() for n in items], "news_sources": news.sources(settings) if with_news else [],
+            "model": routes_insights.model_view(symbol, rec, profile), **meta}
 
 
 class NewsFeedback(BaseModel):
@@ -485,35 +437,38 @@ def watchlist(st: Storage = Depends(user_storage)):
 
 
 @app.get("/api/watchlist/overview", dependencies=auth)
-def watchlist_overview(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
-    """Kurs, Tagesänderung und technische Einschätzung je Wert (ohne News, damit es schnell bleibt)."""
+def watchlist_overview(budget: float = 1.5, st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
+    """Kurs, Tagesänderung und technische Einschätzung je Wert (ohne News, damit es schnell bleibt).
+    Antwortet spätestens nach `budget` Sekunden; noch nicht fertige Werte haben pending/refreshing gesetzt."""
     _sync_watchlist(st)
-    holdings = _holdings_by_symbol(st, settings)
     target = _target(None, settings)
     profile = analysis.profile_from(settings)
-    out = []
-    for w in st.watchlist():
-        sym = w["symbol"]
+    watch = st.watchlist()
+    for w in watch:
         if w.get("currency") is None and w.get("exchange") is None:  # Einträge aus älteren Versionen nachtragen
-            info = _info(sym)
-            st.update_meta(sym, info.get("name"), info.get("exchange"), info.get("currency"))
+            info = _info(w["symbol"])
+            st.update_meta(w["symbol"], info.get("name"), info.get("exchange"), info.get("currency"))
             w.update(name=info.get("name"), exchange=info.get("exchange"), currency=info.get("currency"))
-        row = {"symbol": sym, "ticker": w.get("ticker"), "note": w["note"], "name": w.get("name"), "exchange": w.get("exchange"),
-               "native_currency": w.get("currency"), "currency": market.shown_currency(w.get("currency"), target)}
-        try:
-            df = market.get_history(sym, profile.period, "1d", currency=target)
-            a = analysis.analyze(sym, df, profile)
-            rec = analysis.recommend(a, None)
-            spark = [round(float(x), 4) for x in df["close"].tail(30)]
-            row.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
-                       rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"],
-                       breakout=a.breakout)
-        except Exception as exc:  # noqa: BLE001
-            row["error"] = str(exc)
-        h = holdings.get(sym)
+    t0 = time.time()
+    rows = snapshot.overview(watch, profile, target, budget=max(0.2, min(budget, 10)))
+    holdings = _holdings_by_symbol(st, settings) if time.time() - t0 < 1.8 else {}
+    brain_rows = _brain_hints([r["symbol"] for r in rows], profile)
+    for row in rows:
+        h = holdings.get(row["symbol"])
         row["holding"] = h if h and h.get("shares") else None
-        out.append(row)
-    return out
+        if row["symbol"] in brain_rows:
+            row["model"] = brain_rows[row["symbol"]]
+    return rows
+
+
+def _brain_hints(symbols: list[str], profile) -> dict[str, dict]:
+    """Letzte Modell-Einschätzung je Wert (vorberechnet, kein Rechnen im Request)."""
+    try:
+        from . import brain
+
+        return brain.cached_predictions(symbols, profile.horizon)
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 @app.post("/api/watchlist", dependencies=auth, status_code=201)
@@ -1018,6 +973,7 @@ def admin_status(st: Storage = Depends(user_storage), settings: Settings = Depen
         "next_runs": scheduler.next_runs(),
         "job_runs": st.job_runs(),
         "counts": {"watchlist": len(st.watchlist()), "alerts": len(st.alerts(active_only=True)), "users": st.user_count()},
+        "data": refresher.status(),
     }
 
 

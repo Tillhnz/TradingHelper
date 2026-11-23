@@ -18,9 +18,11 @@ const FILTERS = [
   { id: "chance", label: "Gelegenheiten" },
 ];
 
+export const hasPending = (rows) => Array.isArray(rows) && rows.some((r) => r.pending || r.refreshing);
+
 export default function Watchlist() {
   const { mode } = useMode();
-  const overview = useCachedGet("/watchlist/overview");
+  const overview = useCachedGet("/watchlist/overview", { pollWhile: hasPending });
   const rows = overview.data;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);

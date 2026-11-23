@@ -8,6 +8,7 @@ import { Empty, ErrorText, Loading } from "../components/ui.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 import { displayName } from "../texts.js";
 import Icon from "../components/Icon.jsx";
+import { C } from "../theme.js";
 
 const ORDER_STATUS = { open: "wartet", filled: "ausgeführt", cancelled: "verfallen" };
 const day = (d) => (d ? new Date(d).toLocaleDateString("de-DE") : "–");
@@ -42,8 +43,8 @@ function Backtest({ onApplied }) {
 
   const r = bt?.result;
   const lines = useMemo(() => (r ? [
-    { points: r.curves.current, color: "#f2b84b", title: "Deine" },
-    { points: r.curves.benchmark, color: "#8d9eb0", title: "Halten", dashed: true },
+    { points: r.curves.current, color: C.amber, title: "Deine" },
+    { points: r.curves.benchmark, color: C.text, title: "Halten", dashed: true },
   ] : null), [r]);
   const names = r?.names || {};
   const running = bt?.status === "running";
@@ -121,9 +122,9 @@ function Backtest({ onApplied }) {
           <h3 className="sub-title">Prüfjahr im Verlauf</h3>
           <PnlChart points={r.curves.best} lines={lines} height={240} />
           <div className="legend small muted">
-            <span style={{ "--c": "#6fd3c3" }}>Lern-Sieger ({r.best.label})</span>
-            <span style={{ "--c": "#f2b84b" }}>deine Strategie</span>
-            <span style={{ "--c": "#8d9eb0" }}>kaufen und halten</span>
+            <span style={{ "--c": C.up }}>Lern-Sieger ({r.best.label})</span>
+            <span style={{ "--c": C.amber }}>deine Strategie</span>
+            <span style={{ "--c": C.text }}>kaufen und halten</span>
           </div>
           {r.best_trades?.length > 0 && (
             <details className="details">

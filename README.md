@@ -1,8 +1,18 @@
 # TradeHelper
 
-Selbst gehosteter Trading-Assistent für Proxmox: Watchlist, Chartanalyse mit bekannten Indikatoren, Alarme wie bei TradingView und jeden Morgen eine Einschätzung per Push aufs Handy. Bedienung, Einstellungen und Updates laufen komplett über die Weboberfläche.
+Selbst gehosteter Trading-Assistent für Proxmox: Gesamtportfolio über alle Depots, Watchlist, Chartanalyse, Alarme wie bei TradingView, Konjunktur- und Stimmungsdaten, ein selbstlernendes Modell und jeden Morgen eine Einschätzung per Push aufs Handy. Bedienung, Einstellungen und Updates laufen komplett über die Weboberfläche.
 
-> ⚠️ Die Einschätzungen sind regelbasiert und automatisch erzeugt. Sie sind **keine Anlageberatung**.
+> ⚠️ Die Einschätzungen entstehen automatisch aus Regeln und einem lernenden Modell. Sie sind **keine Anlageberatung**.
+
+## Neu in 2.0
+
+- **Schnell:** Kurse liegen dauerhaft auf dem Server (`data/market.db`) und werden von einem Hintergrunddienst aktuell gehalten. Jede Seite antwortet nach spätestens ~1,5 s; was dann noch rechnet, kommt kurz danach nach.
+- **Startseite selbst gestalten:** Bausteine hinzufügen, ziehen, Größe wählen (Vermögen, Aufteilung, Heute wichtig, Märkte, Konjunktur, Stimmung, Modell, Rückblick, Nachrichten, Mini-Charts …).
+- **Neues Design** im Stil von Claude: warmes Papier, eine Akzentfarbe, Serifen-Überschriften (Source Serif 4) und Inter – hell, dunkel oder wie das System.
+- **Gesamtportfolio:** Depots von Consorsbank, Commerzbank, finanzen.net zero & Co. per CSV-/PDF-Upload, dazu manuell erfasste Käufe – ohne Doppelzählung.
+- **Zwei-Faktor-Anmeldung** (Authenticator-App) mit Wiederherstellungscodes und „Gerät merken“ – standardmäßig Pflicht.
+- **Selbstlernendes Modell**, das seine Entscheidungen nachrechnet („Wäre Verkaufen besser gewesen?“) – siehe unten.
+- **Markt:** Indizes und Rohstoffe, Konjunktur (EZB, Eurostat, FRED, Weltbank), Börsenstimmung (Fear & Greed) und Stimmung im Netz (StockTwits, Bluesky, Reddit, Wikipedia-Aufmerksamkeit).
 
 ## Installation auf Proxmox (ein Befehl)
 
@@ -82,12 +92,59 @@ cd ~/tradinghelper
 ## Aufbau
 
 ```
-backend/    FastAPI, Analyse, Alarme, Scheduler, SQLite (data/tradehelper.db)
+                 ┌──────────── Browser (React) ────────────┐
+                 │ zeigt sofort den letzten Stand (Cache),  │
+                 │ frische Daten kommen im Hintergrund      │
+                 └───────────────────┬──────────────────────┘
+                                     │ /api (nginx)
+┌────────────────────────────────────▼───────────────────────────────────────┐
+│ FastAPI   routes: Auth/2FA · Portfolio/Upload · Markt/Modell · bisherige     │
+│           liest NUR aus Speichern – Antwort nach spätestens ~1,5 s          │
+├──────────────────────────────┬─────────────────────────────────────────────┤
+│ snapshot.py  vorberechnete   │ refresher.py  Hintergrunddienst              │
+│ Analysen (Fingerabdruck)     │ Kurse 30 s · Kerzen 10 min · News 8 min ·    │
+│                              │ Stimmung 30 min · Makro 6 h                  │
+├──────────────────────────────┴─────────────────────────────────────────────┤
+│ market.db  Tageskerzen (5 J., inkrementell), Kurse, Stammdaten, Makro,     │
+│            Stimmung, Vorhersagen       tradehelper.db  Nutzer, Depots, …   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Quellen: onvista/gettex · Yahoo · Google News/Finnhub · EZB · Eurostat ·   │
+│ FRED · Weltbank · CNN Fear&Greed · StockTwits · Bluesky · Reddit · Wiki    │
+│ Depots: Upload von Umsätzen/Abrechnungen (CSV/PDF)                         │
+├────────────────────────────────────────────────────────────────────────────┤
+│ scheduler.py  Berichte · Alarme · Schattendepot · Modell lernen 02:40 ·    │
+│               Entscheidungen festhalten 22:40                              │
+└────────────────────────────────────────────────────────────────────────────┘
+
+backend/    FastAPI, Analyse, Modell (brain.py), Broker (brokers/), Hintergrunddienst, SQLite
 frontend/   React + Vite, Charts mit lightweight-charts, ausgeliefert von nginx
 updater/    kleiner Dienst für den Update-Knopf (git pull, neu bauen, zurückrollen)
 proxmox/    Skript für den Proxmox-Host
 install.sh  Installation und Wartung
 ```
+
+## Depots hochladen (CSV/PDF)
+
+Unter **Portfolio → Depot hinzufügen** Broker wählen (Consorsbank, Commerzbank, finanzen.net zero oder „Anderer Broker“) und Dateien hochladen:
+
+- **Umsatzliste als CSV** (Datum, ISIN, Stück, Kurs, Kauf/Verkauf) – Trennzeichen, deutsche/englische Zahlen und Spaltennamen werden erkannt.
+- **Wertpapierabrechnungen als PDF** – auch viele auf einmal.
+- **Bestandsliste als CSV** (ISIN und Stückzahl ohne Kauf/Verkauf) – wird als aktueller Bestand des Depots übernommen.
+
+Jeder Kauf wird ein Block, ein Verkauf schließt bevorzugt den Block mit gleicher Stückzahl (sonst die ältesten). Dateien dürfen mehrfach hochgeladen werden – bereits importierte Käufe werden übersprungen. TradeHelper verbindet sich mit keiner Bank.
+
+## Zwei-Faktor-Anmeldung
+
+Standardmäßig Pflicht für alle Konten (abschaltbar unter *Einstellungen → Sicherheit*). Beim ersten Anmelden QR-Code scannen, Code bestätigen, zehn Wiederherstellungscodes sichern. „Gerät merken“ spart den Code für 30 Tage (einstellbar). Handy verloren: Admin setzt die 2FA unter *Administration → Nutzer* zurück; für den Admin selbst setzt `./install.sh reset-login` Passwort **und** 2FA zurück.
+
+## Das lernende Modell
+
+- **Ziel:** Für jeden Wert und Horizont (5/20/60 Handelstage) die Wahrscheinlichkeit für „deutlich fallen“ (= Verkaufen wäre besser gewesen), „seitwärts“, „deutlich steigen“. „Deutlich“ richtet sich nach der Schwankung des Werts.
+- **Merkmale:** Technik (Renditen, Schwankung, RSI, MACD, Durchschnitte, Bollinger, Volumen …), Markt (S&P 500, DAX, VIX, Zinsen, Dollar, Öl, Gold, Kupfer, Branchen-ETF), Makro (EZB-/Fed-Zins, Inflation, Zinskurve, Risikoaufschläge, Stimmungsindizes, Arbeitslosigkeit – jeweils erst ab Veröffentlichung) und Stimmung (News und soziale Netzwerke, ab Beginn der Aufzeichnung).
+- **Lernen:** Gradient Boosting (scikit-learn) auf rund 60 Werten plus allen beobachteten/gehaltenen, 5 Jahre Tagesdaten, jede Nacht neu.
+- **Sich selbst prüfen:** Walk-forward – trainiert nur auf der Vergangenheit, getestet auf den folgenden drei Monaten (mit Sicherheitsabstand). Vier Varianten treten an; Wahrscheinlichkeiten werden so weit zur Basisrate geschrumpft, wie die letzte Validierung verlangt.
+- **Hinterfragen:** Jede Abend-Einschätzung (Regeln, Modell, kombiniert) landet im Entscheidungsjournal und wird nach Ablauf des Horizonts nachgerechnet („Verkaufen wäre besser gewesen (−8 %)“, „Halten wäre besser gewesen“). Fehlentscheidungen zählen beim nächsten Lernen doppelt; wer öfter recht hatte, bekommt mehr Gewicht.
+- **Gewicht:** Können auf ungesehenen Daten × Bilanz im Journal, höchstens 60 % (einstellbar). Ein Kauf braucht immer zusätzlich die Regeln – das Modell darf nur bremsen oder zum Verkauf raten.
 
 Die API ist unter `/api/docs` dokumentiert (Anmeldung über `/api/auth/login`, Token als `Authorization: Bearer …`).
 
@@ -135,6 +192,8 @@ cd frontend && npm install && npm run dev  # Oberfläche auf :5173
 - **Keine durchgehenden Echtzeitkurse.** Laut [Yahoo](https://help.yahoo.com/kb/SLN2310.html) sind Nasdaq, Krypto und Devisen in Echtzeit, Xetra, Frankfurt und die übrigen deutschen Börsen sowie Euronext 15 Minuten verzögert, London 20 und SIX 30 Minuten. Der Chart zeigt Stand und Verzögerung je Wert und lädt jede Minute neu; Alarme werden im eingestellten Intervall geprüft. Für Daytrading ist das nicht geeignet.
 - Kurse über yfinance (inoffizielle Yahoo-Schnittstelle): Ausfälle sind möglich, Intraday-Daten nur für begrenzte Zeiträume.
 - Finnhub-News decken vor allem US-Werte ab; Google News findet Meldungen über den Firmennamen, auch für europäische Werte und ETFs. Die Stimmung wird regelbasiert aus den Schlagzeilen geschätzt.
-- Die News-Stimmung ist ein einfaches Wortlisten-Verfahren.
+- Die News-Stimmung ist ein Wortlisten-Verfahren (lernt aus Korrekturen in der App).
+- Reddit lässt seit Mai 2026 nur noch angemeldete Apps zu; ohne eigene Zugangsdaten fehlt diese Quelle. X/Twitter ist kostenpflichtig und nicht angebunden.
+- Das Modell kann sich irren. Es zeigt deshalb immer, wie gut es auf ungesehenen Daten war – und ist es nicht besser als der Zufall, zählt es nicht.
 
 Lizenz: MIT

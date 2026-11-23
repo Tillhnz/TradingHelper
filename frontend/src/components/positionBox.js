@@ -1,12 +1,13 @@
+import { alpha, C as T } from "../theme.js";
 // Positions-Box wie das „Long-Position“-Werkzeug in TradingView: ab dem Kaufzeitpunkt ein grüner Bereich bis zum
 // Ziel und ein roter bis zum Stopp, dazu der aktuelle Gewinn/Verlust als kräftigere Fläche zwischen Kaufkurs und
 // aktuellem Kurs. Umgesetzt als „Series Primitive“ von lightweight-charts (eigenes Zeichnen auf der Zeichenfläche).
 
 // Flächen bewusst zart, damit die Kerzen darunter lesbar bleiben
 const C = {
-  win: "rgba(111, 211, 195, 0.06)", winEdge: "rgba(111, 211, 195, 0.5)", winStrong: "rgba(111, 211, 195, 0.13)",
-  loss: "rgba(255, 107, 107, 0.06)", lossEdge: "rgba(255, 107, 107, 0.5)", lossStrong: "rgba(255, 107, 107, 0.13)",
-  entry: "#f2b84b", text: "#0e1620", label: "#e6edf3",
+  get win() { return alpha("up", 0.07); }, get winEdge() { return alpha("up", 0.55); }, get winStrong() { return alpha("up", 0.15); },
+  get loss() { return alpha("down", 0.07); }, get lossEdge() { return alpha("down", 0.55); }, get lossStrong() { return alpha("down", 0.15); },
+  get entry() { return T.amber; }, get text() { return T.onColor; }, get label() { return T.label; },
 };
 const COMPACT = 640; // schmaler als das: kurze Beschriftungen
 
@@ -198,16 +199,16 @@ export class PositionBox {
       const now = price != null ? `${end ? "Ergebnis " : ""}${fmt(pl(price), true)} (${fmtPct(pc(price))})` : "";
       const items = [];
       if (!end && g.yTarget !== null && tgt) {
-        items.push({ y: g.yTarget + (g.yTarget < g.yEntry ? 11 : -11), x: right, align: "right", bg: "rgba(111, 211, 195, 0.95)",
+        items.push({ y: g.yTarget + (g.yTarget < g.yEntry ? 11 : -11), x: right, align: "right", bg: alpha("up", 0.95),
           text: small ? `Ziel ${fmtPct(pc(tgt))}` : `Ziel ${fmt(tgt)} · ${fmtPct(pc(tgt))} · ${fmt(pl(tgt), true)}` });
       }
       if (!end && g.yStop !== null && stop) {
-        items.push({ y: g.yStop + (g.yStop > g.yEntry ? -11 : 11), x: right, align: "right", bg: "rgba(255, 107, 107, 0.95)",
+        items.push({ y: g.yStop + (g.yStop > g.yEntry ? -11 : 11), x: right, align: "right", bg: alpha("down", 0.95),
           text: small ? `Stopp ${fmtPct(pc(stop))}` : `Stopp ${fmt(stop)} · ${fmtPct(pc(stop))} · ${fmt(pl(stop), true)}` });
       }
       const up = price != null && price >= entry;
       // Alle Beschriftungen rechts übereinander – im freien Bereich hinter der letzten Kerze statt mitten im Verlauf
-      items.push({ y: g.yEntry + (up ? 11 : -11), x: right, align: "right", bg: "rgba(242, 184, 75, 0.95)",
+      items.push({ y: g.yEntry + (up ? 11 : -11), x: right, align: "right", bg: alpha("amber", 0.95),
         text: small ? `${short || label}${now ? ` · ${fmtPct(pc(price))}` : ""}` : `${label}${now ? ` · ${now}` : ""}` });
       const grp = this.o.group;
       let taken = [];

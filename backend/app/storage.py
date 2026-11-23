@@ -171,6 +171,70 @@ CREATE TABLE IF NOT EXISTS paper_equity (
     cash REAL NOT NULL,
     PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS recovery_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    code_hash TEXT NOT NULL,
+    used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS trusted_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_used TEXT,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS broker_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    bank TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    config TEXT NOT NULL DEFAULT '{}',
+    secret TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    last_sync TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    account_id INTEGER NOT NULL,
+    isin TEXT,
+    symbol TEXT,
+    name TEXT,
+    quantity REAL NOT NULL,
+    price REAL,
+    value REAL,
+    currency TEXT,
+    avg_price REAL,
+    as_of TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS imports (
+    user_id INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    account_id INTEGER,
+    position_id INTEGER,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, fingerprint)
+);
+CREATE TABLE IF NOT EXISTS decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    day TEXT NOT NULL,
+    horizon TEXT NOT NULL,
+    price REAL NOT NULL,
+    rule_action TEXT, rule_score REAL,
+    model_action TEXT, p_up REAL, p_down REAL, expected REAL,
+    final_action TEXT, model_version TEXT,
+    features TEXT,
+    evaluated_at TEXT, outcome REAL, outcome_label TEXT, verdict TEXT, lesson TEXT,
+    UNIQUE (symbol, day, horizon)
+);
 CREATE TABLE IF NOT EXISTS alert_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
@@ -259,6 +323,10 @@ class Storage:
             ("positions", "buy_time", "TEXT"),
             ("positions", "sell_time", "TEXT"),
             ("users", "is_admin", "INTEGER NOT NULL DEFAULT 0"),
+            ("users", "totp_secret", "TEXT NOT NULL DEFAULT ''"),
+            ("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("users", "totp_last_step", "INTEGER NOT NULL DEFAULT 0"),
+            ("positions", "account_id", "INTEGER"),
         ]:
             if col not in cls._cols(c, table):
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -272,8 +340,10 @@ class Storage:
             c.executescript(SCHEMA)  # legt die Tabelle in neuer Form an
             c.execute(f"INSERT INTO {table}(user_id, {cols}) SELECT 1, {cols} FROM {table}_alt")
             c.execute(f"DROP TABLE {table}_alt")
-        for table in ("alerts", "positions", "paper_trades", "alert_log"):
+        for table in ("alerts", "positions", "paper_trades", "alert_log", "holdings", "broker_accounts",
+                      "trusted_devices", "recovery_codes"):
             c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_user ON {table}(user_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_decisions_open ON decisions(evaluated_at, day)")
         # Der erste Nutzer ist der Besitzer und Admin
         if not c.execute("SELECT 1 FROM users WHERE is_admin=1").fetchone():
             c.execute("UPDATE users SET is_admin=1 WHERE id=(SELECT MIN(id) FROM users)")
@@ -412,8 +482,14 @@ class Storage:
         """Notfall (Terminal): Admin-Passwort löschen. Die Oberfläche fragt dann nach neuen Zugangsdaten;
         alle Daten bleiben erhalten."""
         with self._conn() as c:
-            return c.execute("UPDATE users SET password_hash='', token_version=token_version+1 "
-                             "WHERE id=(SELECT MIN(id) FROM users WHERE is_admin=1)").rowcount > 0
+            row = c.execute("SELECT MIN(id) FROM users WHERE is_admin=1").fetchone()
+            if not row or row[0] is None:
+                return False
+            # 2FA gleich mit zurücksetzen – sonst bleibt der Admin ausgesperrt, wenn das Handy weg ist
+            c.execute("DELETE FROM recovery_codes WHERE user_id=?", (row[0],))
+            c.execute("DELETE FROM trusted_devices WHERE user_id=?", (row[0],))
+            return c.execute("UPDATE users SET password_hash='', token_version=token_version+1, totp_secret='', "
+                             "totp_enabled=0, totp_last_step=0 WHERE id=?", (row[0],)).rowcount > 0
 
     def delete_user(self, user_id: int) -> bool:
         """Nutzer samt allen seinen Daten löschen (nicht den Admin)."""
@@ -422,7 +498,8 @@ class Storage:
             if not row or row["is_admin"]:
                 return False
             for t in ("watchlist", "alerts", "positions", "paper_state", "paper_positions", "paper_trades", "paper_equity",
-                      "paper_orders", "alert_log", "user_settings", "chart_layouts", "reports"):
+                      "paper_orders", "alert_log", "user_settings", "chart_layouts", "reports", "recovery_codes",
+                      "trusted_devices", "broker_accounts", "holdings", "imports"):
                 c.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM users WHERE id=?", (user_id,))
             return True
@@ -575,7 +652,8 @@ class Storage:
 
     # --- Positionen (erfasste Käufe) -----------------------------------------
     POSITION_FIELDS = ("symbol", "quantity", "buy_price", "buy_date", "fees", "currency", "stop", "target", "note",
-                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state", "buy_time", "sell_time")
+                       "sell_price", "sell_date", "sell_fees", "trail_pct", "watch_state", "buy_time", "sell_time",
+                       "account_id")
 
     def positions(self, symbol: str | None = None, open_only: bool = False) -> list[dict]:
         q, args = "SELECT * FROM positions WHERE user_id=?", [self.uid]
@@ -686,3 +764,185 @@ class Storage:
             for t in ("paper_positions", "paper_trades", "paper_equity", "paper_orders"):
                 c.execute(f"DELETE FROM {t} WHERE user_id=?", (self.uid,))
             c.execute("DELETE FROM paper_state WHERE user_id=? AND key != 'backtest'", (self.uid,))
+
+
+    # --- Für den Hintergrunddienst: alle Werte, die irgendjemand beobachtet oder hält ------------------------
+    def all_tracked_symbols(self) -> list[str]:
+        with self._conn() as c:
+            rows = c.execute("SELECT symbol FROM watchlist UNION SELECT symbol FROM positions WHERE sell_date IS NULL "
+                             "UNION SELECT symbol FROM holdings WHERE symbol IS NOT NULL AND symbol != ''").fetchall()
+        return sorted({r[0].upper() for r in rows if r[0]})
+
+    # --- Zwei-Faktor-Anmeldung -----------------------------------------------------------------------------
+    def set_totp(self, user_id: int, secret: str, enabled: bool) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE users SET totp_secret=?, totp_enabled=?, totp_last_step=0 WHERE id=?",
+                      (secret, int(enabled), user_id))
+            if not enabled and not secret:
+                c.execute("DELETE FROM recovery_codes WHERE user_id=?", (user_id,))
+                c.execute("DELETE FROM trusted_devices WHERE user_id=?", (user_id,))
+
+    def use_totp_step(self, user_id: int, step: int) -> bool:
+        """Einen Code-Zeitschritt verbrauchen. False, wenn er (oder ein späterer) schon benutzt wurde."""
+        with self._conn() as c:
+            return c.execute("UPDATE users SET totp_last_step=? WHERE id=? AND totp_last_step < ?",
+                             (step, user_id, step)).rowcount > 0
+
+    def set_recovery_codes(self, user_id: int, code_hashes: list[str]) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM recovery_codes WHERE user_id=?", (user_id,))
+            c.executemany("INSERT INTO recovery_codes(user_id, code_hash) VALUES (?,?)",
+                          [(user_id, h) for h in code_hashes])
+
+    def use_recovery_code(self, user_id: int, code_hash: str) -> bool:
+        with self._conn() as c:
+            return c.execute("UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+                             (now_iso(), user_id, code_hash)).rowcount > 0
+
+    def recovery_codes_left(self, user_id: int) -> int:
+        with self._conn() as c:
+            return int(c.execute("SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL",
+                                 (user_id,)).fetchone()[0])
+
+    def add_device(self, user_id: int, token_hash: str, name: str, days: int) -> int:
+        now = datetime.now(timezone.utc)
+        with self._conn() as c:
+            c.execute("DELETE FROM trusted_devices WHERE expires_at < ?", (now.isoformat(timespec="seconds"),))
+            return int(c.execute(
+                "INSERT INTO trusted_devices(user_id, token_hash, name, created_at, last_used, expires_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (user_id, token_hash, name[:80], now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds"),
+                 (now + timedelta(days=days)).isoformat(timespec="seconds"))).lastrowid)
+
+    def device(self, user_id: int, token_hash: str) -> dict | None:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM trusted_devices WHERE user_id=? AND token_hash=? AND expires_at>=?",
+                            (user_id, token_hash, now_iso())).fetchone()
+            if row:
+                c.execute("UPDATE trusted_devices SET last_used=? WHERE id=?", (now_iso(), row["id"]))
+            return dict(row) if row else None
+
+    def devices(self, user_id: int) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT id, name, created_at, last_used, expires_at FROM trusted_devices WHERE user_id=? "
+                "AND expires_at>=? ORDER BY last_used DESC", (user_id, now_iso()))]
+
+    def delete_device(self, user_id: int, device_id: int | None = None) -> int:
+        with self._conn() as c:
+            if device_id is None:
+                return c.execute("DELETE FROM trusted_devices WHERE user_id=?", (user_id,)).rowcount
+            return c.execute("DELETE FROM trusted_devices WHERE user_id=? AND id=?", (user_id, device_id)).rowcount
+
+    # --- Broker-Verbindungen und Bestände --------------------------------------------------------------------
+    def broker_accounts(self) -> list[dict]:
+        with self._conn() as c:
+            rows = [dict(r) for r in c.execute("SELECT * FROM broker_accounts WHERE user_id=? ORDER BY id", (self.uid,))]
+        for r in rows:
+            r["config"] = json.loads(r["config"] or "{}")
+        return rows
+
+    def broker_account(self, account_id: int) -> dict | None:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM broker_accounts WHERE id=? AND user_id=?", (account_id, self.uid)).fetchone()
+        if not row:
+            return None
+        out = dict(row)
+        out["config"] = json.loads(out["config"] or "{}")
+        return out
+
+    def add_broker_account(self, kind: str, bank: str, label: str, config: dict, secret: str = "") -> int:
+        with self._conn() as c:
+            return int(c.execute(
+                "INSERT INTO broker_accounts(user_id, kind, bank, label, config, secret, created_at) VALUES (?,?,?,?,?,?,?)",
+                (self.uid, kind, bank, label, json.dumps(config), secret, now_iso())).lastrowid)
+
+    def update_broker_account(self, account_id: int, **fields) -> bool:
+        allowed = {"label", "config", "secret", "status", "last_sync", "last_error"}
+        cols = [k for k in fields if k in allowed]
+        if not cols:
+            return False
+        vals = [json.dumps(fields[k]) if k == "config" else fields[k] for k in cols]
+        with self._conn() as c:
+            return c.execute(f"UPDATE broker_accounts SET {', '.join(f'{k}=?' for k in cols)} WHERE id=? AND user_id=?",
+                             (*vals, account_id, self.uid)).rowcount > 0
+
+    def delete_broker_account(self, account_id: int) -> bool:
+        with self._conn() as c:
+            c.execute("DELETE FROM holdings WHERE account_id=? AND user_id=?", (account_id, self.uid))
+            c.execute("UPDATE positions SET account_id=NULL WHERE account_id=? AND user_id=?", (account_id, self.uid))
+            return c.execute("DELETE FROM broker_accounts WHERE id=? AND user_id=?", (account_id, self.uid)).rowcount > 0
+
+    def replace_holdings(self, account_id: int, items: list[dict]) -> None:
+        cols = ("isin", "symbol", "name", "quantity", "price", "value", "currency", "avg_price", "as_of")
+        with self._conn() as c:
+            c.execute("DELETE FROM holdings WHERE account_id=? AND user_id=?", (account_id, self.uid))
+            c.executemany(
+                f"INSERT INTO holdings(user_id, account_id, {', '.join(cols)}, updated_at) "
+                f"VALUES (?, ?, {', '.join('?' * len(cols))}, ?)",
+                [(self.uid, account_id, *[it.get(k) for k in cols], now_iso()) for it in items])
+
+    def holdings(self, account_id: int | None = None) -> list[dict]:
+        q, args = "SELECT * FROM holdings WHERE user_id=?", [self.uid]
+        if account_id is not None:
+            q += " AND account_id=?"
+            args.append(account_id)
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(q + " ORDER BY value DESC", args)]
+
+    def import_seen(self, fingerprint: str) -> bool:
+        with self._conn() as c:
+            return c.execute("SELECT 1 FROM imports WHERE user_id=? AND fingerprint=?",
+                             (self.uid, fingerprint)).fetchone() is not None
+
+    def mark_imported(self, fingerprint: str, account_id: int | None, position_id: int | None) -> None:
+        with self._conn() as c:
+            c.execute("INSERT OR IGNORE INTO imports(user_id, fingerprint, account_id, position_id, created_at) "
+                      "VALUES (?,?,?,?,?)", (self.uid, fingerprint, account_id, position_id, now_iso()))
+
+    # --- Entscheidungsjournal des Modells (für alle Nutzer gemeinsam) ------------------------------------
+    DECISION_FIELDS = ("symbol", "day", "horizon", "price", "rule_action", "rule_score", "model_action", "p_up",
+                       "p_down", "expected", "final_action", "model_version", "features")
+
+    def save_decision(self, d: dict) -> None:
+        cols = [k for k in self.DECISION_FIELDS if k in d]
+        vals = [json.dumps(d[k]) if k == "features" else d[k] for k in cols]
+        with self._conn() as c:
+            c.execute(f"INSERT INTO decisions({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
+                      f"ON CONFLICT(symbol, day, horizon) DO UPDATE SET "
+                      + ", ".join(f"{k}=excluded.{k}" for k in cols if k not in ("symbol", "day", "horizon")),
+                      vals)
+
+    def open_decisions(self, before_day: str, limit: int = 5000) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT * FROM decisions WHERE evaluated_at IS NULL AND day<=? ORDER BY day LIMIT ?", (before_day, limit))]
+
+    def evaluate_decision(self, decision_id: int, outcome: float, label: str, verdict: str, lesson: str) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE decisions SET evaluated_at=?, outcome=?, outcome_label=?, verdict=?, lesson=? WHERE id=?",
+                      (now_iso(), outcome, label, verdict, lesson, decision_id))
+
+    def decisions(self, symbols: list[str] | None = None, evaluated: bool | None = None, limit: int = 200,
+                  horizon: str | None = None) -> list[dict]:
+        q, args = "SELECT * FROM decisions WHERE 1=1", []
+        if symbols is not None:
+            if not symbols:
+                return []
+            q += f" AND symbol IN ({','.join('?' * len(symbols))})"
+            args += [s.upper() for s in symbols]
+        if evaluated is True:
+            q += " AND evaluated_at IS NOT NULL"
+        elif evaluated is False:
+            q += " AND evaluated_at IS NULL"
+        if horizon:
+            q += " AND horizon=?"
+            args.append(horizon)
+        with self._conn() as c:
+            rows = [dict(r) for r in c.execute(q + " ORDER BY day DESC, symbol LIMIT ?", (*args, limit))]
+        for r in rows:
+            try:
+                r["features"] = json.loads(r["features"]) if r.get("features") else None
+            except ValueError:
+                r["features"] = None
+        return rows

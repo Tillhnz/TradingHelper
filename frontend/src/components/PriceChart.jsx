@@ -2,14 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { createChart, CrosshairMode, LineStyle } from "lightweight-charts";
 import { money, pct, signedMoney } from "../fmt.js";
 import { barIndex, buyTimestamp, PositionBox, sellTimestamp } from "./positionBox.js";
+import { alpha, C, FONT } from "../theme.js";
 
-export const COLORS = {
-  bg: "rgba(0, 0, 0, 0)", text: "#9fb0c2", grid: "rgba(255, 255, 255, 0.05)", line: "rgba(255, 255, 255, 0.12)",
-  up: "#6fd3c3", down: "#ff6b6b", amber: "#f2b84b",
-  buySig: "#38bdf8", sellSig: "#e879f9",
-  sma20: "#f2b84b", sma50: "#7aa7ff", sma200: "#c792ea",
-  bb: "#5d7389", rsi: "#f2b84b", macd: "#7aa7ff", signal: "#ff9f6b",
-};
+// Farben folgen dem hellen bzw. dunklen Modus (theme.js)
+export const COLORS = C;
 
 // Maus/Touchpad (Laptop) oder Finger (Handy)? Am Laptop darf man im gesperrten Chart ziehen und an den Achsen
 // zoomen, nur das Mausrad scrollt weiter die Seite. Am Handy ist gesperrt wirklich gesperrt.
@@ -53,7 +49,7 @@ export const baseOptions = (locked, intraday) => ({
         : { day: "2-digit", month: "2-digit", year: "2-digit" })
       : String(t)),
   },
-  layout: { background: { color: COLORS.bg }, textColor: COLORS.text, fontFamily: "Barlow, system-ui, sans-serif" },
+  layout: { background: { color: COLORS.bg }, textColor: COLORS.text, fontFamily: FONT },
   grid: { vertLines: { color: COLORS.grid }, horzLines: { color: COLORS.grid } },
   rightPriceScale: { borderColor: COLORS.line },
   timeScale: { borderColor: COLORS.line, timeVisible: true, secondsVisible: intraday === "seconds", tickMarkFormatter: tickFormatter },
@@ -123,11 +119,11 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
     if (kind === "area") {
       priceSeries = main.addAreaSeries({
         lineColor: up ? COLORS.up : COLORS.down, lineWidth: 2,
-        topColor: up ? "rgba(111, 211, 195, 0.28)" : "rgba(255, 107, 107, 0.25)", bottomColor: "rgba(17, 27, 38, 0)",
-        priceLineVisible: true, priceLineColor: "#5d7389",
+        topColor: up ? alpha("up", 0.28) : alpha("down", 0.25), bottomColor: "rgba(0, 0, 0, 0)",
+        priceLineVisible: true, priceLineColor: COLORS.neutral,
       });
     } else if (kind === "line") {
-      priceSeries = main.addLineSeries({ color: up ? COLORS.up : COLORS.down, lineWidth: 2, priceLineVisible: true, priceLineColor: "#5d7389" });
+      priceSeries = main.addLineSeries({ color: up ? COLORS.up : COLORS.down, lineWidth: 2, priceLineVisible: true, priceLineColor: COLORS.neutral });
     } else if (kind === "bars") {
       priceSeries = main.addBarSeries({ upColor: COLORS.up, downColor: COLORS.down, thinBars: rows.length > 120 });
     } else {
@@ -223,7 +219,7 @@ export default function PriceChart({ rows, simple = false, type, live = null, in
     if (!simple) {
       const rsiChart = createChart(rsiRef.current, opts);
       const rsi = line(rsiChart, rows, "rsi", COLORS.rsi, 2);
-      [70, 30].forEach((p) => rsi.createPriceLine({ price: p, color: "#5d7389", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false }));
+      [70, 30].forEach((p) => rsi.createPriceLine({ price: p, color: COLORS.neutral, lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false }));
       const macdChart = createChart(macdRef.current, opts);
       const hist = macdChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
       hist.setData(rows.filter((r) => r.hist !== null).map((r) => ({ time: r.time, value: r.hist, color: r.hist >= 0 ? COLORS.up : COLORS.down })));

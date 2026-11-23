@@ -1,4 +1,5 @@
 const TOKEN_KEY = "tradehelper_token";
+const DEVICE_KEY = "tradehelper_device"; // „Gerät merken“: überspringt den 2FA-Code, das Passwort bleibt nötig
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
@@ -9,9 +10,17 @@ export const clearToken = () => {
     Object.keys(localStorage).filter((k) => k.startsWith("th_cache:")).forEach((k) => localStorage.removeItem(k));
   } catch { /* egal */ }
 };
+export const getDevice = () => {
+  try { return localStorage.getItem(DEVICE_KEY); } catch { return null; }
+};
+export const setDevice = (t) => {
+  try { if (t) localStorage.setItem(DEVICE_KEY, t); else localStorage.removeItem(DEVICE_KEY); } catch { /* egal */ }
+};
 
 let onUnauthorized = () => {};
+let onNeeds2fa = () => {};
 export const setUnauthorizedHandler = (fn) => (onUnauthorized = fn);
+export const setNeeds2faHandler = (fn) => (onNeeds2fa = fn);
 
 async function request(method, path, body) {
   const headers = {};
@@ -43,6 +52,10 @@ async function request(method, path, body) {
     } catch {
       /* keine JSON-Antwort */
     }
+    if (res.status === 403 && msg.startsWith("2FA_SETUP_REQUIRED")) {
+      onNeeds2fa();
+      msg = msg.replace(/^2FA_SETUP_REQUIRED:\s*/, "");
+    }
     const err = new Error(msg);
     err.status = res.status;
     throw err;
@@ -57,3 +70,13 @@ export const api = {
   patch: (p, b) => request("PATCH", p, b),
   del: (p) => request("DELETE", p),
 };
+
+/** Datei als Base64 (für den Depot-Import). */
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = () => reject(new Error(`${file.name} nicht lesbar`));
+    r.readAsDataURL(file);
+  });
+}

@@ -72,6 +72,20 @@ class Settings:
     paper_time: str = field(default_factory=lambda: _env("paper_time", "17:45"))
     paper_notify: bool = field(default_factory=lambda: _bool(_env("paper_notify", "false")))
     portfolio_size: int = field(default_factory=lambda: int(_env("portfolio_size", "0")))  # 0 = aus
+    # Sicherheit
+    require_2fa: bool = field(default_factory=lambda: _bool(_env("require_2fa", "true")))
+    trusted_device_days: int = field(default_factory=lambda: int(_env("trusted_device_days", "30")))
+    # Weitere Datenquellen (alle optional)
+    social_enabled: bool = field(default_factory=lambda: _bool(_env("social_enabled", "true")))
+    reddit_client_id: str = field(default_factory=lambda: _env("reddit_client_id", ""))
+    reddit_client_secret: str = field(default_factory=lambda: _env("reddit_client_secret", ""))
+    bluesky_handle: str = field(default_factory=lambda: _env("bluesky_handle", ""))
+    bluesky_app_password: str = field(default_factory=lambda: _env("bluesky_app_password", ""))
+    fred_api_key: str = field(default_factory=lambda: _env("fred_api_key", ""))
+    # Selbstlernendes Modell
+    model_enabled: bool = field(default_factory=lambda: _bool(_env("model_enabled", "true")))
+    model_time: str = field(default_factory=lambda: _env("model_time", "02:40"))
+    model_weight_max: float = field(default_factory=lambda: float(_env("model_weight_max", "0.6")))
 
     @property
     def db_path(self) -> Path:

@@ -8,14 +8,19 @@ Für die Anzeige lassen sich Kurse in eine andere Währung umrechnen (Tageskurs 
 
 from __future__ import annotations
 
+import contextvars
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 import pandas as pd
 import requests
 
-from . import gettex
+from . import gettex, marketstore
 
 log = logging.getLogger(__name__)
 
@@ -106,13 +111,54 @@ def symbol_info(symbol: str) -> dict:
     s = symbol.upper()
     if s in _INFO:
         return _INFO[s]
+    store = marketstore.get_store()
+    if store is not None:
+        saved = store.get(f"info:{s}", max_age=INFO_TTL)
+        if saved:
+            _INFO[s] = saved
+            return saved
+    info = _fetch_info(s)
+    _INFO[s] = info
+    if store is not None:
+        store.put(f"info:{s}", info)
+    return info
+
+
+def cached_info(symbol: str) -> dict | None:
+    """Stammdaten nur aus dem Speicher (ohne Netzwerk); fehlt etwas, wird es im Hintergrund geholt."""
+    s = symbol.upper()
+    if s in _INFO:
+        return _INFO[s]
+    store = marketstore.get_store()
+    saved = store.get(f"info:{s}") if store is not None else None
+    if saved:
+        _INFO[s] = saved
+        return saved
+    key = "i:" + s
+    with _INFLIGHT_LOCK:
+        if key in _INFLIGHT:
+            return None
+        _INFLIGHT.add(key)
+
+    def run():
+        try:
+            symbol_info(s)
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.discard(key)
+
+    _BG.submit(run)
+    return None
+
+
+def _fetch_info(s: str) -> dict:
     if gettex.is_gettex(s):
         try:
-            info = gettex.info(s)
+            return gettex.info(s)
         except gettex.GettexError as exc:
             raise MarketDataError(str(exc)) from exc
-        _INFO[s] = info
-        return info
     exchange, currency = guess_listing(s)
     info = {"symbol": s, "name": None, "exchange": exchange, "currency": currency, "type": None}
     try:
@@ -136,7 +182,6 @@ def symbol_info(symbol: str) -> dict:
     if info["type"] == "INDEX":
         info["currency"] = None  # Indexpunkte, keine Währung
     info["delay_min"], info["quote_source"] = _delay(t, s)
-    _INFO[s] = info
     return info
 
 
@@ -218,12 +263,17 @@ def _search_yahoo(q: str, limit: int) -> list[dict]:
 # ---------- Kurse ----------
 
 def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
+    if interval in ("1d", "1wk"):
+        df = _daily_history(symbol, period)
+        if interval == "1wk":
+            df = df.resample("W-FRI").agg({"open": "first", "high": "max", "low": "min", "close": "last",
+                                           "volume": "sum"}).dropna(subset=["close"])
+        return df.copy()
     key = (symbol.upper(), period, interval)
     cached = _CACHE.get(key)
     if cached and time.time() - cached[0] < _CACHE_TTL:
         return cached[1].copy()
     if gettex.is_gettex(symbol):
-        # Kein zusätzlicher Zwischenspeicher: gettex.py hält Tageskurse 10 Minuten, den aktuellen Kurs 10 Sekunden
         try:
             df = gettex.history(symbol, period, interval)
             q = gettex.quote(symbol)
@@ -235,9 +285,20 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
     if interval == "1s":
         raise MarketDataError("Sekundenkerzen gibt es nur für Werte an gettex.")
     fetch, rule = _YF_RESAMPLE.get(interval, (interval, None))
+    df = _yahoo_history(symbol, period=period, interval=fetch)
+    if rule:
+        df = df.resample(rule).agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}).dropna(subset=["close"])
+    _CACHE[key] = (time.time(), df)
+    return df.copy()
+
+
+def _yahoo_history(symbol: str, period: str | None = None, interval: str = "1d", start: str | None = None) -> pd.DataFrame:
     try:
         t = _yf().Ticker(symbol)
-        df = t.history(period=period, interval=fetch, auto_adjust=True)
+        if start:
+            df = t.history(start=start, interval=interval, auto_adjust=True)
+        else:
+            df = t.history(period=period, interval=interval, auto_adjust=True)
     except Exception as exc:  # noqa: BLE001
         raise MarketDataError(f"Kursabruf für {symbol} fehlgeschlagen: {exc}") from exc
     if df is None or df.empty:
@@ -248,11 +309,242 @@ def _raw_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
             _META[symbol.upper()] = {"market_time": int(md["regularMarketTime"])}
     except Exception:  # noqa: BLE001
         pass
-    df = df.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
-    if rule:
-        df = df.resample(rule).agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}).dropna(subset=["close"])
-    _CACHE[key] = (time.time(), df)
-    return df.copy()
+    return df.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
+
+
+# ---------- Tageskerzen aus dem dauerhaften Speicher ----------
+#
+# Ablauf pro Abfrage:
+# 1. Reicht die gespeicherte Tiefe (span_days) für den Zeitraum? Nein → einmalig mindestens 5 Jahre holen.
+# 2. Ist der Stand älter als DAILY_TTL? In Hintergrund-Jobs (fresh_reads) wird sofort nachgeladen; bei Abfragen aus
+#    der Oberfläche wird der gespeicherte Stand geliefert und im Hintergrund aktualisiert (stale-while-revalidate).
+# 3. Die heutige Kerze wird mit dem letzten bekannten Kurs (Quote-Speicher) aktualisiert. So sind Übersicht und
+#    Analyse live, ohne die Historie neu zu laden.
+
+PERIOD_DAYS = {"1d": 4, "5d": 8, "1mo": 32, "3mo": 93, "6mo": 184, "1y": 367, "2y": 732, "5y": 1828, "10y": 3654,
+               "max": 3654, "ytd": 367}
+FIRST_SPAN = 1828            # beim ersten Abruf 5 Jahre, danach reicht jeder Zeitraum bis 5 Jahre aus dem Speicher
+DAILY_TTL = 20 * 60          # Tageskerzen höchstens alle 20 Minuten nachladen (der heutige Kurs kommt aus den Quotes)
+DAILY_TTL_IDLE = 6 * 3600    # am Wochenende
+STALE_MAX = 4 * 86400        # älter als das: auch in der Oberfläche warten, statt veraltete Kurse zu zeigen
+QUOTE_TTL = 45               # Sekunden
+QUOTE_STALE = 15 * 60
+INFO_TTL = 7 * 86400
+
+_FRESH = contextvars.ContextVar("th_fresh_reads", default=False)
+_BG = ThreadPoolExecutor(max_workers=3, thread_name_prefix="kurse")
+_INFLIGHT: set[str] = set()
+_INFLIGHT_LOCK = threading.Lock()
+_SYMBOL_LOCKS: dict[str, threading.Lock] = {}
+
+
+@contextmanager
+def fresh_reads():
+    """In diesem Block wird bei veralteten Daten synchron nachgeladen (für Bericht, Alarme, Schattendepot)."""
+    token = _FRESH.set(True)
+    try:
+        yield
+    finally:
+        _FRESH.reset(token)
+
+
+def ensure_fresh(symbols: list[str], max_age: float | None = None, quotes: bool = True, workers: int = 4) -> None:
+    """Vor Hintergrund-Jobs (Bericht, Alarme, Schattendepot): veraltete Kerzen und Kurse dieser Werte synchron
+    nachladen. Danach lesen die Jobs alles aus dem Speicher – auch aus eigenen Threads."""
+    store = marketstore.get_store()
+    if store is None or not symbols:
+        return
+    limit = _ttl() if max_age is None else max_age
+
+    def one(sym: str) -> None:
+        try:
+            # Nur auffrischen, was schon im Speicher liegt; Unbekanntes holt der normale Abruf ohnehin frisch
+            meta = store.series(sym)
+            if meta and time.time() - float(meta["fetched_at"]) > limit:
+                refresh_daily(sym)
+            if quotes:
+                hit = store.quote(sym)
+                if hit and time.time() - hit[1] > QUOTE_TTL:
+                    fetch_live(sym)
+        except Exception as exc:  # noqa: BLE001
+            log.info("Aktualisieren von %s vor dem Job fehlgeschlagen: %s", sym, exc)
+
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(symbols))), thread_name_prefix="frisch") as pool:
+        list(pool.map(one, list(dict.fromkeys(s.upper() for s in symbols))))
+
+
+def _lock_for(symbol: str) -> threading.Lock:
+    with _INFLIGHT_LOCK:
+        return _SYMBOL_LOCKS.setdefault(symbol.upper(), threading.Lock())
+
+
+def _weekend() -> bool:
+    return date.today().weekday() >= 5
+
+
+def _ttl() -> float:
+    return DAILY_TTL_IDLE if _weekend() else DAILY_TTL
+
+
+def _fetch_daily(symbol: str, days: int | None = None, start: str | None = None) -> pd.DataFrame:
+    """Tageskerzen direkt von der Quelle: entweder die letzten `days` Tage oder ab `start`."""
+    if gettex.is_gettex(symbol):
+        period = "10y" if (days or 0) > 1828 else "5y" if (days or 0) > 366 else "1y"
+        try:
+            df = gettex.history(symbol, period, "1d")
+            q = gettex.quote(symbol)
+        except gettex.GettexError as exc:
+            raise MarketDataError(str(exc)) from exc
+        if q.get("time"):
+            _META[symbol.upper()] = {"market_time": q["time"]}
+        if start:
+            df = df[_days(df.index) >= pd.Timestamp(start)]
+        return df
+    if start:
+        return _yahoo_history(symbol, start=start)
+    period = "10y" if (days or 0) > 1828 else "5y" if (days or 0) > 731 else "2y" if (days or 0) > 366 else "1y"
+    return _yahoo_history(symbol, period=period)
+
+
+def refresh_daily(symbol: str, full: bool = False) -> int:
+    """Gespeicherte Tageskerzen auf den neuesten Stand bringen. Gibt die Zahl geschriebener Kerzen zurück."""
+    store = marketstore.get_store()
+    sym = symbol.upper()
+    if store is None:
+        return 0
+    with _lock_for(sym):
+        meta = store.series(sym)
+        if full or not meta or not meta.get("last_day"):
+            span = max(FIRST_SPAN, int(meta["span_days"]) if meta else 0)
+            df = _fetch_daily(sym, days=span)
+            return store.put_daily(sym, df, span_days=span, source="gettex" if gettex.is_gettex(sym) else "yahoo")
+        if time.time() - meta["fetched_at"] < 30:
+            return 0  # gerade erst geholt (gleichzeitige Anfragen)
+        start = (pd.Timestamp(meta["last_day"]) - pd.Timedelta(days=10)).strftime("%Y-%m-%d")
+        df = _fetch_daily(sym, start=start)
+        if df.empty:
+            store.touch(sym)
+            return 0
+        old = store.daily(sym, start=start)
+        if _adjusted(old, df):
+            # Dividende/Split: die Quelle hat ältere Kurse rückwirkend angepasst → alles neu holen
+            span = int(meta["span_days"])
+            full_df = _fetch_daily(sym, days=span)
+            return store.put_daily(sym, full_df, span_days=span, replace_from="0000-00-00")
+        return store.put_daily(sym, df, replace_from=start)
+
+
+def _adjusted(old: pd.DataFrame, new: pd.DataFrame) -> bool:
+    """Weichen sich die Schlusskurse gemeinsamer, abgeschlossener Tage deutlich ab?"""
+    if old.empty or new.empty:
+        return False
+    a = old["close"].copy()
+    b = new["close"].copy()
+    a.index = _days(a.index)
+    b.index = _days(b.index)
+    common = a.index.intersection(b.index)
+    common = common[common < pd.Timestamp(date.today())]
+    if len(common) == 0:
+        return False
+    diff = (a.loc[common] / b.loc[common] - 1).abs()
+    return bool((diff > 0.005).any())
+
+
+def _schedule_refresh(symbol: str) -> None:
+    sym = symbol.upper()
+    with _INFLIGHT_LOCK:
+        if sym in _INFLIGHT:
+            return
+        _INFLIGHT.add(sym)
+
+    def run():
+        try:
+            refresh_daily(sym)
+        except Exception as exc:  # noqa: BLE001
+            log.info("Nachladen %s im Hintergrund fehlgeschlagen: %s", sym, exc)
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.discard(sym)
+
+    _BG.submit(run)
+
+
+def _daily_history(symbol: str, period: str) -> pd.DataFrame:
+    store = marketstore.get_store()
+    sym = symbol.upper()
+    need = PERIOD_DAYS.get(period, 367)
+    if store is None:  # ohne Speicher (z. B. einzelne Tests): wie früher direkt holen, kurz im Arbeitsspeicher
+        key = (sym, period, "1d")
+        cached = _CACHE.get(key)
+        if cached and time.time() - cached[0] < _CACHE_TTL:
+            return cached[1].copy()
+        df = _fetch_daily(sym, days=need)
+        cut = pd.Timestamp(date.today() - timedelta(days=need))
+        df = df[_days(df.index) >= cut]
+        _CACHE[key] = (time.time(), df)
+        return df.copy()
+    meta = store.series(sym)
+    if not meta or int(meta["span_days"]) < need:
+        span = max(need, FIRST_SPAN)
+        with _lock_for(sym):
+            meta = store.series(sym)
+            if not meta or int(meta["span_days"]) < need:
+                store.put_daily(sym, _fetch_daily(sym, days=span), span_days=span,
+                                source="gettex" if gettex.is_gettex(sym) else "yahoo")
+    else:
+        age = time.time() - float(meta["fetched_at"])
+        if age > _ttl():
+            if _FRESH.get() or age > STALE_MAX:
+                try:
+                    refresh_daily(sym)
+                except MarketDataError as exc:
+                    log.info("Nachladen %s fehlgeschlagen, nutze gespeicherten Stand: %s", sym, exc)
+            else:
+                _schedule_refresh(sym)
+    start = (date.today() - timedelta(days=need)).isoformat()
+    df = _overlay_quote(sym, store.daily(sym, start=start))
+    if df.empty:
+        raise MarketDataError(f"Keine Kursdaten für {sym}.")
+    if sym not in _META:
+        q = store.quote(sym)
+        if q and q[0].get("time"):
+            _META[sym] = {"market_time": int(q[0]["time"])}
+    return df
+
+
+def _quote_day(t: int | None) -> pd.Timestamp | None:
+    if not t:
+        return None
+    return pd.Timestamp(int(t), unit="s", tz="UTC").tz_convert("Europe/Berlin").tz_localize(None).normalize()
+
+
+def _overlay_quote(symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Heutige Kerze mit dem neuesten gespeicherten Kurs aktualisieren (oder anhängen)."""
+    store = marketstore.get_store()
+    if store is None or df.empty:
+        return df
+    hit = store.quote(symbol)
+    if not hit:
+        return df
+    q, fetched = hit
+    price, day = q.get("price"), _quote_day(q.get("time"))
+    if price is None or day is None or time.time() - fetched > 6 * 3600:
+        return df
+    last = df.index[-1]
+    if day < last:
+        return df
+    out = df.copy()
+    if day == last:
+        out.loc[last, "close"] = price
+        out.loc[last, "high"] = max(float(out.loc[last, "high"]), price)
+        out.loc[last, "low"] = min(float(out.loc[last, "low"]), price)
+    elif day.weekday() < 5:
+        o = q.get("open") or price
+        row = pd.DataFrame({"open": [o], "high": [max(q.get("high") or price, price)],
+                            "low": [min(q.get("low") or price, price)], "close": [price],
+                            "volume": [float(q.get("volume") or 0)]}, index=pd.DatetimeIndex([day]))
+        out = pd.concat([out, row])
+    return out
 
 
 def _days(idx) -> pd.DatetimeIndex:
@@ -343,30 +635,33 @@ def shown_currency(native: str | None, target: str | None) -> str | None:
     return target or native
 
 
-def live(symbol: str, currency: str | None = None) -> dict:
-    """Schneller, möglichst aktueller Kurs für die Anzeige (gettex: Echtzeit mit Geld/Brief, Yahoo: Minutenkerze)."""
+def fetch_live(symbol: str) -> dict:
+    """Aktuellen Kurs direkt bei der Quelle holen (Handelswährung), gettex mit Geld/Brief, Yahoo aus der Minutenkerze.
+    Wird vom Hintergrunddienst laufend aufgerufen; das Ergebnis landet im Quote-Speicher."""
     symbol = symbol.upper()
-    native = None
     out: dict = {"symbol": symbol}
     if gettex.is_gettex(symbol):
         try:
             q, inf = gettex.quote(symbol), gettex.info(symbol)
         except gettex.GettexError as exc:
             raise MarketDataError(str(exc)) from exc
-        native = inf.get("currency")
         out.update(price=q["price"], previous_close=q.get("previous_close"), time=q.get("time"), bid=q.get("bid"),
-                   ask=q.get("ask"), bid_time=q.get("bid_time"), delay_min=inf.get("delay_min"))
+                   ask=q.get("ask"), bid_time=q.get("bid_time"), delay_min=inf.get("delay_min"),
+                   open=q.get("open"), high=q.get("high"), low=q.get("low"), volume=q.get("volume"),
+                   native=inf.get("currency"))
         if q.get("time"):
             _META[symbol] = {"market_time": q["time"]}
     else:
         df = _raw_history(symbol, "5d", "1d")
         price, prev = float(df["close"].iloc[-1]), (float(df["close"].iloc[-2]) if len(df) > 1 else None)
         t = last_trade_time(symbol)
+        day_high = day_low = day_open = None
         try:
             m = _raw_history(symbol, "1d", "1m")
             if len(m) and pd.Timestamp(m.index[-1]).date() == pd.Timestamp(df.index[-1]).date():
                 price = float(m["close"].iloc[-1])
                 t = int(pd.Timestamp(m.index[-1]).timestamp()) + 60  # Ende der letzten Minutenkerze
+                day_high, day_low, day_open = float(m["high"].max()), float(m["low"].min()), float(m["open"].iloc[0])
         except MarketDataError:
             pass
         info = {}
@@ -374,9 +669,55 @@ def live(symbol: str, currency: str | None = None) -> dict:
             info = symbol_info(symbol)
         except MarketDataError:
             pass
-        native = info.get("currency")
-        out.update(price=price, previous_close=prev, time=min(t, int(time.time())) if t else None, bid=None, ask=None, bid_time=None,
-                   delay_min=info.get("delay_min"))
+        out.update(price=price, previous_close=prev, time=min(t, int(time.time())) if t else None, bid=None, ask=None,
+                   bid_time=None, delay_min=info.get("delay_min"), open=day_open, high=day_high, low=day_low,
+                   native=info.get("currency"))
+    store = marketstore.get_store()
+    if store is not None and out.get("price") is not None:
+        store.put_quote(symbol, out)
+    return out
+
+
+def _schedule_quote(symbol: str) -> None:
+    key = "q:" + symbol.upper()
+    with _INFLIGHT_LOCK:
+        if key in _INFLIGHT:
+            return
+        _INFLIGHT.add(key)
+
+    def run():
+        try:
+            fetch_live(symbol)
+        except Exception as exc:  # noqa: BLE001
+            log.info("Kurs %s im Hintergrund nicht abrufbar: %s", symbol, exc)
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.discard(key)
+
+    _BG.submit(run)
+
+
+def native_live(symbol: str) -> dict:
+    """Aktueller Kurs in Handelswährung – aus dem Speicher, wenn frisch genug, sonst von der Quelle."""
+    symbol = symbol.upper()
+    store = marketstore.get_store()
+    hit = store.quote(symbol) if store is not None else None
+    if hit:
+        data, fetched = hit
+        age = time.time() - fetched
+        if age < QUOTE_TTL:
+            return dict(data)
+        if age < QUOTE_STALE and not _FRESH.get():
+            _schedule_quote(symbol)
+            return {**data, "stale": True}
+    return fetch_live(symbol)
+
+
+def live(symbol: str, currency: str | None = None) -> dict:
+    """Schneller, möglichst aktueller Kurs für die Anzeige, optional umgerechnet."""
+    raw = native_live(symbol)
+    native = raw.get("native")
+    out = {k: raw.get(k) for k in ("symbol", "price", "previous_close", "time", "bid", "ask", "bid_time", "delay_min")}
     if currency and native:
         for k in ("price", "previous_close", "bid", "ask"):
             out[k] = convert_price(out[k], native, currency) if out.get(k) is not None else None
@@ -386,28 +727,23 @@ def live(symbol: str, currency: str | None = None) -> dict:
     for k in ("price", "previous_close", "bid", "ask"):
         if out.get(k) is not None:
             out[k] = round(float(out[k]), 4)
+    if raw.get("stale"):
+        out["stale"] = True
     return out
 
 
 def get_quote(symbol: str) -> Quote:
     symbol = symbol.upper()
-    if gettex.is_gettex(symbol):
-        try:
-            q, inf = gettex.quote(symbol), gettex.info(symbol)
-        except gettex.GettexError as exc:
-            raise MarketDataError(str(exc)) from exc
-        prev = q.get("previous_close")
-        change = q["price"] - prev if prev and q.get("price") is not None else None
-        return Quote(symbol, q["price"], prev, change, change / prev * 100 if change is not None else None,
-                     inf.get("currency"), inf.get("name"))
-    df = _raw_history(symbol, "5d", "1d")
-    price = float(df["close"].iloc[-1])
-    prev = float(df["close"].iloc[-2]) if len(df) > 1 else None
-    info = {}
+    raw = native_live(symbol)
+    info: dict = {}
     try:
         info = symbol_info(symbol)
     except MarketDataError:
         pass
+    price, prev = raw.get("price"), raw.get("previous_close")
+    if price is None:
+        raise MarketDataError(f"Kein Kurs für {symbol}")
     change = price - prev if prev else None
     change_pct = change / prev * 100 if prev else None
-    return Quote(symbol, round(price, 4), prev, change, change_pct, info.get("currency"), info.get("name"))
+    return Quote(symbol, round(float(price), 4), prev, change, change_pct, info.get("currency") or raw.get("native"),
+                 info.get("name"))

@@ -49,13 +49,36 @@ def test_short_text_cuts_at_sentence():
     assert len(s) <= 100 and s.endswith(".")
 
 
-def test_home_layout_setting_is_normalized():
+def test_home_layout_old_format_is_converted():
     import json
 
     from app import settings_store
     raw = json.dumps({"order": ["news", "bogus", "tiles", "news"], "hidden": ["alerts", "x"], "private": 1})
     out = json.loads(settings_store.coerce("home_layout", raw))
-    assert out["order"][:2] == ["news", "tiles"] and set(out["order"]) == set(settings_store.HOME_WIDGETS)
-    assert out["hidden"] == ["alerts"] and out["private"] is True
+    assert out["v"] == 2 and out["private"] is True
+    assert [w["type"] for w in out["widgets"]] == ["news", "portfolio"]
     assert settings_store.coerce("home_layout", "") == ""
     assert "home_layout" in settings_store.USER_KEYS
+
+
+def test_home_layout_widgets_are_validated():
+    import json
+
+    import pytest
+
+    from app import settings_store
+    raw = {"widgets": [
+        {"id": "a", "type": "markets", "size": "s"},
+        {"id": "a", "type": "macro", "size": "huge"},           # doppelte ID, falsche Größe
+        {"id": "c", "type": "markets", "size": "m"},            # doppelt → raus
+        {"id": "d", "type": "chart", "config": {"symbol": "sap.de", "period": "1y"}},
+        {"id": "e", "type": "chart", "config": {"symbol": "<script>"}},  # ungültig → raus
+        {"id": "f", "type": "nope"},
+    ]}
+    out = json.loads(settings_store.coerce("home_layout", raw))
+    types = [(w["type"], w["size"]) for w in out["widgets"]]
+    assert types == [("markets", "s"), ("macro", "m"), ("chart", "m")]
+    assert out["widgets"][2]["config"] == {"symbol": "SAP.DE", "period": "1y"}
+    assert len({w["id"] for w in out["widgets"]}) == 3
+    with pytest.raises(settings_store.SettingError):
+        settings_store.coerce("home_layout", {"widgets": [{"type": "macro"}] * 41})
