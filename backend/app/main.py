@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from datetime import date
 
-from . import __version__, alerts, analysis, entry, events, fundamentals, gettex, indicators, learn, market, marketstore, news, notify, paper, portfolio, refresher, scheduler, snapshot
+from . import __version__, alerts, analysis, verdict, entry, events, fundamentals, gettex, indicators, learn, market, marketstore, news, notify, paper, portfolio, refresher, scheduler, snapshot
 from . import settings_store
 from . import updater_client
 from .config import Settings
@@ -345,10 +345,19 @@ def analyze(symbol: str, period: str | None = None, interval: str = "1d", with_n
         raise HTTPException(422, str(exc)) from exc
     meta = _meta(symbol, target, settings)
     items = news.collect(symbol, settings, meta.get("name")) if with_news else []
-    rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
+    sentiment, count = news.aggregate_sentiment(items), sum(1 for i in items if i.sentiment)
+    rule = analysis.recommend(_fresh(a), sentiment, news_count=count)
+    model = routes_insights.model_view(symbol, rule, profile)
+    # eine Einschätzung überall: Regeln + News + Modell (wie in der Übersicht und in den Berichten)
+    rec = verdict.final(a, profile, sentiment, count, settings=settings, pred=model)
     return {**a.to_dict(), "recommendation": rec.__dict__, "entry": entry.plan(a, rec, currency=meta["currency"]),
             "news": [n.to_dict() for n in items], "news_sources": news.sources(settings) if with_news else [],
-            "model": routes_insights.model_view(symbol, rec, profile), **meta}
+            "model": model, **meta}
+
+
+def _fresh(a: analysis.Analysis) -> analysis.Analysis:
+    """recommend() ergänzt den Ausbruch um die News – für die zweite Rechnung eine eigene Kopie."""
+    return snapshot._copy(a)
 
 
 class NewsFeedback(BaseModel):

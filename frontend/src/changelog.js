@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.3",
+    date: "24.11.2026",
+    title: "Eine Einschätzung überall",
+    items: [
+      "Die Liste „Meine Werte“ und die Startseite rechneten nur mit dem Chart, die Seite eines Werts zusätzlich mit den Nachrichten und dem lernenden Modell. Dadurch stand z. B. in der Liste „Kaufen?“ und auf der Seite „Abwarten“. Jetzt urteilen alle Stellen gleich – auch die Benachrichtigungen.",
+      "Überstimmt das lernende Modell die Regeln, steht das als Hinweis bei der Einschätzung.",
+    ],
+  },
+  {
     version: "2.1.2",
     date: "24.11.2026",
     title: "Analyse: Schlüsse passen zu den Zahlen, alle Seiten auf dem Handy",

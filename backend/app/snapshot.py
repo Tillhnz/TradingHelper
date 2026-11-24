@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 import pandas as pd
 
-from . import analysis, entry, market
+from . import analysis, entry, market, verdict
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +99,8 @@ def compute_row(w: dict, profile: analysis.Profile, target: str | None) -> dict:
            "exchange": w.get("exchange"), "native_currency": w.get("currency"),
            "currency": market.shown_currency(w.get("currency"), target)}
     try:
-        df, a, rec = technical(sym, profile, target)
+        df, a, _ = technical(sym, profile, target)
+        rec = verdict.final(a, profile, use_cached_news=True)  # gleiche Einschätzung wie auf der Seite des Werts
         spark = [round(float(x), 4) for x in df["close"].tail(30)]
         row.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
                    rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"],

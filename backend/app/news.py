@@ -348,7 +348,23 @@ def collect(symbol: str, settings, name: str | None = None, limit: int = 12) -> 
         return []
     with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
         groups = list(pool.map(lambda f: _safe(f), tasks))
-    return merge(groups, days, limit)
+    items = merge(groups, days, limit)
+    with _SENT_LOCK:
+        _SENT[symbol.upper()] = (time.time(), aggregate_sentiment(items), sum(1 for i in items if i.sentiment))
+    return items
+
+
+_SENT: dict[str, tuple[float, float | None, int]] = {}
+_SENT_LOCK = threading.Lock()
+
+
+def cached_sentiment(symbol: str, max_age: float = 6 * 3600) -> tuple[float | None, int] | None:
+    """Zuletzt gemessene News-Stimmung eines Werts (ohne Netz) – damit Übersicht und Seite gleich urteilen."""
+    with _SENT_LOCK:
+        hit = _SENT.get(symbol.upper())
+    if not hit or time.time() - hit[0] > max_age:
+        return None
+    return hit[1], hit[2]
 
 
 def _safe(fn) -> list[NewsItem]:

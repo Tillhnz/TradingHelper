@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import analysis, entry, market, news, notify, portfolio, snapshot
+from . import analysis, entry, market, news, notify, portfolio, snapshot, verdict
 from .config import Settings
 from .storage import Storage
 
@@ -131,7 +131,7 @@ def build_report(storage: Storage, settings: Settings) -> Report:
         try:
             df, a, _ = snapshot.technical(sym, profile, target)
             items = news.collect(sym, settings, w.get("name"))
-            rec = analysis.recommend(a, news.aggregate_sentiment(items), news_count=sum(1 for i in items if i.sentiment))
+            rec = verdict.final(a, profile, news.aggregate_sentiment(items), sum(1 for i in items if i.sentiment), settings=settings)
             native = w.get("currency")
             if native is None and w.get("exchange") is None:
                 native = market.guess_listing(sym)[1]
