@@ -92,13 +92,11 @@ console.log("intraday", JSON.stringify(await page.evaluate(() => ({
   fresh: document.querySelector(".stock-quote p")?.textContent, price: document.querySelector(".big-price")?.textContent,
   error: document.querySelector(".chart-panel .error")?.textContent,
 }))));
-await page.getByLabel("Darstellung").selectOption("candles");
-await page.waitForTimeout(2500);
-await page.screenshot({ path: "shots/chart-intraday-candles.png" });
+// kleiner Chart: nur Kursverlauf, keine Schalter für Signale/Kerzen mehr
+console.log("small chart controls", await page.locator(".chart-panel select[aria-label='Darstellung'], .chart-panel input[type=checkbox]").count());
 await page.getByRole("button", { name: "1 W", exact: true }).click();
 await page.waitForTimeout(6000);
 await page.screenshot({ path: "shots/chart-week.png" });
-await page.getByLabel("Darstellung").selectOption("area");
 const q1 = await page.evaluate(async (t) => (await fetch("/api/quotes?symbols=DE0007164600.GTX,AAPL,BTC-EUR", { headers: { Authorization: `Bearer ${t}` } })).json(), token);
 console.log("quotes", JSON.stringify(q1));
 await page.goto(`${base}/`);
