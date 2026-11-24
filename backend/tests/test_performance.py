@@ -129,3 +129,36 @@ def test_compute_full(fake_market):
 def test_compute_empty():
     r = performance.compute([], "EUR")
     assert r["empty"] is True and r["lots"] == 0
+
+
+def test_checks_and_mixed_benchmark_insight(fake_market):
+    days = fake_market["WIN.DE"].index
+    d = lambda i: str(days[i].date())  # noqa: E731
+    lose = fake_market["LOSE.DE"]["close"]
+    win = fake_market["WIN.DE"]["close"]
+    positions = [
+        # früh wenig Geld in einen fallenden Wert, später viel Geld in einen steigenden
+        {"id": 1, "symbol": "LOSE.DE", "quantity": 2, "buy_price": float(lose.iloc[5]), "buy_date": d(5), "fees": 0, "currency": "EUR"},
+        {"id": 2, "symbol": "WIN.DE", "quantity": 50, "buy_price": float(win.iloc[300]), "buy_date": d(300), "fees": 0, "currency": "EUR"},
+        # Kaufkurs passt nicht zum Markt (doppelt so hoch) und Verkauf vor Kauf
+        {"id": 3, "symbol": "WIN.DE", "quantity": 1, "buy_price": float(win.iloc[100]) * 2, "buy_date": d(100), "fees": 0,
+         "currency": "EUR", "sell_price": float(win.iloc[90]), "sell_date": d(90), "sell_fees": 0},
+    ]
+    r = performance.compute(positions, "EUR", Profile("medium"), bench_symbols=["EUNL.DE"])
+    texts = " ".join(c["text"] for c in r["checks"])
+    assert "vor dem Kauf" in texts and "daneben" in texts
+    assert r["insights"][0]["title"].startswith("Eingaben prüfen")
+    titles = [t["title"] for t in r["insights"]]
+    assert any(t in titles for t in ("Vor dem Weltmarkt", "Hinter dem Weltmarkt", "Gemischtes Bild gegen den Weltmarkt"))
+
+
+def test_benchmark_insight_matches_numbers(fake_market):
+    """Die Aussage zum Weltmarkt muss zu Euro-Ergebnis und zeitgewichteter Rendite passen."""
+    days = fake_market["WIN.DE"].index
+    lose = fake_market["LOSE.DE"]["close"]
+    pos = [{"id": 1, "symbol": "LOSE.DE", "quantity": 10, "buy_price": float(lose.iloc[5]), "buy_date": str(days[5].date()),
+            "fees": 0, "currency": "EUR"}]
+    r = performance.compute(pos, "EUR", Profile("medium"), bench_symbols=["EUNL.DE"])
+    w = r["benchmarks"][0]
+    assert r["twr"] < w["twr"] and w["diff_value"] < 0
+    assert r["insights"][0]["title"] == "Hinter dem Weltmarkt"

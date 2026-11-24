@@ -37,7 +37,7 @@ BENCHMARKS = [
 ]
 BENCH_SYMBOLS = [b[0] for b in BENCHMARKS]
 CACHE_TTL = 20 * 60
-CALC_VERSION = 2  # erhöhen, wenn sich die Rechnung ändert (alte Ergebnisse im Speicher verfallen dann)
+CALC_VERSION = 3  # erhöhen, wenn sich die Rechnung ändert (alte Ergebnisse im Speicher verfallen dann)
 AFTER_DAYS = 20  # Handelstage für „was passierte nach dem Kauf / Verkauf“
 
 _POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="performance")
@@ -193,11 +193,14 @@ def compute(positions: list[dict], target: str, profile=None, bench_symbols: lis
     symbols = sorted({lot["symbol"] for lot in lots})
 
     closes: dict[str, pd.Series] = {}
+    ohlc: dict[str, pd.DataFrame] = {}
     native_closes: dict[str, pd.Series] = {}
     missing: list[str] = []
     for sym in symbols:
         try:
-            closes[sym] = _naive_days(market.get_history(sym, period, "1d", currency=target))
+            tdf = market.get_history(sym, period, "1d", currency=target)
+            closes[sym] = _naive_days(tdf)
+            ohlc[sym] = tdf
             native_closes[sym] = _naive_days(market.get_history(sym, period, "1d"))
         except Exception as exc:  # noqa: BLE001
             log.info("Analyse: keine Kurse für %s (%s)", sym, exc)
@@ -369,6 +372,7 @@ def compute(positions: list[dict], target: str, profile=None, bench_symbols: lis
     out["behavior"] = _behavior(closed, open_lots, native_closes, values, traded_volume, fees_total, cal, profile)
     out["years"] = _years(closed, cash)
     out["positions"] = _position_table(closed, open_lots)
+    out["checks"] = _checks(lots, ohlc, conv, cal[0])
     out["insights"] = _insights(out, profile)
     return out
 
@@ -538,6 +542,61 @@ def _de(x, d=1, sign=False) -> str:
     return text.replace(",", "\u2009").replace(".", ",").replace("\u2009", ".")
 
 
+def _day_bar(df: pd.DataFrame, day: date):
+    """Tageskerze am Handelstag (oder dem nächsten danach, z. B. bei Kauf am Wochenende)."""
+    idx = pd.DatetimeIndex(df.index)
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+    idx = idx.normalize()
+    i = int(idx.searchsorted(pd.Timestamp(day)))
+    if i >= len(df) or (idx[i] - pd.Timestamp(day)).days > 4:
+        return None
+    return df.iloc[i]
+
+
+def _checks(lots, ohlc: dict, conv, start) -> list[dict]:
+    """Plausibilitätsprüfung der Eingaben: Datum, Kurs gegenüber dem Markt am Tag, Kurssprünge in den Daten."""
+    out: list[dict] = []
+
+    def name(lot):
+        try:
+            return (market.cached_info(lot["symbol"]) or {}).get("name") or lot.get("note") or lot["symbol"]
+        except Exception:  # noqa: BLE001
+            return lot["symbol"]
+
+    for lot in lots:
+        if lot["_sell"] and lot["_sell"] < lot["_buy"]:
+            out.append({"level": "bad", "symbol": lot["symbol"], "name": name(lot), "day": str(lot["_sell"]),
+                        "text": f"Verkauf am {lot['_sell']:%d.%m.%Y} liegt vor dem Kauf am {lot['_buy']:%d.%m.%Y} – Datum vertauscht?"})
+        df = ohlc.get(lot["symbol"])
+        if df is None or df.empty:
+            continue
+        for kind, day, price in (("Kauf", lot["_buy"], lot.get("buy_price")), ("Verkauf", lot["_sell"], lot.get("sell_price"))):
+            if not day or not price:
+                continue
+            bar = _day_bar(df, day)
+            if bar is None:
+                continue
+            px = conv(float(price), lot["_ccy"], day)
+            lo, hi = float(bar["low"]), float(bar["high"])
+            if lo <= 0 or hi <= 0:
+                continue
+            off = px / hi - 1 if px > hi else px / lo - 1 if px < lo else 0.0
+            if abs(off) > 0.08:
+                out.append({"level": "bad" if abs(off) > 0.25 else "warn", "symbol": lot["symbol"], "name": name(lot), "day": str(day),
+                            "text": f"{kind} am {day:%d.%m.%Y} zu {_de(px, 2)} – der Kurs lag an dem Tag zwischen {_de(lo, 2)} und {_de(hi, 2)} "
+                                    f"({_fmt(off * 100)} % daneben). Kurs, Stückzahl oder Datum prüfen."})
+    # Sprünge in den Kursdaten selbst (bei Einzelwerten selten echt, oft ein Datenfehler der Quelle)
+    for sym, df in ohlc.items():
+        c = _naive_days(df)
+        c = c[c.index >= pd.Timestamp(start)]
+        ch = c.pct_change()
+        for d, x in ch[ch.abs() > 0.25].items():
+            out.append({"level": "info", "symbol": sym, "name": (market.cached_info(sym) or {}).get("name") or sym, "day": str(d.date()),
+                        "text": f"Die Kursdaten springen am {d:%d.%m.%Y} um {_fmt(x * 100)} % – echt (Nachricht, Split) oder ein Fehler der Datenquelle?"})
+    return out[:20]
+
+
 def _fmt(x, d=1):
     return _de(x, d, sign=True)
 
@@ -547,18 +606,35 @@ def _insights(a: dict, profile) -> list[dict]:
     tips: list[dict] = []
     b = a.get("behavior") or {}
     world = next((x for x in a.get("benchmarks", []) if x["symbol"] == "EUNL.DE"), None)
-    if world and world.get("diff_irr") is not None and a.get("irr") is not None:
-        d = world["diff_irr"]
-        if a["period"]["days"] < 180:
-            tips.append({"level": "info", "title": "Noch kurzer Zeitraum",
-                         "text": f"Seit dem ersten Kauf sind erst {a['period']['days']} Tage vergangen – Renditen pro Jahr schwanken da stark. "
-                                 "Der Vergleich wird mit jedem Monat aussagekräftiger."})
-        tips.append({"level": "good" if d > 0.5 else "bad" if d < -2 else "info",
-                     "title": "Gegen den Weltmarkt " + ("vorne" if d > 0 else "hinten"),
-                     "text": f"Mit denselben Käufen in einen MSCI-World-ETF (und anteilig gleichen Verkäufen) hättest du insgesamt "
-                             f"{_de(abs(world['diff_value'] or 0), 0)} {a['currency']} {'weniger' if (world['diff_value'] or 0) > 0 else 'mehr'} – Wert heute plus Verkaufserlöse. "
-                             f"Dein Zinsfuß liegt {_de(abs(d))} Prozentpunkte pro Jahr {'darüber' if d > 0 else 'darunter'}.",
-                     "key": True})
+    if a.get("checks"):
+        bad = [c for c in a["checks"] if c["level"] in ("bad", "warn")]
+        if bad:
+            tips.append({"level": "bad", "title": "Eingaben prüfen – Ergebnis womöglich verzerrt",
+                         "text": f"{len(bad)} {'Kauf/Verkauf passt' if len(bad) == 1 else 'Käufe/Verkäufe passen'} nicht zu den Kursen am jeweiligen Tag "
+                                 "(Details unten unter „Datenprüfung“). Solange das so ist, sind Rendite und Vergleich nicht verlässlich.",
+                         "key": True})
+    if a["period"]["days"] < 90:
+        tips.append({"level": "info", "title": "Noch kurzer Zeitraum",
+                     "text": f"Seit dem ersten Kauf sind erst {a['period']['days']} Tage vergangen – Renditen schwanken da stark."})
+    if world and world.get("diff_value") is not None and a.get("twr") is not None and world.get("twr") is not None:
+        money = world["diff_value"]
+        twr_diff = a["twr"] - world["twr"]
+        cur = a["currency"]
+        euro = f"{_de(abs(money), 0)} {cur} {'mehr' if money > 0 else 'weniger'}"
+        tw = f"zeitgewichtet {_fmt(a['twr'])} % gegenüber {_fmt(world['twr'])} %"
+        if money > 0 and twr_diff > 0:
+            tips.append({"level": "good", "title": "Vor dem Weltmarkt", "key": True,
+                         "text": f"Du hast {euro} als mit denselben Käufen in einen MSCI-World-ETF (Wert heute plus Verkaufserlöse), {tw}."})
+        elif money < 0 and twr_diff < 0:
+            tips.append({"level": "bad" if twr_diff < -5 else "warn", "title": "Hinter dem Weltmarkt", "key": True,
+                         "text": f"Mit denselben Käufen in einen MSCI-World-ETF hättest du {_de(abs(money), 0)} {cur} mehr; {tw}. "
+                                 "Ein breiter ETF wäre bisher die bessere Wahl gewesen."})
+        else:
+            why = ("Deine Auswahl lief schwächer als der Index, aber dein Geld war zu günstigen Zeitpunkten investiert – "
+                   "größere Beträge kamen erst nach schwachen Phasen dazu.") if money > 0 else (
+                   "Deine Auswahl lief besser als der Index, aber größere Beträge kamen zu ungünstigen Zeitpunkten dazu.")
+            tips.append({"level": "info", "title": "Gemischtes Bild gegen den Weltmarkt", "key": True,
+                         "text": f"In Euro hast du {euro} als mit einem MSCI-World-ETF, {tw}. {why}"})
     if b.get("hold_win_days") is not None and b.get("hold_loss_days") is not None and b.get("closed", 0) >= 4:
         if b["hold_loss_days"] > b["hold_win_days"] * 1.5:
             tips.append({"level": "warn", "title": "Gewinne früh mitgenommen, Verluste lange gehalten",

@@ -155,6 +155,21 @@ export default function Analyse() {
             </section>
           )}
 
+          {a.checks?.length > 0 && (
+            <section className="panel" id="datenpruefung">
+              <h2 className="section-title" style={{ marginTop: 0 }}>Datenprüfung</h2>
+              <p className="muted small" style={{ marginTop: 0 }}>Diese Einträge passen nicht zu den Marktdaten. Korrigiere sie unter <Link to="/depot">Käufe & Blöcke</Link> – danach rechnet die Analyse automatisch neu.</p>
+              <ul className="an-insights">
+                {a.checks.map((c, i) => (
+                  <li key={`${c.symbol}-${c.day}-${i}`} className={`lvl-${c.level}`}>
+                    <Icon name={LEVEL_ICON[c.level] || "info"} />
+                    <div><strong><Link to={`/chart/${encodeURIComponent(c.symbol)}`}>{c.name}</Link></strong><p>{c.text}</p></div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section className="panel">
             <div className="section-row">
               <h2 className="section-title" style={{ marginTop: 0 }}>Gegen die Indizes</h2>
@@ -178,16 +193,16 @@ export default function Analyse() {
             <div className="table-wrap" style={{ marginTop: "1rem" }}>
               <table className="table an-table">
                 <thead>
-                  <tr><th>Vergleich</th><th className="num">Wert heute</th><th className="num">Unterschied zu dir</th><th className="num">{short ? "IZF im Zeitraum" : "IZF p. a."}</th>
+                  <tr><th>Vergleich</th><th className="num" title="Wert heute + Verkaufserlöse − Käufe">Gewinn</th><th className="num">Unterschied zu dir</th><th className="num">{short ? "IZF im Zeitraum" : "IZF p. a."}</th>
                     <th className="num hide-sm">Zeitgewichtet</th><th className="num hide-sm" title="Wie stark dein Depot mit dem Index mitschwingt (1 = gleich stark)">Beta</th></tr>
                 </thead>
                 <tbody>
-                  <tr className="me"><td><i className="sw" style={{ background: C.accent }} />Dein Depot</td><td className="num"><strong>{money(a.value, ccy)}</strong></td><td className="num">–</td>
+                  <tr className="me"><td><i className="sw" style={{ background: C.accent }} />Dein Depot</td><td className={`num ${tone(a.gain)}`}><strong>{signedMoney(a.gain, ccy)}</strong></td><td className="num">–</td>
                     <td className={`num ${tone(irrOf(a))}`}>{pct(irrOf(a), 1)}</td><td className={`num hide-sm ${tone(a.twr)}`}>{pct(a.twr, 1)}</td><td className="num hide-sm">1,00</td></tr>
                   {(a.benchmarks || []).map((x, i) => (
                     <tr key={x.symbol}>
                       <td><i className="sw" style={{ background: benchColor(i) }} />{x.label}<div className="acc-tag">{x.product} · {x.symbol}</div></td>
-                      <td className="num">{money(x.value, ccy)}</td>
+                      <td className={`num ${tone(x.gain)}`}>{signedMoney(x.gain, ccy)}</td>
                       <td className={`num ${tone(x.diff_value)}`}>{signedMoney(x.diff_value, ccy)}{x.diff_irr != null && !short && <div className="small">{x.diff_irr > 0 ? "+" : ""}{num(x.diff_irr, 1)} Pkt. p. a.</div>}</td>
                       <td className={`num ${tone(irrOf(x))}`}>{pct(irrOf(x), 1)}</td>
                       <td className={`num hide-sm ${tone(x.twr)}`}>{pct(x.twr, 1)}</td>
@@ -197,7 +212,7 @@ export default function Analyse() {
                 </tbody>
               </table>
             </div>
-            <p className="muted small">„Unterschied zu dir“: Wert heute plus Verkaufserlöse, positiv = du liegst vorne. Verkaufst du, verkauft der Vergleich denselben Anteil. Zeitgewichtet zählt nur Tage, an denen du investiert warst.</p>
+            <p className="muted small">Gewinn = Wert heute + Verkaufserlöse − Käufe. „Unterschied zu dir“: positiv = du liegst vorne. Verkaufst du, verkauft der Vergleich denselben Anteil. Zeitgewichtet zählt nur Tage, an denen du investiert warst.</p>
           </section>
 
           <section className="panel">

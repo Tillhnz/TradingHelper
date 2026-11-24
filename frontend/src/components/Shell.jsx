@@ -19,7 +19,7 @@ const NAV = [
   { group: "Werkzeuge" },
   { to: "/charts", label: "Charts", icon: "activity", mobile: false },
   { to: "/depot", label: "Käufe & Blöcke", short: "Käufe", icon: "briefcase", mobile: false },
-  { to: "/alerts", label: "Alarme", icon: "bell" },
+  { to: "/alerts", label: "Alarme", icon: "bell", mobile: false },
   { to: "/settings", label: "Einstellungen", short: "Setup", icon: "sliders", mobile: false },
 ];
 
@@ -65,6 +65,9 @@ function ThemeToggle() {
 export default function Shell({ user, onLogout, children }) {
   const { pathname } = useLocation();
   const [ver, setVer] = useState(null);
+  const [more, setMore] = useState(false);
+  const moreItems = NAV.filter((n) => n.to && n.mobile === false);
+  const moreActive = moreItems.some((n) => pathname.startsWith(n.to)) || pathname.startsWith("/admin");
 
   useEffect(() => {
     let stop = false;
@@ -90,6 +93,7 @@ export default function Shell({ user, onLogout, children }) {
       document.title = pathname.startsWith("/admin") ? "Administration · TradeHelper" : hit ? `${hit.label} · TradeHelper` : "TradeHelper";
     }
     window.scrollTo(0, 0);
+    setMore(false);
   }, [pathname]);
 
   return (
@@ -110,6 +114,11 @@ export default function Shell({ user, onLogout, children }) {
               {n.short && <span className="nav-short" aria-hidden="true">{n.short}</span>}
             </NavLink>
           )))}
+          {/* Handy: alles, was nicht in die untere Leiste passt */}
+          <button className={`nav-more mobile-only-flex ${moreActive ? "active" : ""}`} onClick={() => setMore((m) => !m)} aria-expanded={more} aria-haspopup="true">
+            <Icon name="list" className="nav-icon" />
+            <span className="nav-short">Mehr</span>
+          </button>
         </nav>
         <div className="sidebar-foot">
           <span className="muted small">{user.username}{user.two_factor && <span title="Zwei-Faktor-Anmeldung aktiv"> · <Icon name="shield" /></span>}</span>
@@ -123,6 +132,18 @@ export default function Shell({ user, onLogout, children }) {
           )}
         </div>
       </aside>
+        {more && (
+          <>
+            <div className="more-backdrop" onClick={() => setMore(false)} />
+            <div className="more-sheet" role="menu" aria-label="Weitere Seiten">
+              {moreItems.map((n) => (
+                <NavLink key={n.to} to={n.to} role="menuitem"><Icon name={n.icon} />{n.label}</NavLink>
+              ))}
+              {user.is_admin && <NavLink to="/admin" role="menuitem"><Icon name="users" />Administration</NavLink>}
+              <button className="link" role="menuitem" onClick={onLogout}><Icon name="logout" />Abmelden</button>
+            </div>
+          </>
+        )}
       <main className="main" id="inhalt" tabIndex={-1}>
         <div className="topbar">
           <NavLink to="/" className="brand small-brand mobile-only">
