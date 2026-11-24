@@ -72,13 +72,16 @@ class PasswordChange(BaseModel):
     new: str = Field(min_length=8, max_length=200)
 
 
+STARTED = time.time()  # für „läuft seit“: zeigt, ob der Server zwischendurch neu gestartet ist
+
+
 @app.get("/api/health")
 def health(st: Storage = Depends(get_storage)):
     try:
         st.user_count()  # prüft, dass die Datenbank wirklich nutzbar ist (sonst würde ein Update nicht zurückrollen)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(503, f"Datenbank nicht nutzbar: {exc}") from exc
-    return {"status": "ok", "version": __version__}
+    return {"status": "ok", "version": __version__, "started_at": int(STARTED)}
 
 
 @app.get("/api/auth/status")
@@ -963,7 +966,11 @@ def paper_backtest_start(st: Storage = Depends(user_storage), settings: Settings
 
 @app.get("/api/admin/status", dependencies=admin_only)
 def admin_status(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
+    up = time.time() - STARTED
+    since = time.strftime("%d.%m. %H:%M", time.localtime(STARTED))
     checks = [
+        {"label": "Server", "ok": True,
+         "text": f"läuft seit {since} Uhr ({int(up // 3600)} Std. {int(up % 3600 // 60)} Min.) · Version {__version__}"},
         {"label": "Benachrichtigungen (ntfy)", "ok": bool(settings.ntfy_topic),
          "text": f"{settings.ntfy_url}/{settings.ntfy_topic}" if settings.ntfy_topic else "kein Topic hinterlegt"},
         {"label": "Nachrichten", "ok": bool(news.sources(settings)),

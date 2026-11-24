@@ -22,22 +22,54 @@ let onNeeds2fa = () => {};
 export const setUnauthorizedHandler = (fn) => (onUnauthorized = fn);
 export const setNeeds2faHandler = (fn) => (onNeeds2fa = fn);
 
+const RESTARTING = new Set([502, 503, 504]); // nginx läuft, das Backend (noch) nicht – z. B. während eines Updates
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Bis zu ~30 s warten, bis der Server wieder antwortet (Neustart nach Update, kurzer Netzaussetzer). */
+async function waitForServer(maxMs = 30000) {
+  const until = Date.now() + maxMs;
+  while (Date.now() < until) {
+    await sleep(2000);
+    try {
+      const r = await fetch("/api/health", { cache: "no-store" });
+      if (r.ok) return true;
+    } catch { /* weiter warten */ }
+  }
+  return false;
+}
+
+function unreachable() {
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  return new Error(offline
+    ? "Du bist offline – bitte Verbindung prüfen."
+    : "TradeHelper antwortet gerade nicht – vermutlich startet der Server neu (z. B. nach einem Update). Bitte in einer Minute noch einmal versuchen.");
+}
+
+async function send(method, path, headers, body) {
+  return fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+}
+
 async function request(method, path, body) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  // Ist der Server kurz weg (Neustart, Netzaussetzer), warten wir auf ihn und versuchen es genau einmal erneut.
+  // Doppelte Anfragen schaden nicht: Importe erkennen Doppeltes, alles andere ist ein Lesen oder Setzen.
   let res;
-  try {
-    res = await fetch(`/api${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new Error("Server nicht erreichbar.");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      res = await send(method, path, headers, body);
+    } catch {
+      res = null;
+    }
+    if (res && !RESTARTING.has(res.status)) break;
+    if (attempt === 0 && (await waitForServer())) continue;
+    if (!res) throw unreachable();
+    break;
   }
+  if (RESTARTING.has(res.status)) throw unreachable();
 
   if (res.status === 401 && !path.startsWith("/auth/")) {
     clearToken();
