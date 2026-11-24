@@ -713,6 +713,17 @@ def native_live(symbol: str) -> dict:
     return fetch_live(symbol)
 
 
+def quote_times(symbols: list[str]) -> dict[str, dict]:
+    """Zeitpunkt des letzten Kurses je Wert aus dem Speicher (ohne Netz): {"time", "delay_min", "fetched_at"}."""
+    store = marketstore.get_store()
+    if store is None or not symbols:
+        return {}
+    out = {}
+    for sym, (data, fetched) in store.quotes(list({s for s in symbols if s})).items():
+        out[sym] = {"time": data.get("time"), "delay_min": data.get("delay_min"), "fetched_at": int(fetched)}
+    return out
+
+
 def live(symbol: str, currency: str | None = None) -> dict:
     """Schneller, möglichst aktueller Kurs für die Anzeige, optional umgerechnet."""
     raw = native_live(symbol)

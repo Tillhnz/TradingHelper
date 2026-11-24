@@ -47,6 +47,8 @@ FIELDS: dict[str, tuple[str, str, bool]] = {
     "app_url": ("url_or_empty", "general", False),
     "update_notify": ("bool", "general", False),
     "home_layout": ("home_layout", "home", False),
+    "asset_sort": ("choice:custom,name,day,total", "home", False),
+    "asset_order": ("symbols", "home", False),
     "require_2fa": ("bool", "security", False),
     "trusted_device_days": ("int:1:365", "security", False),
     "social_enabled": ("bool", "data", False),
@@ -71,7 +73,8 @@ _OLD_TO_NEW = {"setup": ("setup", "xl"), "tiles": ("portfolio", "l"), "important
                "assets": ("watchlist", "xl"), "news": ("news", "m"), "alerts": ("alerts", "m")}
 # Diese Einstellungen hat jeder Nutzer für sich
 USER_KEYS = {"invest_horizon", "risk_profile", "portfolio_size", "paper_enabled", "paper_capital", "paper_fee",
-             "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency", "home_layout"}
+             "paper_notify", "ntfy_url", "ntfy_topic", "ntfy_token", "display_currency", "home_layout",
+             "asset_sort", "asset_order"}
 SCHEDULE_KEYS = {k for k, v in FIELDS.items() if v[1] == "schedule"} | {"timezone", "model_time", "model_enabled"}
 
 
@@ -204,6 +207,20 @@ def coerce(key: str, raw):
         return "\n".join(out)
     if base == "home_layout":
         return _home_layout(raw)
+    if base == "symbols":  # eigene Reihenfolge der Werte: Symbole, durch Komma getrennt
+        items = raw if isinstance(raw, list) else str(raw or "").split(",")
+        out = []
+        for it in items:
+            sym = str(it).strip().upper()
+            if not sym:
+                continue
+            if not re.match(r"^[A-Z0-9.^=_-]{1,20}$", sym):
+                raise SettingError(f"Ungültiges Symbol: {sym[:20]}")
+            if sym not in out:
+                out.append(sym)
+        if len(out) > 500:
+            raise SettingError("Zu viele Werte")
+        return ",".join(out)
     if base == "tz":
         try:
             ZoneInfo(text)

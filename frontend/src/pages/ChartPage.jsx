@@ -11,14 +11,13 @@ import { BAR_SECONDS, INTRADAY, intervalsFor, PERIOD_LABEL, periodsFor, pickPeri
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
 import { ModelCard, SocialCard } from "../components/InsightCards.jsx";
-import PriceChart, { CHART_TYPES } from "../components/PriceChart.jsx";
+import PriceChart from "../components/PriceChart.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading, Stat } from "../components/ui.jsx";
 import { CURRENCY_LABEL, money, num, pct, signed, tone } from "../fmt.js";
 import { since, useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { ACTION_UI, displayName, displayTicker } from "../texts.js";
-import { alpha, C } from "../theme.js";
 
 const RANGES = [
   { id: "1d", label: "1 T", period: "1d", interval: "5m" },
@@ -29,11 +28,7 @@ const RANGES = [
   { id: "1y", label: "1 J", period: "1y", interval: "1d" },
   { id: "5y", label: "5 J", period: "5y", interval: "1wk" },
 ];
-const TYPE_KEY = "tradehelper_chart_type";
-const loadType = () => { try { return localStorage.getItem(TYPE_KEY) || null; } catch { return null; } };
 const REFRESH_MS = 60 * 1000;
-const KIND_COLOR = { get pullback() { return C.up; }, get breakout() { return C.amber; }, get rebound() { return C.orange; }, get now() { return C.up; } };
-const KIND_TITLE = { pullback: "Rücksetzer", breakout: "Ausbruch", rebound: "Rebound", now: "Einstieg" };
 
 function freshness(meta) {
   if (!meta) return "";
@@ -48,11 +43,6 @@ export default function ChartPage() {
   const { mode } = useMode();
   const pro = mode === "pro";
   const [view, setView] = useState({ period: "1y", interval: "1d" });
-  const [showSma, setShowSma] = useState(true);
-  const [showBb, setShowBb] = useState(false);
-  const [showEvents, setShowEvents] = useState(true);
-  const [showPlan, setShowPlan] = useState(true);
-  const [planTouched, setPlanTouched] = useState(false);
   const [ccy, setCcy] = useState(null); // null = Einstellung
   const [meta, setMeta] = useState(null);
   const [rows, setRows] = useState(null);
@@ -63,8 +53,6 @@ export default function ChartPage() {
   const [buying, setBuying] = useState(false);
   const [selling, setSelling] = useState(null);
   const [tick, setTick] = useState(0);
-  const [chartType, setChartType] = useState(loadType);
-  const [optsOpen, setOptsOpen] = useState(false);
   const [holding, setHolding] = useState(null);
   const refreshAll = useCallback(() => setTick((t) => t + 1), []);
 
@@ -73,7 +61,6 @@ export default function ChartPage() {
     setMeta(null);
     api.get(`/holdings/${encodeURIComponent(symbol)}`).then((h) => {
       setHolding(h);
-      if (!planTouched) setShowPlan(!(h?.summary?.shares > 0));
     }).catch(() => setHolding(null));
     api.get("/watchlist").then((w) => setWatched(w.some((x) => x.symbol === symbol))).catch(() => {});
   }, [symbol, tick]);
@@ -113,26 +100,6 @@ export default function ChartPage() {
     if (name) document.title = `${name} · TradeHelper`;
   }, [meta, analysis]);
 
-  const planLines = useMemo(() => {
-    if (!analysis || !showPlan) return [];
-    const lines = pro ? [
-      { price: analysis.support, color: alpha("up", 0.45), title: "Unterstützung", style: 2 },
-      { price: analysis.resistance, color: alpha("down", 0.45), title: "Widerstand", style: 2 },
-    ] : [];
-    if (!analysis.entry) return lines;
-    const ok = analysis.entry.setups.filter((x) => x.ok);
-    ok.forEach((x) => { if (x.kind !== "now") lines.push({ price: x.entry, color: KIND_COLOR[x.kind], title: KIND_TITLE[x.kind], width: 2, style: 0 }); });
-    const best = ok.find((x) => x.status === "now") || [...ok].sort((a, b) => Math.abs(a.distance_pct) - Math.abs(b.distance_pct))[0];
-    if (best && !(holding?.summary?.shares > 0)) {
-      lines.push({ price: best.stop, color: C.down, title: "Stopp", style: 3 });
-      if (best.target) lines.push({ price: best.target, color: C.up, title: "Ziel", style: 3 });
-    }
-    return lines;
-  }, [analysis, showPlan, pro, holding]);
-
-  const events = useMemo(() => (showEvents && meta?.events ? meta.events : []), [meta, showEvents]);
-  const positions = useMemo(() => meta?.positions || [], [meta]);
-
   async function toggleWatch() {
     setMsg("");
     setError("");
@@ -146,11 +113,6 @@ export default function ChartPage() {
     }
   }
 
-
-  function pickType(t) {
-    setChartType(t);
-    try { localStorage.setItem(TYPE_KEY, t); } catch { /* egal */ }
-  }
 
   function setProInterval(iv) {
     setView((v) => ({ interval: iv, period: pickPeriod(iv, v.period, meta) }));
@@ -263,7 +225,7 @@ export default function ChartPage() {
 
       <div className="stock-main">
       <section className="panel chart-panel" id="chart">
-        <div className={`toolbar ${optsOpen ? "opts-open" : ""}`}>
+        <div className="toolbar">
           {pro ? (
             <>
               <div className="seg seg-iv" role="group" aria-label="Kerzen">
@@ -285,30 +247,16 @@ export default function ChartPage() {
               ))}
             </select>
           )}
-          <select value={chartType || (pro ? "candles" : "area")} onChange={(e) => pickType(e.target.value)} aria-label="Darstellung">
-            {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-          <button className="opts-btn" onClick={() => setOptsOpen((o) => !o)} aria-expanded={optsOpen}>{optsOpen ? "Fertig" : "Anzeige ▾"}</button>
-          <Link className="big-chart" to={`/charts/${encodeURIComponent(symbol)}`} title="Im großen Chart öffnen (Zeichnen, Indikatoren)">⛶ Groß</Link>
-          <span className="toolbar-gap" />
-          <label className="check"><input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} /> Signale</label>
-          <label className="check"><input type="checkbox" checked={showPlan} onChange={(e) => { setPlanTouched(true); setShowPlan(e.target.checked); }} /> Einstiegsmarken</label>
-          {pro && <label className="check"><input type="checkbox" checked={showSma} onChange={(e) => setShowSma(e.target.checked)} /> <Term name="SMA">SMA</Term></label>}
-          {pro && <label className="check"><input type="checkbox" checked={showBb} onChange={(e) => setShowBb(e.target.checked)} /> Bollinger</label>}
+          <Link className="big-chart" to={`/charts/${encodeURIComponent(symbol)}`} title="Im großen Chart öffnen: Kerzen, Signale, Einstiegsmarken, Indikatoren, Zeichnen">⛶ Vollbild-Chart</Link>
         </div>
         <ErrorText error={error} />
         {!rows && !error && <Loading text="Lade Kurse …" />}
         {rows && (
-          <PriceChart key={`${symbol}-${view.interval}-${view.period}-${ccy}-${mode}`} rows={rows} simple={!pro}
-            type={chartType || undefined} live={liveBar} intraday={view.interval === "1s" ? "seconds" : INTRADAY.has(view.interval)}
-            showSma={showSma} showBb={showBb} events={events} planLines={planLines} positions={positions} currency={cur} />
+          // Kleiner Chart: bewusst nur der Kursverlauf. Signale, Einstiegsmarken, Positionen und Indikatoren gibt es im Vollbild-Chart.
+          <PriceChart key={`${symbol}-${view.interval}-${view.period}-${ccy}`} rows={rows} simple type="area"
+            live={liveBar} intraday={view.interval === "1s" ? "seconds" : INTRADAY.has(view.interval)}
+            showSma={false} showBb={false} currency={cur} />
         )}
-        <p className="legend small">
-          {showEvents && <><span className="arrow" style={{ color: C.buySig }}>▲</span>Kaufsignal <span className="arrow" style={{ color: C.sellSig }}>▼</span>Verkaufssignal</>}
-          {showPlan && <><span className="dot" style={{ background: C.up }} />Rücksetzer-Einstieg <span className="dot" style={{ background: C.amber }} />Ausbruch</>}
-          {positions.length > 0 && <><span className="swatch gain" />Chance bis Ziel <span className="swatch loss" />Risiko bis Stopp <span className="dot" style={{ background: C.amber }} />dein Kaufkurs</>}
-          {pro && showSma && <><span className="dot" style={{ background: C.amber }} />SMA 20 <span className="dot" style={{ background: C.sma50 }} />SMA 50 <span className="dot" style={{ background: C.sma200 }} />SMA 200</>}
-        </p>
       </section>
 
       {analysis && (

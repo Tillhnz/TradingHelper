@@ -8,6 +8,9 @@ import { ErrorText, Loading, RefreshState } from "../components/ui.jsx";
 import { LineArea, Stack } from "../components/viz.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 
+import { SORTS, useAssetSort } from "../assetSort.js";
+import Freshness from "../components/Freshness.jsx";
+
 const STATUS = { ok: "hochgeladen", new: "noch leer", error: "Fehler" };
 
 // ---------- Depot anlegen ----------
@@ -164,6 +167,7 @@ export default function Portfolio() {
   const [connect, setConnect] = useState(false);
   const [imp, setImp] = useState(null);
   const [error, setError] = useState("");
+  const sorter = useAssetSort();
 
   function created(id, label) {
     setConnect(false);
@@ -181,8 +185,10 @@ export default function Portfolio() {
         <div>
           <h1>Portfolio</h1>
           <p className="muted">Alle Depots zusammen – aus deinen hochgeladenen Umsätzen und Abrechnungen. <RefreshState q={q} /></p>
+          {pf && <p className="muted small" style={{ margin: 0 }}><Freshness asOf={pf.as_of} oldest={pf.oldest} delay={pf.delay_min} at={pf.as_of ? null : q.at} /></p>}
         </div>
         <div className="actions" style={{ marginTop: 0 }}>
+          <Link className="btn" to="/analyse"><Icon name="gauge" /> Analyse</Link>
           <Link className="btn" to="/depot"><Icon name="briefcase" /> Käufe & Blöcke</Link>
           <button className="btn primary" onClick={() => setConnect(true)}><Icon name="plus" /> Depot hinzufügen</button>
         </div>
@@ -229,12 +235,17 @@ export default function Portfolio() {
 
           {pf.lines.length > 0 && (
             <>
-              <h2 className="section-title">Positionen</h2>
+              <div className="section-row">
+                <h2 className="section-title">Positionen</h2>
+                <div className="seg" role="group" aria-label="Sortierung">
+                  {SORTS.map((o) => <button key={o.id} className={sorter.sort === o.id ? "on" : ""} title={o.title} onClick={() => sorter.setSort(o.id).catch((e) => setError(e.message))}>{o.label}</button>)}
+                </div>
+              </div>
               <div className="table-wrap">
                 <table className="table pf-table">
                   <thead><tr><th>Wert</th><th className="hide-sm">Depot</th><th className="num">Stück</th><th className="num">Kurs</th><th className="num">Wert</th><th className="num hide-sm">Anteil</th><th className="num">Seit Kauf</th><th className="num hide-sm">Heute</th></tr></thead>
                   <tbody>
-                    {pf.lines.map((x) => (
+                    {sorter.apply(pf.lines).map((x) => (
                       <tr key={`${x.account_id}-${x.symbol || x.isin}`}>
                         <td className="nm">{x.symbol ? <Link className="sym" to={`/chart/${encodeURIComponent(x.symbol)}`}>{x.name || x.symbol}</Link> : x.name}
                           <div className="acc-tag">{x.type}{x.lots > 1 ? ` · ${x.lots} Blöcke` : ""}</div></td>

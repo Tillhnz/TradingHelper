@@ -105,6 +105,7 @@ const GROUPS = [
     intro: "Anzeigewährung: Kurse von Werten in anderer Währung (z. B. Apple an der Nasdaq in USD) werden mit dem Tageskurs umgerechnet. Charts, Indikatoren und Report rechnen dann komplett in dieser Währung. „Handelswährung“ zeigt jeden Wert in der Währung seines Börsenplatzes.",
     fields: {
       display_currency: { label: "Anzeigewährung", type: "select", options: ["EUR", "USD", "CHF", "GBP", "native"], labels: { native: "Handelswährung des Börsenplatzes", EUR: "Euro (€)", USD: "US-Dollar ($)", CHF: "Schweizer Franken", GBP: "Britisches Pfund" } },
+      asset_sort: { label: "Reihenfolge der Werte", type: "select", options: ["custom", "name", "day", "total"], labels: { custom: "Eigene Reihenfolge (unter „Meine Werte“ festlegen)", name: "Alphabetisch", day: "Veränderung heute", total: "Veränderung gesamt (seit Kauf bzw. seit Beobachtung)" }, hint: "gilt überall gleich: Startseite, Meine Werte, Portfolio" },
       timezone: { label: "Zeitzone", hint: "z. B. Europe/Berlin" },
       update_notify: { label: "Neue Versionen per Push melden", type: "bool", hint: "prüft alle 6 Stunden auf GitHub, Sicherheitsupdates mit hoher Priorität (an Administratoren)" },
       app_url: { label: "Adresse von TradeHelper", hint: "für Push-Nachrichten: Antippen öffnet diese Seite. Wird beim ersten Aufruf automatisch gesetzt." },

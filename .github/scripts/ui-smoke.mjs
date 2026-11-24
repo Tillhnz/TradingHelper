@@ -327,6 +327,19 @@ console.log("home layout", JSON.stringify(await page.evaluate(() => ({
 }))));
 await page.screenshot({ path: "shots/home-private.png", fullPage: true });
 
+// Beträge über das Auge am Vermögen wieder zeigen, Reihenfolge „A–Z“ und die neue Analyse
+await page.getByRole("button", { name: "Beträge anzeigen" }).first().click().catch((e) => console.log("eye", e.message));
+await page.waitForTimeout(1500);
+await page.goto(`${base}/watchlist`);
+await page.getByRole("button", { name: "A–Z" }).click();
+await page.waitForTimeout(1500);
+console.log("sorted", JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".asset-list .asset-name, .asset-list strong")].slice(0, 6).map((x) => x.textContent))));
+await page.screenshot({ path: "shots/watchlist-sorted.png", fullPage: true });
+console.log("strategy", JSON.stringify(await api("/strategy?budget=8")).slice(0, 900));
+await page.goto(`${base}/analyse`);
+await page.waitForTimeout(9000);
+await page.screenshot({ path: "shots/analyse.png", fullPage: true });
+
 // Unternehmensdaten einer Aktie (SAP)
 console.log("fundamentals SAP", JSON.stringify(await api("/fundamentals/DE0007164600.GTX")).slice(0, 600));
 

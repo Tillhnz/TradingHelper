@@ -4,6 +4,13 @@ Selbst gehosteter Trading-Assistent für Proxmox: Gesamtportfolio über alle Dep
 
 > ⚠️ Die Einschätzungen entstehen automatisch aus Regeln und einem lernenden Modell. Sie sind **keine Anlageberatung**.
 
+## Neu in 2.1
+
+- Seite **Analyse**: IZF, zeitgewichtete Rendite, Vergleich mit Indizes, Handelsverhalten.
+- Werte überall in derselben, frei wählbaren Reihenfolge (eigene, A–Z, heute, gesamt).
+- Startseite zeigt, von wann die Kurse stammen; Beträge per Auge ein-/ausblenden.
+- Kleiner Chart auf der Wertseite nur noch mit Kursverlauf.
+
 ## Neu in 2.0
 
 - **Schnell:** Kurse liegen dauerhaft auf dem Server (`data/market.db`) und werden von einem Hintergrunddienst aktuell gehalten. Jede Seite antwortet nach spätestens ~1,5 s; was dann noch rechnet, kommt kurz danach nach.
@@ -132,6 +139,17 @@ Unter **Portfolio → Depot hinzufügen** Broker wählen (Consorsbank, Commerzba
 - **Bestandsliste als CSV** (ISIN und Stückzahl ohne Kauf/Verkauf) – wird als aktueller Bestand des Depots übernommen.
 
 Jeder Kauf wird ein Block, ein Verkauf schließt bevorzugt den Block mit gleicher Stückzahl (sonst die ältesten). Dateien dürfen mehrfach hochgeladen werden – bereits importierte Käufe werden übersprungen. TradeHelper verbindet sich mit keiner Bank.
+
+## Analyse der eigenen Strategie
+
+Unter *Analyse* rechnet TradeHelper aus allen Käufen und Verkäufen mit Datum (manuell erfasst oder importiert):
+
+- **Interner Zinsfuß (IZF/XIRR)** – deine persönliche Rendite pro Jahr, inklusive Timing der Einzahlungen.
+- **Zeitgewichtete Rendite**, größter Rückgang (Max. Drawdown), Schwankung, Gebühren.
+- **Vergleich mit Indizes** – MSCI World, DAX, S&P 500, Euro Stoxx 50, Nasdaq 100 als thesaurierende iShares-ETFs (Xetra, in Euro). Jeder Vergleich kauft und verkauft mit genau deinen Beträgen an denselben Tagen.
+- **Handelsverhalten** – Trefferquote, Ø Gewinn/Verlust, Profit-Faktor, Haltedauer von Gewinnern und Verlierern (Dispositionseffekt), Kurs 20 Handelstage nach Kauf und Verkauf, Kaufkurs in der Jahresspanne, Nachkäufe in Verluste, Streuung, Stopps, Haltedauer gegenüber der eingestellten Strategie – dazu Befunde in Klartext.
+
+Das Ergebnis wird je Nutzer zwischengespeichert und bei geänderten Käufen neu gerechnet. Bestände aus Depotauszügen ohne Kaufdatum zählen nicht mit.
 
 ## Zwei-Faktor-Anmeldung
 

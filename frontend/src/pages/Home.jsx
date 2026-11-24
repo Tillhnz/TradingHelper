@@ -1,3 +1,4 @@
+import { useSettingsSync } from "../assetSort.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
@@ -76,7 +77,21 @@ export default function Home({ user }) {
 
   const layout = useMemo(() => draft || parseLayout(saved), [draft, saved]);
   const editing = !!draft;
-  const shared = { rows: overview.data, portfolio: portfolioQ.data, settings: settingsQ.data, priv: layout.private };
+  useSettingsSync(settingsQ.set);
+
+  // Beträge ein-/ausblenden direkt am Baustein „Vermögen“ (wird sofort gespeichert)
+  async function togglePriv() {
+    if (draft) { update((l) => ({ ...l, private: !l.private })); return; }
+    const base = parseLayout(saved);
+    try {
+      const r = await api.put("/settings", { home_layout: JSON.stringify({ v: 2, widgets: base.widgets, private: !base.private }) });
+      settingsQ.set(r);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  const shared = { rows: overview.data, rowsAt: overview.at, portfolio: portfolioQ.data, portfolioAt: portfolioQ.at,
+    settings: settingsQ.data, priv: layout.private, togglePriv };
 
   function update(fn) { setDraft((d) => fn(d || parseLayout(saved))); }
   const move = (i, d) => update((l) => {

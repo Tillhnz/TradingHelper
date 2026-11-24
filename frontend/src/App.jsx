@@ -16,6 +16,7 @@ import Charts from "./pages/Charts.jsx";
 import Register from "./pages/Register.jsx";
 import Portfolio from "./pages/Portfolio.jsx";
 import Markt from "./pages/Markt.jsx";
+import Analyse from "./pages/Analyse.jsx";
 import Modell from "./pages/Modell.jsx";
 import TwoFactorSetup from "./pages/TwoFactorSetup.jsx";
 import { currentTheme } from "./theme.js";
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="/" element={<Home user={user} />} />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/watchlist" element={<Watchlist />} />
+          <Route path="/analyse" element={<Analyse />} />
           <Route path="/markt" element={<Markt />} />
           <Route path="/modell" element={<Modell user={user} />} />
           <Route path="/chart" element={<Navigate to="/watchlist" replace />} />
