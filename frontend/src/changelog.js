@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.5",
+    date: "24.11.2026",
+    title: "Robuster bei kurzen Aussetzern",
+    items: [
+      "Ist der Server kurz nicht erreichbar – etwa während er nach einem Update neu startet –, wartet TradeHelper bis zu 30 Sekunden und versucht es dann von selbst noch einmal, statt sofort „Server nicht erreichbar“ zu melden.",
+      "Klappt es trotzdem nicht, sagt die Meldung jetzt, woran es vermutlich liegt (Neustart oder offline).",
+      "Administration zeigt, seit wann der Server läuft – so sieht man, ob er zwischendurch neu gestartet ist.",
+    ],
+  },
+  {
     version: "2.1.4",
     date: "24.11.2026",
     title: "Analyse erklärt sich selbst",
