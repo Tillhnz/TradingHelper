@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.6",
+    date: "24.11.2026",
+    title: "Depot hinzufügen geht wieder",
+    items: [
+      "„Depot hinzufügen“ scheiterte immer mit „Server nicht erreichbar“: Der Webserver hat das Anlegen auf eine falsche Adresse umgeleitet, die der Browser verworfen hat. Behoben – CSV- und PDF-Uploads gehen wieder, auch größere Dateien.",
+      "Ein automatischer Test lädt jetzt bei jedem Update eine PDF-Abrechnung über die echte Oberfläche hoch.",
+    ],
+  },
+  {
     version: "2.1.5",
     date: "24.11.2026",
     title: "Robuster bei kurzen Aussetzern",
