@@ -53,6 +53,7 @@ const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror ${page.url()}: ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") errors.push(`console ${page.url()}: ${m.text()}`); });
+page.on("requestfailed", (r) => console.log("requestfailed", r.method(), r.url(), r.failure()?.errorText));
 await page.goto(`${base}/login`);
 await page.screenshot({ path: "shots/login.png" });
 await page.evaluate(([t, d]) => { localStorage.setItem("tradehelper_token", t); localStorage.setItem("tradehelper_device", d || ""); }, [token, device]);
