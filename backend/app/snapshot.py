@@ -78,6 +78,20 @@ def _copy(a: analysis.Analysis) -> analysis.Analysis:
                                signals=list(a.signals))
 
 
+def _since_pct(df: pd.DataFrame, added_at: str | None) -> float | None:
+    """Veränderung seit dem Hinzufügen zur Watchlist (für die Sortierung „Veränderung gesamt“ bei Werten ohne Bestand)."""
+    if df is None or df.empty or not added_at:
+        return None
+    try:
+        start = pd.Timestamp(str(added_at)[:10])
+        idx = df.index.tz_localize(None) if getattr(df.index, "tz", None) is not None else df.index
+        pos = int(idx.searchsorted(start))
+        base = float(df["close"].iloc[min(pos, len(df) - 1)])
+        return round((float(df["close"].iloc[-1]) / base - 1) * 100, 2) if base else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def compute_row(w: dict, profile: analysis.Profile, target: str | None) -> dict:
     """Eine Zeile der Übersicht (ohne Bestand, ohne News)."""
     sym = w["symbol"]
@@ -89,7 +103,8 @@ def compute_row(w: dict, profile: analysis.Profile, target: str | None) -> dict:
         spark = [round(float(x), 4) for x in df["close"].tail(30)]
         row.update(price=a.last_close, change_pct=a.change_pct_1d, action=rec.action, score=rec.combined,
                    rsi=a.metrics.get("rsi"), spark=spark, entry=entry.plan(a, rec, currency=row["currency"])["summary"],
-                   breakout=a.breakout, as_of=int(pd.Timestamp(df.index[-1]).timestamp()))
+                   breakout=a.breakout, as_of=int(pd.Timestamp(df.index[-1]).timestamp()),
+                   since_pct=_since_pct(df, w.get("added_at")))
     except Exception as exc:  # noqa: BLE001
         row["error"] = str(exc)
     return row

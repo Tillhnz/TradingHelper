@@ -89,3 +89,25 @@ def test_home_layout_roundtrip(client):
     assert r.status_code == 200
     saved = json.loads(r.json()["fields"]["home_layout"]["value"])
     assert [w["type"] for w in saved["widgets"]] == ["markets", "chart"] and saved["private"] is True
+
+
+def test_asset_sort_settings(client):
+    h = _login(client)
+    r = client.put("/api/settings", json={"asset_sort": "day", "asset_order": "sap.de, AIR.DE,SAP.DE"}, headers=h)
+    assert r.status_code == 200, r.text
+    f = r.json()["fields"]
+    assert f["asset_sort"]["value"] == "day" and f["asset_order"]["value"] == "SAP.DE,AIR.DE"
+    assert client.put("/api/settings", json={"asset_sort": "zufall"}, headers=h).status_code == 422
+    assert client.put("/api/settings", json={"asset_order": "SAP.DE,<script>"}, headers=h).status_code == 422
+
+
+def test_strategy_analysis(client):
+    h = _login(client)
+    day = str(main.market.get_history("X").index[30].date())
+    r = client.post("/api/positions", json={"symbol": "SAP.DE", "quantity": 5, "buy_price": 110, "buy_date": day, "fees": 1}, headers=h)
+    assert r.status_code == 201, r.text
+    a = client.get("/api/strategy?budget=8", headers=h).json()
+    assert not a.get("pending"), a
+    assert a["lots"] == 1 and a["irr"] is not None and a["behavior"]["buys"] == 1
+    assert {b["label"] for b in a["benchmarks"]} >= {"MSCI World", "DAX"}
+    assert client.get("/api/strategy", headers=h).json().get("cached_at") is not None

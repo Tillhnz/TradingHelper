@@ -453,7 +453,11 @@ def watchlist_overview(budget: float = 1.5, st: Storage = Depends(user_storage),
     rows = snapshot.overview(watch, profile, target, budget=max(0.2, min(budget, 10)))
     holdings = _holdings_by_symbol(st, settings) if time.time() - t0 < 1.8 else {}
     brain_rows = _brain_hints([r["symbol"] for r in rows], profile)
+    qtimes = market.quote_times([r["symbol"] for r in rows])
     for row in rows:
+        qt = qtimes.get(row["symbol"].upper())
+        if qt:
+            row["quote_time"], row["delay_min"] = qt.get("time"), qt.get("delay_min")
         h = holdings.get(row["symbol"])
         row["holding"] = h if h and h.get("shares") else None
         if row["symbol"] in brain_rows:

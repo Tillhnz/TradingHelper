@@ -3,6 +3,19 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.0",
+    date: "24.11.2026",
+    title: "Analyse deiner Strategie",
+    items: [
+      "Neuer Bereich „Analyse“: dein interner Zinsfuß (IZF), die zeitgewichtete Rendite, größter Rückgang und Schwankung – und der faire Vergleich mit MSCI World, DAX, S&P 500, Euro Stoxx 50 und Nasdaq 100: gleiches Geld an denselben Tagen.",
+      "Wie du handelst: Trefferquote, Ø Gewinn und Verlust, Haltedauer von Gewinnern und Verlierern, was nach Käufen und Verkäufen passierte, Nachkäufe, Streuung, Gebühren – mit Befunden in Klartext.",
+      "Überall gleiche Reihenfolge der Werte, frei wählbar: eigene Reihenfolge, alphabetisch, Veränderung heute oder gesamt (unter „Meine Werte“).",
+      "Auf der Startseite steht jetzt bei jedem Baustein, von wann die Kurse stammen.",
+      "Beträge verbergen direkt am Vermögen mit dem Auge ein- und ausschalten – statt nur Punkte zu sehen.",
+      "Der kleine Chart auf der Seite eines Werts zeigt nur noch den Kursverlauf. Signale, Einstiegsmarken und Indikatoren gibt es im Vollbild-Chart.",
+    ],
+  },
+  {
     version: "2.0.0",
     date: "23.11.2026",
     title: "TradeHelper 2: neu gedacht",

@@ -50,7 +50,20 @@ def tracked_symbols(storage: Storage) -> list[str]:
         syms.update(macro.MARKET_SYMBOLS)
     except Exception:  # noqa: BLE001
         pass
+    if syms - set(_market_only()):  # Vergleichs-ETFs der Analyse nur, wenn es eigene Werte gibt
+        from .performance import BENCH_SYMBOLS
+
+        syms.update(BENCH_SYMBOLS)
     return sorted(syms)
+
+
+def _market_only() -> list[str]:
+    try:
+        from . import macro
+
+        return list(macro.MARKET_SYMBOLS)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _mark(name: str, started: float, n: int | None = None, error: str | None = None) -> None:

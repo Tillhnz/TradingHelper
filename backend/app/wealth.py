@@ -186,7 +186,17 @@ def overview(storage, settings, budget: float = 1.4) -> dict:
         "hints": hints,
         "history": record(storage.uid, total),
     }
+    result.update(freshness([x.get("symbol") for x in lines]))
     return result
+
+
+def freshness(symbols: list[str | None]) -> dict:
+    """Von wann die Kurse stammen: jüngster und ältester Kurszeitpunkt, größte Verzögerung, Rechenzeitpunkt."""
+    qt = market.quote_times([s for s in symbols if s])
+    times = [int(v["time"]) for v in qt.values() if v.get("time")]
+    delays = [v["delay_min"] for v in qt.values() if v.get("delay_min") is not None]
+    return {"as_of": max(times) if times else None, "oldest": min(times) if times else None,
+            "delay_min": max(delays) if delays else None, "computed_at": int(time.time())}
 
 
 def _account_public(a: dict, lines: list[dict]) -> dict:

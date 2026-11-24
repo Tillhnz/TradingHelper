@@ -92,13 +92,11 @@ console.log("intraday", JSON.stringify(await page.evaluate(() => ({
   fresh: document.querySelector(".stock-quote p")?.textContent, price: document.querySelector(".big-price")?.textContent,
   error: document.querySelector(".chart-panel .error")?.textContent,
 }))));
-await page.getByLabel("Darstellung").selectOption("candles");
-await page.waitForTimeout(2500);
-await page.screenshot({ path: "shots/chart-intraday-candles.png" });
+// kleiner Chart: nur Kursverlauf, keine Schalter für Signale/Kerzen mehr
+console.log("small chart controls", await page.locator(".chart-panel select[aria-label='Darstellung'], .chart-panel input[type=checkbox]").count());
 await page.getByRole("button", { name: "1 W", exact: true }).click();
 await page.waitForTimeout(6000);
 await page.screenshot({ path: "shots/chart-week.png" });
-await page.getByLabel("Darstellung").selectOption("area");
 const q1 = await page.evaluate(async (t) => (await fetch("/api/quotes?symbols=DE0007164600.GTX,AAPL,BTC-EUR", { headers: { Authorization: `Bearer ${t}` } })).json(), token);
 console.log("quotes", JSON.stringify(q1));
 await page.goto(`${base}/`);
@@ -318,14 +316,27 @@ await page.screenshot({ path: "shots/home-gallery.png" });
 await page.getByRole("button", { name: /Mini-Chart/ }).click();
 await page.getByLabel("Wert suchen").fill("SAP");
 await page.waitForTimeout(4000);
-await page.getByRole("button", { name: "Hinzufügen" }).first().click();
-await page.getByLabel("Beträge verbergen").check();
+await page.locator(".modal").getByRole("button", { name: "Hinzufügen", exact: true }).first().click();
+await page.getByRole("checkbox", { name: "Beträge verbergen" }).check();
 await page.getByRole("button", { name: /Fertig/ }).click();
 await page.waitForTimeout(4000);
 console.log("home layout", JSON.stringify(await page.evaluate(() => ({
   widgets: [...document.querySelectorAll(".wgrid > .w .wtitle, .wgrid > .w .home-greet")].map((x) => x.textContent),
 }))));
 await page.screenshot({ path: "shots/home-private.png", fullPage: true });
+
+// Beträge über das Auge am Vermögen wieder zeigen, Reihenfolge „A–Z“ und die neue Analyse
+await page.getByRole("button", { name: "Beträge anzeigen" }).first().click().catch((e) => console.log("eye", e.message));
+await page.waitForTimeout(1500);
+await page.goto(`${base}/watchlist`);
+await page.getByRole("button", { name: "A–Z" }).click();
+await page.waitForTimeout(1500);
+console.log("sorted", JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".asset-list .asset-name, .asset-list strong")].slice(0, 6).map((x) => x.textContent))));
+await page.screenshot({ path: "shots/watchlist-sorted.png", fullPage: true });
+console.log("strategy", JSON.stringify(await api("/strategy?budget=8")).slice(0, 900));
+await page.goto(`${base}/analyse`);
+await page.waitForTimeout(9000);
+await page.screenshot({ path: "shots/analyse.png", fullPage: true });
 
 // Unternehmensdaten einer Aktie (SAP)
 console.log("fundamentals SAP", JSON.stringify(await api("/fundamentals/DE0007164600.GTX")).slice(0, 600));

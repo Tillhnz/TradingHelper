@@ -9,6 +9,8 @@ import { Loading } from "../components/ui.jsx";
 import { DriverBar, Gauge, LineArea, ProbBar, Spark, Stack } from "../components/viz.jsx";
 import { dateTime, money, num, pct, signedMoney, tone } from "../fmt.js";
 import { useLiveQuotes } from "../live.js";
+import { SORT_LABEL, sortAssets, sortFrom } from "../assetSort.js";
+import Freshness, { latestTime } from "../components/Freshness.jsx";
 import { ACTION_UI, displayName, displayTicker, greeting } from "../texts.js";
 
 /* Jeder Baustein bekommt { shared, config, size, priv } – shared enthält die gemeinsam geladenen Daten
@@ -52,6 +54,16 @@ function GreetingW({ shared, user }) {
 }
 
 // ---------- Vermögen ----------
+function PrivToggle({ priv, onToggle }) {
+  if (!onToggle) return null;
+  return (
+    <button className="icon-btn priv-toggle" onClick={onToggle} aria-pressed={priv}
+      title={priv ? "Beträge anzeigen" : "Beträge verbergen (z. B. unterwegs)"} aria-label={priv ? "Beträge anzeigen" : "Beträge verbergen"}>
+      <Icon name="eye" />{priv && <span className="priv-strike" aria-hidden="true" />}
+    </button>
+  );
+}
+
 function PortfolioW({ shared, size }) {
   const pf = shared.portfolio;
   const priv = shared.priv;
@@ -64,14 +76,22 @@ function PortfolioW({ shared, size }) {
     );
   }
   const hist = (pf.history || []).map((h) => h.value);
+  const nAcc = pf.accounts?.length || 0;
+  const manual = pf.lines.some((x) => x.source === "manual");
+  const where = nAcc ? `${nAcc} ${nAcc === 1 ? "Depot" : "Depots"}${manual ? " + manuelle Käufe" : ""}` : "manuell erfasst";
+  const foot = (
+    <span className="foot-split">
+      <span>{where} · {pf.lines.length} {pf.lines.length === 1 ? "Position" : "Positionen"}</span>
+      <Freshness asOf={pf.as_of} oldest={pf.oldest} delay={pf.delay_min} at={pf.as_of ? null : shared.portfolioAt} />
+    </span>
+  );
   return (
-    <Card title="Vermögen" icon="wallet" link="/portfolio" linkLabel="Portfolio"
-      foot={`${pf.accounts?.length || 0} ${pf.accounts?.length === 1 ? "Depot" : "Depots"} · ${pf.lines.length} Positionen`}>
+    <Card title="Vermögen" icon="wallet" link="/portfolio" linkLabel="Portfolio" foot={foot}>
       <div className="kpi-row">
         <div>
-          <div className="kpi">{hide(priv, money(pf.value, pf.currency))}</div>
+          <div className="kpi kpi-with-toggle">{hide(priv, money(pf.value, pf.currency))}<PrivToggle priv={priv} onToggle={shared.togglePriv} /></div>
           <div className="kpi-sub">
-            {pf.day_change_pct != null && <span className={`delta ${tone(pf.day_change_pct)}`}>{hide(priv, signedMoney(pf.day_change, pf.currency))} · {pct(pf.day_change_pct)} heute</span>}
+            {pf.day_change_pct != null && <span className={`delta ${tone(pf.day_change_pct)}`}>{priv ? "" : `${signedMoney(pf.day_change, pf.currency)} · `}{pct(pf.day_change_pct)} heute</span>}
           </div>
         </div>
         {pf.pl_pct != null && (
@@ -82,6 +102,7 @@ function PortfolioW({ shared, size }) {
           </div>
         )}
       </div>
+      {priv && <p className="small muted priv-note">Beträge sind verborgen – Auge antippen, um sie zu zeigen.</p>}
       {size !== "s" && hist.length > 2 && <div style={{ marginTop: "0.75rem" }}><LineArea values={hist} height={90} /></div>}
       {pf.hints?.length > 0 && <p className="small" style={{ margin: "0.6rem 0 0", color: "var(--amber)" }}><Icon name="alert" /> {pf.hints[0].text}</p>}
     </Card>
@@ -106,9 +127,14 @@ function AllocationW({ shared }) {
 }
 
 // ---------- Werte ----------
-function sortRows(rows) {
-  const ORDER = { "Reduzieren prüfen": 0, "Kaufen prüfen": 1, "Halten / beobachten": 2 };
-  return [...rows].sort((a, b) => (ORDER[a.action] ?? 3) - (ORDER[b.action] ?? 3) || (!!b.holding - !!a.holding));
+function ListFoot({ rows, quotes, at, sort }) {
+  const t = latestTime(rows, quotes);
+  return (
+    <span className="foot-split">
+      <span>Sortiert: {SORT_LABEL[sort] || "eigene Reihenfolge"} · <Link to="/watchlist">ändern</Link></span>
+      <Freshness asOf={t.asOf} delay={t.delay} dayOnly={t.dayOnly} at={t.asOf ? null : at} />
+    </span>
+  );
 }
 
 function rowHint(r) {
@@ -145,9 +171,11 @@ function TodayW({ shared }) {
   const rows = shared.rows;
   const quotes = useLiveQuotes((rows || []).map((r) => r.symbol));
   if (!rows) return <Card title="Heute wichtig" icon="zap"><Loading /></Card>;
-  const important = sortRows(rows.filter((r) => rowHint(r)));
+  const { sort, order } = sortFrom(shared.settings);
+  const important = sortAssets(rows.filter((r) => rowHint(r)), sort, order, quotes);
   return (
-    <Card title="Heute wichtig" icon="zap" link="/watchlist" linkLabel="Alle Werte">
+    <Card title="Heute wichtig" icon="zap" link="/watchlist" linkLabel="Alle Werte"
+      foot={<ListFoot rows={rows} quotes={quotes} at={shared.rowsAt} sort={sort} />}>
       {important.length ? <Rows rows={important} quotes={quotes} limit={6} withHints />
         : <p className="calm-note" style={{ margin: 0 }}><Icon name="check" /> Alles ruhig – bei keinem deiner Werte ist gerade etwas zu tun.</p>}
     </Card>
@@ -161,9 +189,11 @@ function WatchlistW({ shared, size }) {
   if (!rows) return <Card title="Meine Werte" icon="star"><Loading /></Card>;
   if (!rows.length) return <Card title="Meine Werte" icon="star"><p className="wempty">Such oben nach einer Aktie oder einem ETF und tippe auf „Beobachten“.</p></Card>;
   const limit = all ? rows.length : size === "xl" ? 10 : 6;
+  const { sort, order } = sortFrom(shared.settings);
   return (
-    <Card title="Meine Werte" icon="star" link="/watchlist" linkLabel="Verwalten">
-      <Rows rows={sortRows(rows)} quotes={quotes} limit={limit} />
+    <Card title="Meine Werte" icon="star" link="/watchlist" linkLabel="Verwalten"
+      foot={<ListFoot rows={rows} quotes={quotes} at={shared.rowsAt} sort={sort} />}>
+      <Rows rows={sortAssets(rows, sort, order, quotes)} quotes={quotes} limit={limit} />
       {rows.length > limit && <button className="list-more" onClick={() => setAll(true)}>Alle {rows.length} anzeigen</button>}
     </Card>
   );
@@ -181,7 +211,7 @@ function MoversW({ shared }) {
     </li>
   );
   return (
-    <Card title="Gewinner & Verlierer" icon="up">
+    <Card title="Gewinner & Verlierer" icon="up" foot={shared.rows ? <Freshness {...latestTime(shared.rows)} at={shared.rowsAt} /> : null}>
       {!shared.rows ? <Loading /> : rows.length ? <ul className="mini-list">{up.map(item)}{down.map(item)}</ul> : <p className="wempty">Noch keine Kurse.</p>}
     </Card>
   );
@@ -191,9 +221,11 @@ function MoversW({ shared }) {
 function MarketsW({ size }) {
   const q = useCachedGet("/markets");
   const items = q.data?.items || [];
+  const times = items.map((m) => m.time).filter(Boolean);
+  const foot = times.length ? <Freshness asOf={Math.max(...times)} prefix="Kurse" /> : q.at ? <Freshness at={q.at} /> : null;
   if (size === "s" && q.data) {
     return (
-      <Card title="Märkte" icon="globe" link="/markt">
+      <Card title="Märkte" icon="globe" link="/markt" foot={foot}>
         <ul className="mini-list">
           {items.filter((m) => m.price != null).map((m) => (
             <li key={m.symbol}>
@@ -206,7 +238,7 @@ function MarketsW({ size }) {
     );
   }
   return (
-    <Card title="Märkte" icon="globe" link="/markt">
+    <Card title="Märkte" icon="globe" link="/markt" foot={foot}>
       {!q.data ? <Loading /> : (
         <div className="mkt-grid">
           {items.filter((m) => m.price != null).map((m) => (

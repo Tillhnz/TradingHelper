@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import wealth
+from . import performance, wealth
 from .brokers import BANKS, importer
 from .config import Settings
 from .deps import auth, user_cfg, user_storage
@@ -23,6 +23,18 @@ MAX_FILE = 8 * 1024 * 1024
 def portfolio_view(st: Storage = Depends(user_storage), settings: Settings = Depends(user_cfg)):
     """Alle Depots zusammen: Wert, Gewinn/Verlust, Aufteilung, Hinweise, Verlauf."""
     return wealth.overview(st, settings)
+
+
+@router.get("/api/strategy")
+def strategy_view(budget: float = 2.5, refresh: bool = False, st: Storage = Depends(user_storage),
+                  settings: Settings = Depends(user_cfg)):
+    """Analyse der eigenen Strategie: IZF, zeitgewichtete Rendite, Vergleich mit Indizes, Handelsverhalten.
+    Antwortet nach höchstens `budget` Sekunden; rechnet es noch, kommt {"pending": true}."""
+    result = performance.overview(st, settings, budget=max(0.2, min(budget, 8)), force=refresh)
+    holdings = st.holdings()
+    if holdings:  # Depotauszüge ohne Kaufdatum fließen nicht in die Renditerechnung ein
+        result = {**result, "undated_holdings": len(holdings)}
+    return result
 
 
 @router.get("/api/portfolio/banks")
