@@ -28,8 +28,33 @@ def test_twr_ignores_deposits():
     flows = pd.Series([100.0, 0.0, 100.0, 0.0], index=idx)  # zweite Einzahlung an Tag 3
     r = performance.twr(values, flows)
     total = float((1 + r).prod() - 1)
-    # Tag 2 +10 %, Tag 3 (220-100)/110 = +9,09 %, Tag 4 +10 % → zusammen +32 %
-    assert total == pytest.approx(1.1 * (120 / 110) * 1.1 - 1, rel=1e-6)
+    # Tag 2 +10 %, Tag 3: Kauf zählt zum Tagesbeginn → 220 / (110 + 100) − 1, Tag 4 +10 %
+    assert total == pytest.approx(1.1 * (220 / 210) * 1.1 - 1, rel=1e-6)
+
+
+def test_twr_rebuy_after_almost_empty_depot():
+    """Fast alles verkauft, dann groß nachgekauft, 2 % über dem Schlusskurs: darf nicht als −400 % zählen."""
+    idx = pd.date_range("2026-01-01", periods=4, freq="D")
+    values = pd.Series([10000.0, 50.0, 9850.0, 9850.0], index=idx)
+    flows = pd.Series([10000.0, -9950.0, 10000.0, 0.0], index=idx)
+    idx_ = (1 + performance.twr(values, flows)).cumprod()
+    assert idx_.iloc[-1] == pytest.approx((9850 / 10050), rel=1e-6)
+    assert idx_.min() > 0.9
+
+
+def test_shadow_sells_same_share():
+    idx = pd.date_range("2026-01-01", periods=3, freq="D")
+    prices = pd.Series([10.0, 10.0, 20.0], index=idx)
+    values = pd.Series([1000.0, 500.0, 500.0], index=idx)   # Tag 2: Hälfte verkauft (500 €)
+    flows = pd.Series([1000.0, -500.0, 0.0], index=idx)
+    val, own = performance.shadow(prices, values, flows)
+    assert own.tolist() == pytest.approx([1000, -500, 0])
+    assert val.tolist() == pytest.approx([1000, 500, 1000])
+    # Depot stark gestiegen, Vergleich nicht: verkauft trotzdem nur den Anteil, nie mehr als vorhanden
+    values2 = pd.Series([1000.0, 0.0, 0.0], index=idx)
+    flows2 = pd.Series([1000.0, -3000.0, 0.0], index=idx)
+    val2, own2 = performance.shadow(prices, values2, flows2)
+    assert own2[1] == pytest.approx(-1000) and val2[-1] == 0
 
 
 def test_max_drawdown():
