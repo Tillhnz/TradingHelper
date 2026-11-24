@@ -64,6 +64,15 @@ jobs:
           curl -fsS localhost:8080/ | grep -q TradeHelper
           curl -fsS -X POST localhost:8080/api/auth/setup -H 'Content-Type: application/json' -d '{"username":"ci","password":"geheim123"}'
           test -f data/tradehelper.db
+          # Keine nginx-Umleitungen auf API-Pfaden (POST /api/portfolio/accounts wurde einmal per 301 umgeleitet)
+          for p in /api/portfolio/accounts /api/portfolio/accounts/1/import/preview /api/positions /api/watchlist; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "localhost:8080$p" -H 'Content-Type: application/json' -d '{}')
+            echo "POST $p -> $code"; case "$code" in 30*) exit 1;; esac
+          done
+          # Große Import-Dateien kommen durch (bis 60 MB), andere API-Pfade bleiben klein
+          head -c 5000000 /dev/zero | tr '\0' 'a' > /tmp/big.json
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/api/portfolio/accounts/1/import/preview -H 'Content-Type: application/json' --data-binary @/tmp/big.json)
+          echo "großer Import -> $code"; test "$code" != 413
       - name: Neuanlegen durch den Update-Dienst behält Daten und Verbindung
         run: |
           docker compose exec -T updater sh -c 'docker compose -p "$(docker inspect -f "{{ index .Config.Labels \"com.docker.compose.project\" }}" "$HOSTNAME")" --project-directory /project up -d --force-recreate backend'

@@ -53,6 +53,7 @@ const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror ${page.url()}: ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") errors.push(`console ${page.url()}: ${m.text()}`); });
+page.on("requestfailed", (r) => console.log("requestfailed", r.method(), r.url(), r.failure()?.errorText));
 await page.goto(`${base}/login`);
 await page.screenshot({ path: "shots/login.png" });
 await page.evaluate(([t, d]) => { localStorage.setItem("tradehelper_token", t); localStorage.setItem("tradehelper_device", d || ""); }, [token, device]);
@@ -337,6 +338,38 @@ console.log("strategy", JSON.stringify(await api("/strategy?budget=8")).slice(0,
 await page.goto(`${base}/analyse`);
 await page.waitForTimeout(9000);
 await page.screenshot({ path: "shots/analyse.png", fullPage: true });
+
+// PDF-Upload im Depot-Dialog (kleine Abrechnung und eine große Datei, wie Bank-PDFs mit Logos)
+{
+  const fs = await import("node:fs");
+  const small = fs.readFileSync(".github/fixtures/abrechnung-kauf.pdf");
+  const big = Buffer.concat([small, Buffer.from("\n%" + "x".repeat(4_000_000) + "\n")]);
+  fs.writeFileSync("/tmp/abrechnung-gross.pdf", big);
+  await page.goto(`${base}/portfolio`);
+  await page.getByRole("button", { name: /Depot hinzufügen/ }).first().click();
+  await page.getByRole("button", { name: /Anderer Broker/ }).click();
+  await page.getByRole("button", { name: "Anlegen und Dateien wählen" }).click();
+  await page.getByRole("dialog", { name: /Hochladen/ }).waitFor({ timeout: 45000 }).catch(() => {});
+  console.log("nach Anlegen:", (await page.locator(".modal").first().innerText()).replace(/\s+/g, " ").slice(-200));
+  await page.screenshot({ path: "shots/depot-anlegen.png" });
+  for (const file of [".github/fixtures/abrechnung-kauf.pdf", "/tmp/abrechnung-gross.pdf"]) {
+    const t0 = Date.now();
+    await page.locator(".modal input[type=file]").setInputFiles(file);
+    await page.locator(".modal").getByText(/neue Käufe\/Verkäufe erkannt|schon importiert|Fehler|nicht erreichbar|antwortet/).first()
+      .waitFor({ timeout: 60000 }).catch(() => {});
+    const txt = (await page.locator(".modal").innerText()).replace(/\s+/g, " ").slice(0, 300);
+    console.log("pdf upload", file, `${Date.now() - t0} ms`, txt);
+    await page.screenshot({ path: `shots/pdf-upload-${file.includes("gross") ? "gross" : "klein"}.png` });
+    if (!/erkannt/.test(txt)) throw new Error(`PDF-Upload fehlgeschlagen: ${txt}`);
+    // zurück zur Dateiauswahl für die nächste Datei
+    await page.locator(".modal").getByRole("button", { name: /Andere Dateien|Zurück|Abbrechen/ }).first().click().catch(() => {});
+    if (!(await page.locator(".modal input[type=file]").count())) {
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: /Hochladen|Dateien hochladen/ }).first().click().catch(() => {});
+    }
+  }
+  await page.keyboard.press("Escape");
+}
 
 // Unternehmensdaten einer Aktie (SAP)
 console.log("fundamentals SAP", JSON.stringify(await api("/fundamentals/DE0007164600.GTX")).slice(0, 600));
