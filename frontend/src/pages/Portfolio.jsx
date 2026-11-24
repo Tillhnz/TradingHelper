@@ -102,7 +102,7 @@ function ImportDialog({ account, onClose, onDone }) {
             <Icon name="upload" size="1.6em" />
             <p style={{ margin: "0.4rem 0 0" }}><strong>CSV- oder PDF-Dateien hierher ziehen</strong> oder klicken</p>
             <p className="small">Umsatzliste (CSV) oder Wertpapierabrechnungen (PDF), auch viele auf einmal</p>
-            <input ref={input} type="file" accept=".csv,.pdf,.txt" multiple hidden onChange={(e) => read(e.target.files)} />
+            <input ref={input} type="file" accept=".csv,.pdf,.txt,application/pdf,text/csv,text/plain,text/comma-separated-values" multiple hidden onChange={(e) => read(e.target.files)} />
           </div>
           {busy && <Loading text={`Lese ${files.length} ${files.length === 1 ? "Datei" : "Dateien"} …`} />}
         </>
