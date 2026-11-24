@@ -316,8 +316,8 @@ await page.screenshot({ path: "shots/home-gallery.png" });
 await page.getByRole("button", { name: /Mini-Chart/ }).click();
 await page.getByLabel("Wert suchen").fill("SAP");
 await page.waitForTimeout(4000);
-await page.getByRole("button", { name: "Hinzufügen" }).first().click();
-await page.getByLabel("Beträge verbergen").check();
+await page.locator(".modal").getByRole("button", { name: "Hinzufügen", exact: true }).first().click();
+await page.getByRole("checkbox", { name: "Beträge verbergen" }).check();
 await page.getByRole("button", { name: /Fertig/ }).click();
 await page.waitForTimeout(4000);
 console.log("home layout", JSON.stringify(await page.evaluate(() => ({
