@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.4",
+    date: "24.11.2026",
+    title: "Analyse erklärt sich selbst",
+    items: [
+      "Liegen Zinsfuß und zeitgewichtete Rendite weit auseinander, erklärt die Analyse jetzt warum – mit deinen Zahlen: wie viel Geld in der Verlustphase im Depot lag und wie viel danach.",
+      "Neu beim Gewinn: wie viel im Schnitt im Depot lag. Nicht investiertes Geld zählt beim Zinsfuß nicht mit.",
+      "Die Datenprüfung nennt jetzt, um wie viel Euro ein auffälliger Kauf oder Verkauf das Ergebnis verschiebt.",
+    ],
+  },
+  {
     version: "2.1.3",
     date: "24.11.2026",
     title: "Eine Einschätzung überall",
