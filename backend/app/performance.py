@@ -37,7 +37,7 @@ BENCHMARKS = [
 ]
 BENCH_SYMBOLS = [b[0] for b in BENCHMARKS]
 CACHE_TTL = 20 * 60
-CALC_VERSION = 3  # erhöhen, wenn sich die Rechnung ändert (alte Ergebnisse im Speicher verfallen dann)
+CALC_VERSION = 4  # erhöhen, wenn sich die Rechnung ändert (alte Ergebnisse im Speicher verfallen dann)
 AFTER_DAYS = 20  # Handelstage für „was passierte nach dem Kauf / Verkauf“
 
 _POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="performance")
@@ -300,10 +300,29 @@ def compute(positions: list[dict], target: str, profile=None, bench_symbols: lis
     vol = float(r[active].std() * math.sqrt(252)) if active.sum() > 20 else None
     mdd, mdd_from, mdd_to = max_drawdown(idx)
 
+    # Wie viel Geld lag im Schnitt im Depot? Erklärt, warum IZF (nach Betrag gewichtet) und zeitgewichtete
+    # Rendite (jeder Tag gleich) weit auseinander liegen können.
+    pnl = values + flows.clip(upper=0).abs() - (values.shift(1).fillna(0) + flows.clip(lower=0))
+    avg_value = float(values.mean())
+    invested_share = float((values > 1e-9).mean())
+    phases = None
+    if mdd is not None and mdd < -0.1 and mdd_from and mdd_to:
+        a0, a1 = pd.Timestamp(mdd_from), pd.Timestamp(mdd_to)
+        inside = (values.index > a0) & (values.index <= a1)
+        after = values.index > a1
+        phases = {
+            "down_from": mdd_from, "down_to": mdd_to, "down_avg": _round(float(values[inside].mean()) if inside.any() else None),
+            "down_pnl": _round(float(pnl[inside].sum())), "down_pct": _round(mdd * 100, 1),
+            "after_avg": _round(float(values[after].mean()) if after.any() else None),
+            "after_pnl": _round(float(pnl[after].sum())) if after.any() else None,
+            "after_pct": _round((float(idx.iloc[-1]) / float(idx.loc[a1]) - 1) * 100, 1) if after.any() else None,
+        }
+
     # Tagessprünge über 25 % sind bei einem gestreuten Depot selten – meist ein Kursfehler oder ein falsch
     # erfasster Kauf (Preis, Stückzahl, Datum). Zur Kontrolle mitliefern.
     jumps = [{"day": str(d.date()), "pct": _round(float(x) * 100, 1)} for d, x in r.items() if abs(x) > 0.25]
     out.update(
+        avg_value=_round(avg_value), invested_share=_round(invested_share * 100, 0), phases=phases,
         jumps=jumps[:10],
         period={"from": str(cal[0].date()), "to": str(last_day.date()), "days": days},
         value=_round(value_now), invested=_round(invested), withdrawn=_round(withdrawn), gain=_round(gain),
@@ -583,9 +602,16 @@ def _checks(lots, ohlc: dict, conv, start) -> list[dict]:
                 continue
             off = px / hi - 1 if px > hi else px / lo - 1 if px < lo else 0.0
             if abs(off) > 0.08:
+                close = float(bar["close"])
+                qty = float(lot["quantity"])
+                # Wirkung aufs Ergebnis, wenn der Schlusskurs des Tages stimmt: zu teuer gekauft → Gewinn wäre höher,
+                # zu teuer verkauft → Gewinn wäre niedriger
+                impact = (px - close) * qty if kind == "Kauf" else (close - px) * qty
                 out.append({"level": "bad" if abs(off) > 0.25 else "warn", "symbol": lot["symbol"], "name": name(lot), "day": str(day),
+                            "impact": _round(impact),
                             "text": f"{kind} am {day:%d.%m.%Y} zu {_de(px, 2)} – der Kurs lag an dem Tag zwischen {_de(lo, 2)} und {_de(hi, 2)} "
-                                    f"({_fmt(off * 100)} % daneben). Kurs, Stückzahl oder Datum prüfen."})
+                                    f"({_fmt(off * 100)} % daneben). Mit dem Schlusskurs des Tages ({_de(close, 2)}) wäre dein Gewinn "
+                                    f"{_de(abs(impact), 0)} € {'höher' if impact > 0 else 'niedriger'}. Kurs, Stückzahl oder Datum prüfen."})
     # Sprünge in den Kursdaten selbst (bei Einzelwerten selten echt, oft ein Datenfehler der Quelle)
     for sym, df in ohlc.items():
         c = _naive_days(df)
@@ -613,6 +639,23 @@ def _insights(a: dict, profile) -> list[dict]:
                          "text": f"{len(bad)} {'Kauf/Verkauf passt' if len(bad) == 1 else 'Käufe/Verkäufe passen'} nicht zu den Kursen am jeweiligen Tag "
                                  "(Details unten unter „Datenprüfung“). Solange das so ist, sind Rendite und Vergleich nicht verlässlich.",
                          "key": True})
+    irr_shown = a.get("irr_period") if a["period"]["days"] < 365 else a.get("irr")
+    if irr_shown is not None and a.get("twr") is not None and (irr_shown * a["twr"] < 0 or abs(irr_shown - a["twr"]) > 20):
+        ph = a.get("phases") or {}
+        cur = a["currency"]
+        parts = [f"Der Zinsfuß ({_fmt(irr_shown)} %) gewichtet nach Betrag: Er fragt, was dein Geld verdient hat, solange es im Depot lag. "
+                 f"Die zeitgewichtete Rendite ({_fmt(a['twr'])} %) zählt jeden Tag gleich – egal ob 500 € oder 15.000 € investiert waren."]
+        if ph.get("down_avg") is not None:
+            parts.append(f"Vom {datetime.fromisoformat(ph['down_from']):%d.%m.} bis {datetime.fromisoformat(ph['down_to']):%d.%m.} fiel dein Depot um "
+                         f"{_de(abs(ph['down_pct']))} %, da lagen im Schnitt nur {_de(ph['down_avg'], 0)} {cur} darin ({_fmt(ph['down_pnl'], 0)} {cur}).")
+            if ph.get("after_avg") is not None:
+                parts.append(f"Danach lagen im Schnitt {_de(ph['after_avg'], 0)} {cur} darin, Ergebnis {_fmt(ph['after_pnl'], 0)} {cur}. "
+                             "Der frühe Verlust mit wenig Geld drückt die zeitgewichtete Rendite stark, kostet in Euro aber wenig.")
+        if a.get("avg_value") and a.get("peak_capital") and a["avg_value"] < a["peak_capital"] * 0.6:
+            parts.append(f"Im Schnitt lagen nur {_de(a['avg_value'], 0)} {cur} im Depot (höchstens {_de(a['peak_capital'], 0)} {cur}) – "
+                         "Geld, das nicht investiert war, zählt beim Zinsfuß nicht mit. Deshalb ist er höher als Gewinn ÷ höchster Einsatz.")
+        parts.append("Verlässlich in Euro ist der Gewinn gesamt.")
+        tips.append({"level": "info", "title": "Warum Zinsfuß und zeitgewichtete Rendite so verschieden sind", "text": " ".join(parts)})
     if a["period"]["days"] < 90:
         tips.append({"level": "info", "title": "Noch kurzer Zeitraum",
                      "text": f"Seit dem ersten Kauf sind erst {a['period']['days']} Tage vergangen – Renditen schwanken da stark."})

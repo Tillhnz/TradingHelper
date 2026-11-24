@@ -131,7 +131,7 @@ export default function Analyse() {
               sub={a.twr_pa != null ? `${pct(a.twr_pa, 1)} pro Jahr` : `seit ${new Date(a.period.from).toLocaleDateString("de-DE")}`}
               hint="Rendite der Auswahl, unabhängig davon, wann Geld dazukam – so rechnen Fonds. Gut zum Vergleich mit Indizes." />
             <Kpi label="Gewinn gesamt" value={signedMoney(a.gain, ccy)} valueTone={tone(a.gain)}
-              sub={`${pct(a.gain_pct, 1)} auf max. ${money(a.peak_capital, ccy)} Einsatz`}
+              sub={`${pct(a.gain_pct, 1)} auf max. ${money(a.peak_capital, ccy)} Einsatz${a.avg_value != null ? ` · im Schnitt ${money(a.avg_value, ccy)} im Depot` : ""}`}
               hint="Heutiger Wert + Verkaufserlöse − alle Käufe (inkl. Gebühren)." />
             <Kpi label="Größter Rückgang" value={a.max_drawdown != null ? pct(a.max_drawdown, 1) : "–"} valueTone={a.max_drawdown < -15 ? "neg" : ""}
               sub={a.drawdown_from && a.max_drawdown < 0 ? `${new Date(a.drawdown_from).toLocaleDateString("de-DE")} – ${new Date(a.drawdown_to).toLocaleDateString("de-DE")}` : "vom Hoch bis zum Tief"}

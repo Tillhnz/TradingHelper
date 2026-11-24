@@ -162,3 +162,21 @@ def test_benchmark_insight_matches_numbers(fake_market):
     w = r["benchmarks"][0]
     assert r["twr"] < w["twr"] and w["diff_value"] < 0
     assert r["insights"][0]["title"] == "Hinter dem Weltmarkt"
+
+
+def test_explains_irr_vs_twr(fake_market):
+    """Früh wenig Geld mit Verlust, später viel Geld mit Gewinn: Zinsfuß positiv, zeitgewichtet negativ – mit Erklärung."""
+    days = fake_market["WIN.DE"].index
+    d = lambda i: str(days[i].date())  # noqa: E731
+    lose, win = fake_market["LOSE.DE"]["close"], fake_market["WIN.DE"]["close"]
+    pos = [{"id": 1, "symbol": "LOSE.DE", "quantity": 20, "buy_price": float(lose.iloc[5]), "buy_date": d(5), "fees": 0, "currency": "EUR",
+            "sell_price": float(lose.iloc[150]), "sell_date": d(150)},
+           {"id": 2, "symbol": "WIN.DE", "quantity": 60, "buy_price": float(win.iloc[300]), "buy_date": d(300), "fees": 0, "currency": "EUR"}]
+    r = performance.compute(pos, "EUR", Profile("medium"), bench_symbols=["EUNL.DE"])
+    assert r["irr"] > 0 > r["twr"]
+    assert r["avg_value"] < r["peak_capital"]
+    tip = next(t for t in r["insights"] if t["title"].startswith("Warum Zinsfuß"))
+    assert "im Schnitt" in tip["text"]
+    ph = r["phases"]
+    # die Euro-Ergebnisse der Phasen passen zum Gewinn gesamt (vor dem Rückgang kann noch etwas dazukommen)
+    assert ph["down_pnl"] < 0 < ph["after_pnl"]
