@@ -87,6 +87,8 @@ export default function Analyse() {
 
   const b = a?.behavior || {};
   const world = a?.benchmarks?.find((x) => x.symbol === "EUNL.DE");
+  const short = (a?.period?.days || 0) < 365;
+  const irrOf = (x) => (short ? x.irr_period : x.irr);
   const generated = a?.generated_at ? new Date(a.generated_at * 1000) : null;
 
   return (
@@ -116,9 +118,15 @@ export default function Analyse() {
       {a && !a.empty && !a.pending && !a.error && a.period && (
         <>
           <section className="an-kpis">
-            <Kpi label="Interner Zinsfuß (IZF)" value={a.irr != null ? `${pct(a.irr, 1)} p. a.` : "–"} valueTone={tone(a.irr)}
-              sub={world?.irr != null ? `MSCI World mit gleichem Geld: ${pct(world.irr, 1)} p. a.` : null}
-              hint="Geldgewichtete Rendite pro Jahr: berücksichtigt, wann wie viel Geld investiert war – deine persönliche Rendite." />
+            {short ? (
+              <Kpi label="Interner Zinsfuß (IZF)" value={`${pct(a.irr_period, 1)}`} valueTone={tone(a.irr_period)}
+                sub={`im Zeitraum (${a.period.days} Tage) · hochgerechnet ${pct(a.irr, 0)} p. a.${world?.irr_period != null ? ` · MSCI World: ${pct(world.irr_period, 1)}` : ""}`}
+                hint="Geldgewichtete Rendite: berücksichtigt, wann wie viel Geld investiert war. Unter einem Jahr zeigen wir sie für den Zeitraum – hochgerechnet aufs Jahr wirkt sie sonst riesig." />
+            ) : (
+              <Kpi label="Interner Zinsfuß (IZF)" value={a.irr != null ? `${pct(a.irr, 1)} p. a.` : "–"} valueTone={tone(a.irr)}
+                sub={world?.irr != null ? `MSCI World mit gleichem Geld: ${pct(world.irr, 1)} p. a.` : null}
+                hint="Geldgewichtete Rendite pro Jahr: berücksichtigt, wann wie viel Geld investiert war – deine persönliche Rendite." />
+            )}
             <Kpi label="Zeitgewichtete Rendite" value={pct(a.twr, 1)} valueTone={tone(a.twr)}
               sub={a.twr_pa != null ? `${pct(a.twr_pa, 1)} pro Jahr` : `seit ${new Date(a.period.from).toLocaleDateString("de-DE")}`}
               hint="Rendite der Auswahl, unabhängig davon, wann Geld dazukam – so rechnen Fonds. Gut zum Vergleich mit Indizes." />
@@ -156,8 +164,8 @@ export default function Analyse() {
               </div>
             </div>
             <p className="muted small" style={{ marginTop: 0 }}>
-              Jeder Vergleich ist ein Schattendepot: Es kauft und verkauft mit <strong>genau deinen Beträgen an denselben Tagen</strong> einen
-              thesaurierenden ETF auf den Index (inkl. Dividenden, in {ccy}).
+              Jeder Vergleich ist ein Schattendepot: Es kauft mit <strong>genau deinen Beträgen an denselben Tagen</strong> einen
+              thesaurierenden ETF auf den Index (inkl. Dividenden, in {ccy}) und verkauft jeweils denselben Anteil wie du.
             </p>
             <div className="chip-row">
               {(a.benchmarks || []).map((x, i) => (
@@ -170,18 +178,18 @@ export default function Analyse() {
             <div className="table-wrap" style={{ marginTop: "1rem" }}>
               <table className="table an-table">
                 <thead>
-                  <tr><th>Vergleich</th><th className="num">Wert heute</th><th className="num">Unterschied zu dir</th><th className="num">IZF p. a.</th>
+                  <tr><th>Vergleich</th><th className="num">Wert heute</th><th className="num">Unterschied zu dir</th><th className="num">{short ? "IZF im Zeitraum" : "IZF p. a."}</th>
                     <th className="num hide-sm">Zeitgewichtet</th><th className="num hide-sm" title="Wie stark dein Depot mit dem Index mitschwingt (1 = gleich stark)">Beta</th></tr>
                 </thead>
                 <tbody>
                   <tr className="me"><td><i className="sw" style={{ background: C.accent }} />Dein Depot</td><td className="num"><strong>{money(a.value, ccy)}</strong></td><td className="num">–</td>
-                    <td className={`num ${tone(a.irr)}`}>{pct(a.irr, 1)}</td><td className={`num hide-sm ${tone(a.twr)}`}>{pct(a.twr, 1)}</td><td className="num hide-sm">1,00</td></tr>
+                    <td className={`num ${tone(irrOf(a))}`}>{pct(irrOf(a), 1)}</td><td className={`num hide-sm ${tone(a.twr)}`}>{pct(a.twr, 1)}</td><td className="num hide-sm">1,00</td></tr>
                   {(a.benchmarks || []).map((x, i) => (
                     <tr key={x.symbol}>
                       <td><i className="sw" style={{ background: benchColor(i) }} />{x.label}<div className="acc-tag">{x.product} · {x.symbol}</div></td>
                       <td className="num">{money(x.value, ccy)}</td>
-                      <td className={`num ${tone(x.diff_value)}`}>{signedMoney(x.diff_value, ccy)}{x.diff_irr != null && <div className="small">{x.diff_irr > 0 ? "+" : ""}{num(x.diff_irr, 1)} Pkt. p. a.</div>}</td>
-                      <td className={`num ${tone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                      <td className={`num ${tone(x.diff_value)}`}>{signedMoney(x.diff_value, ccy)}{x.diff_irr != null && !short && <div className="small">{x.diff_irr > 0 ? "+" : ""}{num(x.diff_irr, 1)} Pkt. p. a.</div>}</td>
+                      <td className={`num ${tone(irrOf(x))}`}>{pct(irrOf(x), 1)}</td>
                       <td className={`num hide-sm ${tone(x.twr)}`}>{pct(x.twr, 1)}</td>
                       <td className="num hide-sm">{x.beta != null ? num(x.beta, 2) : "–"}</td>
                     </tr>
@@ -189,7 +197,7 @@ export default function Analyse() {
                 </tbody>
               </table>
             </div>
-            <p className="muted small">„Unterschied zu dir“: positiv = du liegst vorne. Zeitgewichtet zählt nur Tage, an denen du investiert warst.</p>
+            <p className="muted small">„Unterschied zu dir“: Wert heute plus Verkaufserlöse, positiv = du liegst vorne. Verkaufst du, verkauft der Vergleich denselben Anteil. Zeitgewichtet zählt nur Tage, an denen du investiert warst.</p>
           </section>
 
           <section className="panel">
@@ -267,7 +275,8 @@ export default function Analyse() {
             <ul className="small muted">
               <li><strong>IZF (interner Zinsfuß, XIRR):</strong> der Jahreszins, bei dem alle Käufe (Geld rein), Verkäufe (Geld raus) und der heutige Depotwert zusammen genau aufgehen. Er zeigt deine persönliche Rendite – auch das Timing deiner Einzahlungen zählt.</li>
               <li><strong>Zeitgewichtete Rendite:</strong> verkettet die täglichen Wertänderungen ohne Ein- und Auszahlungen. Sie misst die Qualität der Auswahl.</li>
-              <li><strong>Vergleich:</strong> dieselben Beträge an denselben Tagen in iShares-ETFs (Xetra, thesaurierend) – so ist der Vergleich fair.</li>
+              <li><strong>Vergleich:</strong> dieselben Kaufbeträge an denselben Tagen in iShares-ETFs (Xetra, thesaurierend); bei deinen Verkäufen verkauft der Vergleich denselben Anteil seines Bestands.</li>
+              <li><strong>Zeitgewichtet:</strong> Käufe zählen zum Tagesbeginn, Verkaufserlöse zum Tagesende – so verzerren große Nachkäufe die Rendite nicht.</li>
               <li>Grundlage sind alle Käufe und Verkäufe mit Datum (auch importierte), bewertet mit Tagesschlusskursen in {ccy}; Fremdwährungen zum Tageskurs.{a.undated_holdings > 0 && ` ${a.undated_holdings} Bestände aus Depotauszügen ohne Kaufdatum zählen nicht mit.`}</li>
               {a.missing?.length > 0 && <li>Ohne Kurse (zum Einstand gezählt): {a.missing.join(", ")}.</li>}
             </ul>

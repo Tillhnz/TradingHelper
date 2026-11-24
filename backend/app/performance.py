@@ -37,6 +37,7 @@ BENCHMARKS = [
 ]
 BENCH_SYMBOLS = [b[0] for b in BENCHMARKS]
 CACHE_TTL = 20 * 60
+CALC_VERSION = 2  # erhöhen, wenn sich die Rechnung ändert (alte Ergebnisse im Speicher verfallen dann)
 AFTER_DAYS = 20  # Handelstage für „was passierte nach dem Kauf / Verkauf“
 
 _POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="performance")
@@ -85,17 +86,51 @@ def xirr(flows: list[tuple[date, float]]) -> float | None:
 
 def twr(values: pd.Series, flows: pd.Series) -> pd.Series:
     """Zeitgewichtete Tagesrenditen: Ein- und Auszahlungen verzerren sie nicht.
-    values: Depotwert am Tagesende; flows: am Tag eingezahlt (Käufe +, Verkäufe −)."""
+    values: Depotwert am Tagesende; flows: am Tag eingezahlt (Käufe +, Verkäufe −).
+
+    Käufe zählen zum Tagesbeginn (sie stehen im Nenner), Verkaufserlöse zum Tagesende (im Zähler):
+        r = (Wert heute + Verkäufe) / (Wert gestern + Käufe) − 1
+    So bleibt der Nenner nie winzig. Die naive Formel (Wert − Fluss) / Wert gestern explodiert, wenn ein fast leeres
+    Depot an einem Tag viel nachkauft – schon 2 % Unterschied zwischen Kauf- und Schlusskurs würden sonst als
+    Hunderte Prozent Verlust zählen."""
     v = values.to_numpy(dtype=float)
     f = flows.reindex(values.index).fillna(0).to_numpy(dtype=float)
     r = np.zeros(len(v))
     for i in range(len(v)):
         prev = v[i - 1] if i else 0.0
-        if prev > 1e-9:
-            r[i] = (v[i] - f[i]) / prev - 1
-        elif f[i] > 1e-9:
-            r[i] = v[i] / f[i] - 1
+        buys, sells = max(f[i], 0.0), max(-f[i], 0.0)
+        base = prev + buys
+        if base > 1e-9:
+            r[i] = (v[i] + sells) / base - 1
     return pd.Series(r, index=values.index)
+
+
+def shadow(prices: pd.Series, values: pd.Series, flows: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Vergleichsdepot: kauft mit denselben Beträgen am selben Tag; verkauft am selben Tag denselben *Anteil*,
+    den du von deinem Depot verkauft hast. Liefert (Wert je Tag, eigene Zahlungen je Tag; Kauf +, Verkauf −).
+    Anteilig statt betragsgleich, weil das Vergleichsdepot sonst mehr auszahlen müsste, als es besitzt."""
+    p = prices.to_numpy(dtype=float)
+    v = values.to_numpy(dtype=float)
+    f = flows.reindex(values.index).fillna(0).to_numpy(dtype=float)
+    units = 0.0
+    val = np.zeros(len(p))
+    own = np.zeros(len(p))
+    for i in range(len(p)):
+        px = p[i]
+        if not (px > 0):
+            continue
+        buys, sells = max(f[i], 0.0), max(-f[i], 0.0)
+        if buys:
+            units += buys / px
+            own[i] += buys
+        if sells and units > 0:
+            total = v[i] + sells  # dein Depot vor dem Verkauf (zum Schlusskurs)
+            share = min(sells / total, 1.0) if total > 1e-9 else 1.0
+            sold = units * share
+            units -= sold
+            own[i] -= sold * px
+        val[i] = units * px
+    return val, own
 
 
 def max_drawdown(index: pd.Series) -> tuple[float | None, str | None, str | None]:
@@ -262,12 +297,18 @@ def compute(positions: list[dict], target: str, profile=None, bench_symbols: lis
     vol = float(r[active].std() * math.sqrt(252)) if active.sum() > 20 else None
     mdd, mdd_from, mdd_to = max_drawdown(idx)
 
+    # Tagessprünge über 25 % sind bei einem gestreuten Depot selten – meist ein Kursfehler oder ein falsch
+    # erfasster Kauf (Preis, Stückzahl, Datum). Zur Kontrolle mitliefern.
+    jumps = [{"day": str(d.date()), "pct": _round(float(x) * 100, 1)} for d, x in r.items() if abs(x) > 0.25]
     out.update(
+        jumps=jumps[:10],
         period={"from": str(cal[0].date()), "to": str(last_day.date()), "days": days},
         value=_round(value_now), invested=_round(invested), withdrawn=_round(withdrawn), gain=_round(gain),
         gain_pct=_round(gain / peak_capital * 100 if peak_capital > 0 else None),
         peak_capital=_round(peak_capital), fees=_round(fees_total),
         irr=_round(rate * 100 if rate is not None else None),
+        # bei weniger als einem Jahr ist „pro Jahr“ hochgerechnet und wirkt riesig – deshalb auch für den Zeitraum
+        irr_period=_round(((1 + rate) ** (days / 365) - 1) * 100 if rate is not None else None),
         twr=_round(twr_total * 100), twr_pa=_round(twr_pa * 100 if twr_pa is not None else None),
         volatility=_round(vol * 100 if vol is not None else None),
         max_drawdown=_round(mdd * 100 if mdd is not None else None), drawdown_from=mdd_from, drawdown_to=mdd_to,
@@ -290,16 +331,11 @@ def compute(positions: list[dict], target: str, profile=None, bench_symbols: lis
         if bpx.isna().all():
             continue
         rb = bpx.pct_change().fillna(0)
-        b_val = np.zeros(len(cal))
-        f = flows.to_numpy()
-        short = False
-        for i in range(len(cal)):
-            prev = b_val[i - 1] * (1 + rb.iloc[i]) if i else 0.0
-            b_val[i] = prev + f[i]
-            if b_val[i] < 0:
-                short, b_val[i] = True, 0.0
+        b_val, b_flow = shadow(bpx, values, flows)
         b_now = float(b_val[-1])
-        b_rate = xirr(cash + ([(last_day.date(), b_now)] if b_now > 0 else []))
+        b_cash = [(cal[i].date(), -float(x)) for i, x in enumerate(b_flow) if abs(x) > 1e-9]
+        b_rate = xirr(b_cash + ([(last_day.date(), b_now)] if b_now > 0 else []))
+        b_withdrawn = -sum(x for x in b_flow if x < 0)
         # zeitgewichtet nur über die Tage, an denen das Depot investiert war (gleicher Maßstab)
         b_idx = (1 + rb.where(active | (flows > 0), 0)).cumprod()
         b_total = float(b_idx.iloc[-1] - 1)
@@ -310,10 +346,11 @@ def compute(positions: list[dict], target: str, profile=None, bench_symbols: lis
             beta = float(np.cov(rr, rbb)[0, 1] / rbb.var())
             corr = float(np.corrcoef(rr, rbb)[0, 1])
         benches.append({
-            "symbol": sym, "label": label, "product": product, "value": _round(b_now), "gain": _round(b_now + withdrawn - invested),
+            "symbol": sym, "label": label, "product": product, "value": _round(b_now), "gain": _round(b_now + b_withdrawn - invested), "withdrawn": _round(b_withdrawn),
             "irr": _round(b_rate * 100 if b_rate is not None else None), "twr": _round(b_total * 100),
-            "diff_value": _round(value_now - b_now), "diff_irr": _round((rate - b_rate) * 100 if rate is not None and b_rate is not None else None),
-            "beta": _round(beta), "corr": _round(corr), "shortfall": short,
+            "irr_period": _round(((1 + b_rate) ** (days / 365) - 1) * 100 if b_rate is not None else None),
+            "diff_value": _round((value_now + withdrawn) - (b_now + b_withdrawn)), "diff_irr": _round((rate - b_rate) * 100 if rate is not None and b_rate is not None else None),
+            "beta": _round(beta), "corr": _round(corr),
         })
         curve[sym] = [round(float(x) * 100, 2) for x in b_idx]
         curve[f"{sym}:value"] = [round(float(x), 2) for x in b_val]
@@ -518,8 +555,8 @@ def _insights(a: dict, profile) -> list[dict]:
                                  "Der Vergleich wird mit jedem Monat aussagekräftiger."})
         tips.append({"level": "good" if d > 0.5 else "bad" if d < -2 else "info",
                      "title": "Gegen den Weltmarkt " + ("vorne" if d > 0 else "hinten"),
-                     "text": f"Mit denselben Beträgen zu denselben Zeitpunkten in einen MSCI-World-ETF hättest du heute "
-                             f"{_de(abs(world['diff_value'] or 0), 0)} {a['currency']} {'weniger' if (world['diff_value'] or 0) > 0 else 'mehr'}. "
+                     "text": f"Mit denselben Käufen in einen MSCI-World-ETF (und anteilig gleichen Verkäufen) hättest du insgesamt "
+                             f"{_de(abs(world['diff_value'] or 0), 0)} {a['currency']} {'weniger' if (world['diff_value'] or 0) > 0 else 'mehr'} – Wert heute plus Verkaufserlöse. "
                              f"Dein Zinsfuß liegt {_de(abs(d))} Prozentpunkte pro Jahr {'darüber' if d > 0 else 'darunter'}.",
                      "key": True})
     if b.get("hold_win_days") is not None and b.get("hold_loss_days") is not None and b.get("closed", 0) >= 4:
@@ -573,6 +610,11 @@ def _insights(a: dict, profile) -> list[dict]:
         tips.append({"level": "good" if pf > 1.5 else "bad" if pf < 1 else "info", "title": f"Trefferquote {b['win_rate']:.0f} %",
                      "text": f"Ø Gewinn {_fmt(b.get('avg_win'))} %, Ø Verlust {_fmt(b.get('avg_loss'))} %. Je 1 {a['currency']} Verlust hast du "
                              f"{_de(pf, 2)} {a['currency']} Gewinn gemacht."})
+    if a.get("jumps"):
+        days_txt = ", ".join(f"{datetime.fromisoformat(j['day']).strftime('%d.%m.%Y')} ({_fmt(j['pct'])} %)" for j in a["jumps"][:4])
+        tips.append({"level": "warn", "title": "Auffällige Tagessprünge",
+                     "text": f"An diesen Tagen änderte sich dein Depot um mehr als 25 %: {days_txt}. Prüf die Käufe und "
+                             "Verkäufe dieser Tage (Kurs, Stückzahl, Datum) – oft steckt ein Erfassungs- oder Kursfehler dahinter."})
     if a.get("missing"):
         tips.append({"level": "info", "title": "Nicht alle Kurse verfügbar",
                      "text": "Für " + ", ".join(a["missing"][:5]) + " fehlen Kurse; diese Werte zählen zum Einstand."})
@@ -584,7 +626,7 @@ def _insights(a: dict, profile) -> list[dict]:
 
 def _fingerprint(positions: list[dict], target: str, horizon: str | None) -> str:
     keys = ("id", "symbol", "quantity", "buy_price", "buy_date", "fees", "sell_price", "sell_date", "sell_fees", "currency", "stop")
-    raw = json.dumps([[p.get(k) for k in keys] for p in positions], default=str) + target + str(horizon) + date.today().isoformat()
+    raw = json.dumps([[p.get(k) for k in keys] for p in positions], default=str) + target + str(horizon) + date.today().isoformat() + f"v{CALC_VERSION}"
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 

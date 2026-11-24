@@ -3,6 +3,17 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.1",
+    date: "24.11.2026",
+    title: "Analyse: Rendite richtig gerechnet",
+    items: [
+      "Zeitgewichtete Rendite korrigiert: Wenn das Depot fast leer war und dann viel nachgekauft wurde, zählte schon ein kleiner Unterschied zwischen Kauf- und Schlusskurs als riesiger Verlust. Käufe zählen jetzt zum Tagesbeginn.",
+      "Vergleich mit Indizes fairer: Bei deinen Verkäufen verkauft das Vergleichsdepot denselben Anteil statt denselben Betrag – vorher konnte es mehr auszahlen, als es besaß, und schnitt dadurch zu gut ab.",
+      "Unter einem Jahr steht der Zinsfuß für den Zeitraum statt hochgerechnet aufs Jahr.",
+      "Neuer Hinweis bei auffälligen Tagessprüngen über 25 % – meist ein falsch erfasster Kauf oder ein Kursfehler.",
+    ],
+  },
+  {
     version: "2.1.0",
     date: "24.11.2026",
     title: "Analyse deiner Strategie",
