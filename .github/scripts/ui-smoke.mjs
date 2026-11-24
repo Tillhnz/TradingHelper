@@ -348,6 +348,9 @@ await page.screenshot({ path: "shots/analyse.png", fullPage: true });
   await page.getByRole("button", { name: /Depot hinzufügen/ }).first().click();
   await page.getByRole("button", { name: /Anderer Broker/ }).click();
   await page.getByRole("button", { name: "Anlegen und Dateien wählen" }).click();
+  await page.getByRole("dialog", { name: /Hochladen/ }).waitFor({ timeout: 45000 }).catch(() => {});
+  console.log("nach Anlegen:", (await page.locator(".modal").first().innerText()).replace(/\s+/g, " ").slice(-200));
+  await page.screenshot({ path: "shots/depot-anlegen.png" });
   for (const file of [".github/fixtures/abrechnung-kauf.pdf", "/tmp/abrechnung-gross.pdf"]) {
     const t0 = Date.now();
     await page.locator(".modal input[type=file]").setInputFiles(file);
