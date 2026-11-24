@@ -3,6 +3,17 @@
 
 export const CHANGELOG = [
   {
+    version: "2.1.2",
+    date: "24.11.2026",
+    title: "Analyse: Schlüsse passen zu den Zahlen, alle Seiten auf dem Handy",
+    items: [
+      "Der Vergleich mit dem Weltmarkt berücksichtigt jetzt Euro-Ergebnis und zeitgewichtete Rendite zusammen. Zeigen sie in verschiedene Richtungen, steht da „Gemischtes Bild“ samt Erklärung – statt „vorne“.",
+      "Neue Datenprüfung: Käufe oder Verkäufe, deren Kurs nicht zum Markt am Tag passt, Verkäufe vor dem Kauf und auffällige Sprünge in den Kursdaten werden mit Datum aufgelistet.",
+      "Die Vergleichstabelle zeigt den Gewinn (Wert + Verkaufserlöse − Käufe) statt des Werts – so passt sie zum „Unterschied zu dir“.",
+      "Auf dem Handy gibt es unten „Mehr“ mit Markt, Modell, Charts, Käufe & Blöcke, Alarme, Einstellungen und Administration.",
+    ],
+  },
+  {
     version: "2.1.1",
     date: "24.11.2026",
     title: "Analyse: Rendite richtig gerechnet",

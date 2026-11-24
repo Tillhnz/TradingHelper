@@ -1707,3 +1707,18 @@ label { font-weight: 500; font-size: 0.88rem; color: var(--chalk-2); }
   .an-kpi-value { font-size: 1.3rem; }
   .an-two { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- Handy: „Mehr“ ---------- */
+.nav-more, .more-sheet, .more-backdrop { display: none; }
+@media (max-width: 800px) {
+  .nav-more.mobile-only-flex { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; flex: 1; padding: 0.35rem 0.2rem;
+    background: none; border: 0; color: var(--mute); font: inherit; font-size: 0.68rem; cursor: pointer; }
+  .nav-more.active { color: var(--accent); }
+  .more-backdrop { display: block; position: fixed; inset: 0; z-index: 4; background: rgba(var(--backdrop-rgb), 0.25); }
+  .more-sheet { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; position: fixed; z-index: 6; left: 0.6rem; right: 0.6rem;
+    bottom: calc(4.4rem + env(safe-area-inset-bottom)); padding: 0.6rem; border-radius: 16px; background: var(--panel);
+    border: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); }
+  .more-sheet a, .more-sheet button { display: flex; align-items: center; gap: 0.55rem; padding: 0.75rem 0.8rem; border-radius: 10px;
+    color: var(--chalk); text-decoration: none; font-size: 0.95rem; background: var(--panel-2); border: 0; font-family: inherit; text-align: left; }
+  .more-sheet a.active { color: var(--accent); }
+}
