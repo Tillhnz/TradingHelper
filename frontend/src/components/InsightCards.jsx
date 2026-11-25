@@ -136,7 +136,7 @@ export function WhyCard({ symbol }) {
                   ))}
                 </ul>
                 <p className="muted small why-note">
-                  Anteil an der Kursänderung. „Markt“ und „Branche“: so viel hätte der Wert allein durch sie bewegt –
+                  Anteil an der Kursänderung. {d.sector ? "„Markt“ und „Branche“: so viel hätte der Wert allein durch sie bewegt" : "„Markt“: so viel hätte der Wert allein durch den Gesamtmarkt bewegt"} –
                   geschätzt aus einem Jahr Tageskursen (schwingt {num(d.fit?.beta_m ?? 0, 1)}-fach mit dem {d.market?.label}).
                   {d.sector && " Branche gemessen am US-Branchenindex."}
                 </p>
