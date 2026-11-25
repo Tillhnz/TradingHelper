@@ -321,7 +321,7 @@ def _yahoo_history(symbol: str, period: str | None = None, interval: str = "1d",
 # 3. Die heutige Kerze wird mit dem letzten bekannten Kurs (Quote-Speicher) aktualisiert. So sind Übersicht und
 #    Analyse live, ohne die Historie neu zu laden.
 
-PERIOD_DAYS = {"1d": 4, "5d": 8, "1mo": 32, "3mo": 93, "6mo": 184, "1y": 367, "2y": 732, "5y": 1828, "10y": 3654,
+PERIOD_DAYS = {"1d": 4, "5d": 8, "1mo": 32, "3mo": 93, "6mo": 184, "1y": 367, "2y": 732, "3y": 1097, "5y": 1828, "10y": 3654,
                "max": 3654, "ytd": 367}
 FIRST_SPAN = 1828            # beim ersten Abruf 5 Jahre, danach reicht jeder Zeitraum bis 5 Jahre aus dem Speicher
 DAILY_TTL = 20 * 60          # Tageskerzen höchstens alle 20 Minuten nachladen (der heutige Kurs kommt aus den Quotes)

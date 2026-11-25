@@ -7,7 +7,7 @@ import HoldingPanel from "../components/HoldingPanel.jsx";
 import BreakoutMeter from "../components/BreakoutMeter.jsx";
 import CompanyPanel from "../components/CompanyPanel.jsx";
 import Icon from "../components/Icon.jsx";
-import { BAR_SECONDS, INTRADAY, intervalsFor, PERIOD_LABEL, periodsFor, pickPeriod } from "../intervals.js";
+import { BAR_SECONDS, INTRADAY, pickResolution, RANGES, rangeAvailable } from "../intervals.js";
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
 import { ModelCard, SocialCard } from "../components/InsightCards.jsx";
@@ -19,15 +19,6 @@ import { since, useLiveQuotes } from "../live.js";
 import { useMode } from "../mode.js";
 import { ACTION_UI, displayName, displayTicker } from "../texts.js";
 
-const RANGES = [
-  { id: "1d", label: "1 T", period: "1d", interval: "5m" },
-  { id: "5d", label: "1 W", period: "5d", interval: "15m" },
-  { id: "1mo", label: "1 M", period: "1mo", interval: "1d" },
-  { id: "3mo", label: "3 M", period: "3mo", interval: "1d" },
-  { id: "6mo", label: "6 M", period: "6mo", interval: "1d" },
-  { id: "1y", label: "1 J", period: "1y", interval: "1d" },
-  { id: "5y", label: "5 J", period: "5y", interval: "1wk" },
-];
 const REFRESH_MS = 60 * 1000;
 
 function freshness(meta) {
@@ -42,9 +33,11 @@ export default function ChartPage() {
   const symbol = (param || "").toUpperCase();
   const { mode } = useMode();
   const pro = mode === "pro";
-  const [view, setView] = useState({ period: "1y", interval: "1d" });
-  const [ccy, setCcy] = useState(null); // null = Einstellung
+  const [range, setRange] = useState("1y");
   const [meta, setMeta] = useState(null);
+  // Kleiner Chart: nur der Zeitraum ist wählbar, die Auflösung ergibt sich daraus (feiner im großen Chart)
+  const view = { period: RANGES.find((r) => r.id === range)?.period || "1y", interval: pickResolution(range, null, meta) };
+  const [ccy, setCcy] = useState(null); // null = Einstellung
   const [rows, setRows] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [watched, setWatched] = useState(null);
@@ -114,9 +107,6 @@ export default function ChartPage() {
   }
 
 
-  function setProInterval(iv) {
-    setView((v) => ({ interval: iv, period: pickPeriod(iv, v.period, meta) }));
-  }
 
   const quotes = useLiveQuotes([symbol], { currency: ccy, every: 15000 });
   const m = analysis?.metrics || {};
@@ -146,9 +136,6 @@ export default function ChartPage() {
   const adv = holding?.summary?.advice;
   const shownAction = rec && held && adv?.reason === "rethink" && adv.level === "bad" ? "Reduzieren prüfen" : rec?.action;
   const ui = shownAction ? ACTION_UI[shownAction] : null;
-  const rangeId = RANGES.find((r) => r.period === view.period && r.interval === view.interval)?.id;
-  const intervals = intervalsFor(meta);
-  const ranges = RANGES;
 
   return (
     <>
@@ -226,20 +213,15 @@ export default function ChartPage() {
       <div className="stock-main">
       <section className="panel chart-panel" id="chart">
         <div className="toolbar">
-          {pro ? (
-            <>
-              <div className="seg seg-iv" role="group" aria-label="Kerzen">
-                {intervals.map((iv) => <button key={iv.id} className={iv.id === view.interval ? "on" : ""} title={iv.title} onClick={() => setProInterval(iv.id)}>{iv.label}</button>)}
-              </div>
-              <select value={view.period} onChange={(e) => setView((v) => ({ ...v, period: e.target.value }))} aria-label="Zeitraum">
-                {periodsFor(view.interval, meta).map((x) => <option key={x} value={x}>{PERIOD_LABEL[x]}</option>)}
-              </select>
-            </>
-          ) : (
-            <div className="seg" role="group" aria-label="Zeitraum">
-              {ranges.map((r) => <button key={r.id} className={rangeId === r.id ? "on" : ""} onClick={() => setView({ period: r.period, interval: r.interval })}>{r.label}</button>)}
-            </div>
-          )}
+          <div className="seg range-seg" role="group" aria-label="Zeitraum">
+            {RANGES.map((r) => {
+              const ok = !meta || rangeAvailable(r.id, meta);
+              return (
+                <button key={r.id} className={range === r.id ? "on" : ""} disabled={!ok} onClick={() => setRange(r.id)}
+                  title={ok ? undefined : "Für diesen Wert gibt es keine Kurse im Minutentakt"}>{r.label}</button>
+              );
+            })}
+          </div>
           {meta?.native_currency && (
             <select value={ccyValue} onChange={(e) => setCcy(e.target.value)} aria-label="Währung">
               {["native", "EUR", "USD", "CHF", "GBP"].map((c) => (
