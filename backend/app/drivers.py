@@ -27,7 +27,7 @@ from . import gettex, market, marketstore, news
 log = logging.getLogger(__name__)
 
 TTL = 30 * 60
-CALC_VERSION = 1
+CALC_VERSION = 2
 WINDOWS = [("Woche", 5), ("Monat", 21), ("3 Monate", 63), ("1 Jahr", 252)]
 
 # Heimatmarkt je Land (ISIN-Präfix bzw. Land aus den Stammdaten)
@@ -214,18 +214,19 @@ def _summary(name: str, dec: dict | None, market_label: str, sector_label: str |
         if sc is not None and sector_label:
             drivers.append(("die Branche", sc, sector_label))
         drivers.append(("Unternehmensspezifisches", own, None))
-        main = max(drivers, key=lambda t: abs(t[1] or 0))
         parts = [f"{label} ({extra}) {_pct(v)}" if extra else f"{label} {_pct(v)}" for label, v, extra in drivers]
         lines.append(f"{name}: {span} {_pct(total)}. Davon " + ", ".join(parts) + ".")
-        share = abs(main[1] or 0) / (sum(abs(v or 0) for _, v, _ in drivers) or 1)
-        lead = "Der Großteil" if share > 0.6 else "Der größte Teil"
-        if main[0] == "Unternehmensspezifisches":
-            lines.append(f"{lead} kommt vom Unternehmen selbst – nicht vom Gesamtmarkt. "
-                         + ("Die Schlagzeilen der stärksten Tage unten zeigen, was dahinterstand." if days else ""))
-        elif main[0] == "der Markt":
-            lines.append(f"Der Wert bewegt sich vor allem mit dem Gesamtmarkt ({market_label}).")
-        else:
-            lines.append(f"Vor allem die Branche ({sector_label}, gemessen am US-Branchenindex) zieht den Wert.")
+        names = {"der Markt": f"Markt ({market_label})", "die Branche": f"Branche ({sector_label})",
+                 "Unternehmensspezifisches": "das Unternehmen selbst"}
+        up = sorted([(names[lb], v) for lb, v, _ in drivers if (v or 0) >= 0.5], key=lambda t: -t[1])
+        down = sorted([(names[lb], v) for lb, v, _ in drivers if (v or 0) <= -0.5], key=lambda t: t[1])
+        bits = []
+        if up:
+            bits.append("Rückenwind: " + ", ".join(f"{n} {_pct(v)}" for n, v in up))
+        if down:
+            bits.append("Gegenwind: " + ", ".join(f"{n} {_pct(v)}" for n, v in down))
+        if bits:
+            lines.append(". ".join(bits) + ".")
     if days:
         d0 = days[0]
         head = (d0.get("news") or [{}])[0].get("headline")
@@ -269,6 +270,10 @@ def compute(symbol: str, settings=None) -> dict:
     mkt = in_currency(mkt, INDEX_CCY.get(idx_sym), ccy)
     sec = in_currency(sec, "USD", ccy)
     fit = _fit(stock, mkt, sec)
+    if sec is not None and (fit.get("beta_x") is None or fit["beta_x"] < 0.15):
+        # schwingt kaum (oder gegenläufig) mit dem Branchenindex: Branche weglassen statt verwirrender Vorzeichen
+        sec, sector_label, sec_sym = None, None, None
+        fit = _fit(stock, mkt, None)
     windows = []
     for label, n in WINDOWS:
         dec = decompose(stock, mkt, sec, fit, min(n, len(stock) - 1))

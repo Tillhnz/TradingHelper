@@ -64,3 +64,16 @@ def test_too_little_data(monkeypatch):
     monkeypatch.setattr(market, "get_history", lambda *a, **k: _df(np.ones(5), pd.bdate_range("2026-01-01", periods=5)))
     monkeypatch.setattr(market, "cached_info", lambda s: {})
     assert drivers.compute("NEW.DE")["empty"] is True
+
+
+def test_sector_dropped_when_stock_does_not_follow_it(world, monkeypatch):
+    data, idx = world
+    rng = np.random.default_rng(1)
+    unrelated = 50 * np.exp(np.cumsum(rng.normal(0, 0.01, len(idx))))
+    data["XLK"] = _df(unrelated, idx)
+    r = drivers.compute("TEST.DE")
+    assert r["sector"] is None
+    month = next(w for w in r["windows"] if w["label"] == "Monat")
+    assert month["sector"] is None
+    assert month["market"] + month["own"] == pytest.approx(month["total"], abs=0.2)
+    assert any(t.startswith(("Rückenwind", "Gegenwind")) for t in r["summary"])
