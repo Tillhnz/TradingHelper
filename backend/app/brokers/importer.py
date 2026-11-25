@@ -147,10 +147,12 @@ COLUMNS = {
     "name": ["name", "wertpapier", "bezeichnung", "titel", "produkt", "instrument", "wertpapiername", "security"],
     "side": ["typ", "art", "transaktion", "transaktionsart", "buchungsart", "richtung", "kauf/verkauf", "side", "type",
              "auftragsart", "geschaeftsart", "order typ", "ordertyp", "vorgang"],
+    # Bestandslisten (z. B. finanzen.net zero „Depotbestand“): Einstand getrennt vom aktuellen Kurs
+    "avg_price": ["kaufkurs", "einstandskurs", "durchschnittskurs", "einstand", "avg price", "average price"],
+    "cost": ["kaufwert", "einstandswert", "anschaffungswert", "einstandsbetrag", "cost"],
     "quantity": ["stueck", "anzahl", "menge", "nominale", "quantity", "shares", "stueckzahl", "anteile", "stk", "bestand",
                  "nominal"],
-    "price": ["kurs", "preis", "ausfuehrungskurs", "price", "kurs in eur", "einstandskurs", "durchschnittskurs",
-              "kaufkurs", "ausfuehrungspreis"],
+    "price": ["kurs", "preis", "ausfuehrungskurs", "price", "kurs in eur", "ausfuehrungspreis", "aktueller kurs"],
     "amount": ["betrag", "kurswert", "gesamt", "amount", "wert", "gesamtbetrag", "endbetrag", "marktwert", "value",
                "summe"],
     "fees": ["gebuehren", "gebuehr", "provision", "fees", "entgelt", "kosten", "ordergebuehr", "spesen"],
@@ -203,7 +205,9 @@ def parse_csv(content: bytes | str, source: str = "csv") -> Parsed:
     if head_i is None:
         return Parsed([], [], ["Keine Spalten für ISIN und Stückzahl gefunden"], "empty", source)
     trades, holdings = [], []
-    has_side = "side" in cols
+    # Eine „Art“-Spalte kann auch die Wertpapierart sein (AKTIE, ETF, DERIVAT) – dann ist es eine Bestandsliste
+    has_side = "side" in cols and any(
+        side_of(r[cols["side"]]) is not None for r in rows[head_i + 1:] if cols["side"] < len(r))
     body = "\n".join(";".join(r) for r in rows[head_i + 1:head_i + 200])
     dec = "," if len(re.findall(r"\d,\d{1,2}\b", body)) >= len(re.findall(r"\d\.\d{1,2}\b", body)) else "."
 
@@ -224,14 +228,21 @@ def parse_csv(content: bytes | str, source: str = "csv") -> Parsed:
             continue
         qty = number(col("quantity"))
         price, amount = number(col("price")), number(col("amount"))
+        avg, cost = number(col("avg_price")), number(col("cost"))
         if not has_side:
             if qty is None or qty == 0:
                 skipped.append(f"ohne Stückzahl: {line}")
                 continue
+            if avg is None and cost:
+                avg = abs(cost) / abs(qty)
+            if price is None and amount:
+                price = abs(amount) / abs(qty)
             holdings.append(Holding(isin, abs(qty), col("name") or None, price,
                                     abs(amount) if amount is not None else None,
-                                    price, col("currency") or "EUR"))
+                                    avg if avg is not None else price, (col("currency") or "EUR").upper()[:3]))
             continue
+        if price is None:
+            price = avg
         side = side_of(col("side"))
         if side is None:
             skipped.append(f"weder Kauf noch Verkauf ({col('side') or '–'}): {line}")

@@ -90,3 +90,21 @@ def test_apply_trades_blocks_and_dedupe(tmp_path):
 def test_all_brokers_are_uploads():
     assert {"consorsbank", "commerzbank", "finanzen_zero"} <= set(BANKS)
     assert all(b["kind"] == "import" and b["import_hint"] for b in BANKS.values())
+
+
+def test_finanzen_zero_depot_csv_is_holdings_list():
+    """finanzen.net zero „Depotbestand“: Spalte „Art“ ist die Wertpapierart (AKTIE/DERIVAT), kein Kauf/Verkauf."""
+    from app.brokers.importer import parse_file
+
+    csv_text = (
+        "Name;ISIN;WKN;Art;Anzahl;Verfügbar;Kaufkurs;Kaufwert;Kurs;Kurszeit;Kursdatum;Wert;Erfolg [%];Erfolg [EUR];Notiz\n"
+        "AIRBUS SE;NL0000235190;938914;AKTIE;50;50;191,90;9.595,00;194,62;21:40:00;24.11.2026;9.731,00;1,42;136,00;\n"
+        "BEIERSDORF AG O.N.;DE0005200000;520000;AKTIE;28,396;28,396;105,83814622;3.005,38;80,54;21:19:14;24.11.2026;2.287,01;-23,90;-718,37;\n"
+        "Morgan Stanley Faktor 5x Long Microsoft;DE000MA9TDK7;MA9TDK;DERIVAT;401;401;2,50249377;1.003,50;0,47;21:41:10;24.11.2026;188,47;-81,22;-815,03;\n"
+    )
+    p = parse_file("ZERO-pos-24.11.2026.csv", csv_text.encode("utf-8"), "finanzen_zero")
+    assert p.kind == "holdings" and not p.skipped
+    air = next(h for h in p.holdings if h.isin == "NL0000235190")
+    assert air.quantity == 50 and air.avg_price == 191.90 and air.price == 194.62 and air.value == 9731.0
+    bei = next(h for h in p.holdings if h.isin == "DE0005200000")
+    assert bei.quantity == 28.396 and abs(bei.avg_price - 105.83814622) < 1e-9
