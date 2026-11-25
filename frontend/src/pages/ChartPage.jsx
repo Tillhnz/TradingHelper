@@ -10,7 +10,7 @@ import Icon from "../components/Icon.jsx";
 import { BAR_SECONDS, INTRADAY, pickResolution, RANGES, rangeAvailable } from "../intervals.js";
 import SellDialog from "../components/SellDialog.jsx";
 import NewsList from "../components/NewsList.jsx";
-import { ModelCard, SocialCard } from "../components/InsightCards.jsx";
+import { ModelCard, SocialCard, WhyCard } from "../components/InsightCards.jsx";
 import PriceChart from "../components/PriceChart.jsx";
 import Term from "../components/Term.jsx";
 import { ActionBadge, ErrorText, Levels, Loading, Stat } from "../components/ui.jsx";
@@ -176,6 +176,7 @@ export default function ChartPage() {
       {msg && <p className="ok" role="status">{msg}</p>}
       <nav className="jump-nav" aria-label="Auf dieser Seite">
         <a href="#chart"><Icon name="activity" /> Chart</a>
+        <a href="#warum"><Icon name="info" /> Warum?</a>
         {analysis?.breakout && <a href="#ausbruch"><Icon name="zap" /> Ausbruch</a>}
         {holding?.items?.length > 0 && <a href="#bestand"><Icon name="briefcase" /> Bestand</a>}
         {analysis && <a href="#plan"><Icon name="target" /> Einstieg</a>}
@@ -204,6 +205,7 @@ export default function ChartPage() {
         </section>
       )}
 
+      <WhyCard symbol={symbol} />
       {analysis && <ModelCard model={analysis.model} />}
       <div id="ausbruch" className="anchor"><BreakoutMeter bo={analysis?.breakout} currency={cur} /></div>
       <div id="bestand" className="anchor" />

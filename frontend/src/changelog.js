@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "2.3.0",
+    date: "25.11.2026",
+    title: "Warum läuft der Kurs so?",
+    items: [
+      "Neu auf der Seite jedes Werts: „Warum läuft der Kurs so?“ – die Kursänderung der letzten Woche, des Monats, von drei Monaten und einem Jahr aufgeteilt in Markt (z. B. DAX), Branche und das Unternehmen selbst.",
+      "Dazu die stärksten Tage der letzten drei Monate mit den Schlagzeilen genau dieser Tage – so siehst du, was hinter einem Absturz oder Sprung stand.",
+      "Die untere Leiste auf dem Handy bleibt immer vollständig sichtbar, auch wenn ein Inhalt breiter ist als der Bildschirm.",
+    ],
+  },
+  {
     version: "2.2.1",
     date: "25.11.2026",
     title: "Depotbestand von finanzen.net zero",

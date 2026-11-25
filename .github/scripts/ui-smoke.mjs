@@ -86,7 +86,7 @@ await page.getByRole("button", { name: "Einfach" }).first().click();
 // Tagesverlauf (gettex aus Einzelgeschäften) und Chartart
 await page.goto(`${base}/chart/DE0007164600.GTX`);
 await page.waitForTimeout(7000);
-await page.getByRole("button", { name: "Tag", exact: true }).click();
+await page.locator(".range-seg").getByRole("button", { name: "Tag", exact: true }).click();
 await page.waitForTimeout(6000);
 await page.screenshot({ path: "shots/chart-intraday.png" });
 console.log("intraday", JSON.stringify(await page.evaluate(() => ({
@@ -95,7 +95,7 @@ console.log("intraday", JSON.stringify(await page.evaluate(() => ({
 }))));
 // kleiner Chart: nur Kursverlauf, keine Schalter für Signale/Kerzen mehr
 console.log("small chart controls", await page.locator(".chart-panel select[aria-label='Darstellung'], .chart-panel input[type=checkbox]").count());
-await page.getByRole("button", { name: "Woche", exact: true }).click();
+await page.locator(".range-seg").getByRole("button", { name: "Woche", exact: true }).click();
 await page.waitForTimeout(6000);
 await page.screenshot({ path: "shots/chart-week.png" });
 const q1 = await page.evaluate(async (t) => (await fetch("/api/quotes?symbols=DE0007164600.GTX,AAPL,BTC-EUR", { headers: { Authorization: `Bearer ${t}` } })).json(), token);
@@ -115,23 +115,29 @@ await page.screenshot({ path: "shots/buy-dialog.png" });
 await page.getByRole("button", { name: /Kauf eintragen/ }).click();
 await page.waitForTimeout(6000);
 await page.screenshot({ path: "shots/chart-box.png" });
-await page.getByRole("button", { name: "Tag", exact: true }).click();
+await page.locator(".range-seg").getByRole("button", { name: "Tag", exact: true }).click();
 await page.waitForTimeout(6000);
 await page.screenshot({ path: "shots/chart-box-intraday.png" });
 console.log("quick buy", JSON.stringify(((await api("/positions")).items || []).filter((p) => p.symbol === "IE00B4L5Y983.GTX").map((p) => [p.buy_date, p.buy_time, p.buy_price])));
 await page.goto(`${base}/chart/AAPL`);
 await page.waitForTimeout(8000);
 await page.screenshot({ path: "shots/chart-box-aapl.png" });
+// Warum läuft der Kurs so? (Markt/Branche/Eigenes, stärkste Tage mit Schlagzeilen)
+await page.locator("#warum").scrollIntoViewIfNeeded();
+await page.locator("#warum .why-total, #warum .muted").first().waitFor({ timeout: 30000 }).catch(() => {});
+await page.waitForTimeout(8000);
+console.log("warum", (await page.locator("#warum").innerText()).replace(/\s+/g, " ").slice(0, 700));
+await page.locator("#warum").screenshot({ path: "shots/warum-aapl.png" }).catch(() => {});
 // Neue Zeiträume im kleinen Chart, großer Chart mit Zeitraum + Auflösung
 for (const r of ["Monat", "3 Jahre", "Gesamt"]) {
-  await page.getByRole("button", { name: r, exact: true }).click();
+  await page.locator(".range-seg").getByRole("button", { name: r, exact: true }).click();
   await page.waitForTimeout(4000);
   console.log("range", r, await page.locator(".chart-panel .error").allInnerTexts(), await page.locator(".chart-panel canvas").count());
 }
 await page.screenshot({ path: "shots/chart-gesamt.png" });
 await page.goto(`${base}/charts/AAPL`);
 await page.waitForTimeout(6000);
-await page.getByRole("button", { name: "Woche", exact: true }).click();
+await page.locator(".range-seg").getByRole("button", { name: "Woche", exact: true }).click();
 await page.waitForTimeout(3000);
 console.log("ws resolutions Woche", JSON.stringify(await page.locator(".res-ctl button").allInnerTexts()));
 await page.getByRole("button", { name: "5m", exact: true }).click();
