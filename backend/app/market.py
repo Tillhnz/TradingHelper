@@ -321,7 +321,7 @@ def _yahoo_history(symbol: str, period: str | None = None, interval: str = "1d",
 # 3. Die heutige Kerze wird mit dem letzten bekannten Kurs (Quote-Speicher) aktualisiert. So sind Übersicht und
 #    Analyse live, ohne die Historie neu zu laden.
 
-PERIOD_DAYS = {"1d": 4, "5d": 8, "1mo": 32, "3mo": 93, "6mo": 184, "1y": 367, "2y": 732, "5y": 1828, "10y": 3654,
+PERIOD_DAYS = {"1d": 4, "5d": 8, "1mo": 32, "3mo": 93, "6mo": 184, "1y": 367, "2y": 732, "3y": 1097, "5y": 1828, "10y": 3654,
                "max": 3654, "ytd": 367}
 FIRST_SPAN = 1828            # beim ersten Abruf 5 Jahre, danach reicht jeder Zeitraum bis 5 Jahre aus dem Speicher
 DAILY_TTL = 20 * 60          # Tageskerzen höchstens alle 20 Minuten nachladen (der heutige Kurs kommt aus den Quotes)
@@ -580,7 +580,11 @@ def convert_history(df: pd.DataFrame, native: str | None, target: str | None, pe
         if rates is None:
             rates = fx_rates(base, target, period)
         days = _days(out.index)
-        aligned = rates.reindex(rates.index.union(days)).sort_index().ffill().bfill().reindex(days)
+        # Intraday: viele Kerzen je Tag – erst je Tag den Kurs bestimmen, dann jeder Kerze zuordnen
+        rates = rates[~rates.index.duplicated(keep="last")]
+        uniq = pd.DatetimeIndex(days).unique()
+        per_day = rates.reindex(rates.index.union(uniq)).sort_index().ffill().bfill().reindex(uniq)
+        aligned = per_day.reindex(days)
         mult = aligned.to_numpy() * factor
     for col in ("open", "high", "low", "close"):
         out[col] = out[col].to_numpy() * mult

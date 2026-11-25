@@ -172,7 +172,7 @@ def quote(symbol: str) -> dict:
 
 
 def _range_for(period: str) -> tuple[str, date]:
-    days = {"1mo": 31, "3mo": 92, "6mo": 183, "1y": 366, "2y": 731, "5y": 1827, "10y": 3653, "max": 3653}.get(period, 366)
+    days = {"1mo": 31, "3mo": 92, "6mo": 183, "1y": 366, "2y": 731, "3y": 1096, "5y": 1827, "10y": 3653, "max": 3653}.get(period, 366)
     return ("Y1" if days <= 366 else "Y5" if days <= 1827 else "Y10"), date.today() - timedelta(days=days)
 
 

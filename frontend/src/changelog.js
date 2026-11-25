@@ -3,6 +3,17 @@
 
 export const CHANGELOG = [
   {
+    version: "2.2.0",
+    date: "25.11.2026",
+    title: "Charts: Zeitraum und Auflösung",
+    items: [
+      "Kleiner Chart auf der Seite eines Werts: Tag, Woche, Monat, 1 Jahr, 3 Jahre, 5 Jahre oder Gesamt – die passende Auflösung wählt TradeHelper selbst.",
+      "Großer Chart: dieselben Zeiträume, dazu die Auflösung je Kerze (Sekunden, Minuten, Stunden, Tage, Wochen) – nur, was für den Zeitraum geht.",
+      "Großer Chart läuft live mit: die letzte Kerze wird mit jedem neuen Kurs fortgeschrieben, ohne dass Zoom oder Zeichnungen springen.",
+      "Beim Hochladen lassen sich jetzt alle Dateien auswählen – Android hatte CSV-Dateien teils ausgegraut.",
+    ],
+  },
+  {
     version: "2.1.6",
     date: "24.11.2026",
     title: "Depot hinzufügen geht wieder",

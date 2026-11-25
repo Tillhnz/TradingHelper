@@ -9,18 +9,9 @@ import { dateTime, money } from "../fmt.js";
 import { indicatorTitle, INDICATORS, PARAM_LABEL } from "../indicators.js";
 import { displayName, displayTicker } from "../texts.js";
 import Icon from "../components/Icon.jsx";
-import { INTRADAY, intervalsFor, PERIOD_LABEL, periodsFor, pickPeriod } from "../intervals.js";
+import { BAR_SECONDS, INTRADAY, INTERVALS, pickResolution, RANGES, rangeAvailable, rangeOfPeriod, resolutionsFor } from "../intervals.js";
+import { useLiveQuotes } from "../live.js";
 
-const RANGES = [
-  { id: "1d", label: "1 T", period: "1d", interval: "5m" },
-  { id: "5d", label: "1 W", period: "5d", interval: "15m" },
-  { id: "1mo", label: "1 M", period: "1mo", interval: "1d" },
-  { id: "3mo", label: "3 M", period: "3mo", interval: "1d" },
-  { id: "6mo", label: "6 M", period: "6mo", interval: "1d" },
-  { id: "1y", label: "1 J", period: "1y", interval: "1d" },
-  { id: "2y", label: "2 J", period: "2y", interval: "1d" },
-  { id: "5y", label: "5 J", period: "5y", interval: "1wk" },
-];
 const TOOLS = [
   { id: null, label: "Bewegen", short: "Bewegen", icon: "✋", help: "Chart verschieben und zoomen" },
   { id: "hline", label: "Waagrechte Linie", short: "Linie", icon: "—", help: "Antippen setzt die Linie – beim Ziehen wandert sie mit" },
@@ -95,8 +86,10 @@ function Workspace({ symbol }) {
       .catch((e) => setError(e.message));
   }, [symbol]);
 
-  const period = layout?.period || "6mo";
-  const interval = layout?.interval || "1d";
+  const savedPeriod = layout?.period || "1y";
+  const period = RANGES.find((r) => r.id === rangeOfPeriod(savedPeriod))?.period || "1y";
+  const ivMetaEarly = { intraday_limit: symbol?.endsWith(".GTX") ? "5d" : null };
+  const interval = pickResolution(rangeOfPeriod(savedPeriod), layout?.interval || "1d", ivMetaEarly);
   useEffect(() => {
     if (!layout) return;
     setRows(null);
@@ -177,10 +170,26 @@ function Workspace({ symbol }) {
     } catch (e) { setError(e.message); }
   }
 
-  const rangeId = RANGES.find((r) => r.period === period && r.interval === interval)?.id;
-  const ivMeta = { intraday_limit: symbol?.endsWith(".GTX") ? "5d" : null };
+  const rangeId = rangeOfPeriod(period);
+  const ivMeta = { intraday_limit: symbol?.endsWith(".GTX") ? "5d" : null, intraday: meta?.intraday };
+  const resolutions = resolutionsFor(rangeId, ivMeta);
   const intraday = interval === "1s" ? "seconds" : INTRADAY.has(interval);
   const help = TOOLS.find((t) => t.id === tool)?.help;
+  const quotes = useLiveQuotes([symbol], { every: INTRADAY.has(interval) ? 5000 : 15000 });
+  const lq = quotes[symbol];
+  const live = useMemo(() => {
+    const last = rows?.[rows.length - 1];
+    if (!lq?.price || !lq.time || !last || (meta?.currency && lq.currency && lq.currency !== meta.currency)) return null;
+    if (INTRADAY.has(interval)) {
+      const sec = BAR_SECONDS[interval] || 60;
+      if (lq.time < last.time) return null;
+      // im Raster der vorhandenen Kerzen bleiben (Start der letzten Kerze + ganze Kerzenlängen)
+      return { price: lq.price, time: last.time + Math.floor((lq.time - last.time) / sec) * sec };
+    }
+    // Tages-/Wochenkerze: nur die letzte fortschreiben, wenn der Kurs in ihren Zeitraum fällt
+    const span = interval === "1wk" ? 7 * 86400 : 86400;
+    return lq.time - last.time < span ? { price: lq.price, time: last.time } : null;
+  }, [lq, rows, interval, meta?.currency]);
   const drawings = layout?.drawings || [];
   const sel = drawings.find((d) => d.id === selected);
   const indicators = useMemo(() => layout?.indicators || [], [layout?.indicators]);
@@ -202,22 +211,25 @@ function Workspace({ symbol }) {
       </div>
 
       <div className="ws-toolbar">
-        <div className="seg" role="tablist" aria-label="Zeitraum">
-          {RANGES.map((r) => (
-            <button key={r.id} className={rangeId === r.id ? "on" : ""} onClick={() => update(() => ({ period: r.period, interval: r.interval }))}>{r.label}</button>
-          ))}
+        <div className="seg range-seg" role="group" aria-label="Zeitraum">
+          {RANGES.map((r) => {
+            const ok = rangeAvailable(r.id, ivMeta);
+            return (
+              <button key={r.id} className={rangeId === r.id ? "on" : ""} disabled={!ok}
+                title={ok ? undefined : "Für diesen Wert gibt es keine Kurse im Minutentakt"}
+                onClick={() => update(() => ({ period: r.period, interval: pickResolution(r.id, interval, ivMeta) }))}>{r.label}</button>
+            );
+          })}
         </div>
-        <div className="seg seg-iv" role="group" aria-label="Kerzenlänge">
-          {intervalsFor(ivMeta).map((iv) => (
-            <button key={iv.id} className={iv.id === interval ? "on" : ""} title={iv.title}
-              onClick={() => update(() => ({ interval: iv.id, period: pickPeriod(iv.id, period, ivMeta) }))}>{iv.label}</button>
-          ))}
+        <div className="res-ctl">
+          <span className="muted small">Je Kerze</span>
+          <div className="seg seg-iv" role="group" aria-label="Auflösung: so viel Zeit fasst eine Kerze zusammen">
+            {INTERVALS.filter((iv) => resolutions.includes(iv.id)).map((iv) => (
+              <button key={iv.id} className={iv.id === interval ? "on" : ""} title={iv.title}
+                onClick={() => update(() => ({ interval: iv.id }))}>{iv.label}</button>
+            ))}
+          </div>
         </div>
-        {!rangeId && (
-          <select value={period} onChange={(e) => update(() => ({ period: e.target.value }))} aria-label="Zeitraum">
-            {periodsFor(interval, ivMeta).map((x) => <option key={x} value={x}>{PERIOD_LABEL[x]}</option>)}
-          </select>
-        )}
         <select value={layout.type} onChange={(e) => update(() => ({ type: e.target.value }))} aria-label="Darstellung">
           {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
@@ -253,7 +265,7 @@ function Workspace({ symbol }) {
         {!rows ? <Loading text="Lade Kurse …" /> : (
           <WorkspaceChart rows={rows} type={layout.type} intraday={intraday} indicators={indicators} drawings={drawings}
             tool={tool} pending={pending} selected={selected} onPending={setPending} onDraw={onDraw} magnet={magnet}
-            positions={positions} currency={meta?.currency} />
+            positions={positions} currency={meta?.currency} live={live} />
         )}
         {sel && !tool && (
           <div className="ws-selbar" role="group" aria-label="Ausgewählte Zeichnung">

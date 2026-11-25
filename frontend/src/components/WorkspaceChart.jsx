@@ -33,7 +33,7 @@ const series = (rows, values) => rows.map((r, i) => (values[i] === null || value
  * - magnet: Punkte rasten an Eröffnung/Hoch/Tief/Schluss der Kerze ein
  */
 export default function WorkspaceChart({ rows, type = "candles", intraday = false, indicators = [], drawings = [],
-  tool = null, pending = null, selected = null, onPending, onDraw, magnet = true, positions = [], currency = null }) {
+  tool = null, pending = null, selected = null, onPending, onDraw, magnet = true, positions = [], currency = null, live = null }) {
   const mainRef = useRef(null);
   const subRefs = useRef({});
   const state = useRef({ charts: [], main: null, price: null, range: null });
@@ -269,7 +269,9 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     el.addEventListener("pointercancel", onCancel, cap);
     el.addEventListener("pointerleave", onLeave);
 
-    state.current = { ...state.current, charts, main, price, lastTime: rows[rows.length - 1].time, clearPreview };
+    const lr = rows[rows.length - 1];
+    state.current = { ...state.current, charts, main, price, lastTime: lr.time, clearPreview, ohlc,
+      lastBar: { time: lr.time, open: lr.open, high: lr.high, low: lr.low, close: lr.close } };
     return () => {
       el.removeEventListener("pointerdown", onDown, cap);
       el.removeEventListener("pointermove", onMove, cap);
@@ -280,6 +282,22 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       state.current = { ...state.current, charts: [], main: null, price: null, clearPreview: null };
     };
   }, [rows, type, intraday, indicators, positions, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live-Kurs: letzte Kerze fortschreiben oder – wenn eine neue Zeitspanne begonnen hat – eine neue Kerze anfangen.
+  // Ohne den Chart neu aufzubauen: Zoom, Zeichnungen und Werkzeug bleiben, wie sie sind.
+  useEffect(() => {
+    const st = state.current;
+    if (!live?.price || !st.price || !st.lastBar) return;
+    const prev = st.lastBar;
+    let bar;
+    if (live.time > prev.time) bar = { time: live.time, open: prev.close, high: Math.max(prev.close, live.price), low: Math.min(prev.close, live.price), close: live.price };
+    else if (live.time === prev.time) bar = { ...prev, high: Math.max(prev.high, live.price), low: Math.min(prev.low, live.price), close: live.price };
+    else return;
+    try {
+      st.price.update(st.ohlc ? bar : { time: bar.time, value: bar.close });
+      st.lastBar = bar;
+    } catch { /* Chart wurde gerade ersetzt */ }
+  }, [live]);
 
   // Werkzeug gewechselt: Verschieben an/aus, offene Vorschau weg
   useEffect(() => {

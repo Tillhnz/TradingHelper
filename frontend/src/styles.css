@@ -1722,3 +1722,12 @@ label { font-weight: 500; font-size: 0.88rem; color: var(--chalk-2); }
     color: var(--chalk); text-decoration: none; font-size: 0.95rem; background: var(--panel-2); border: 0; font-family: inherit; text-align: left; }
   .more-sheet a.active { color: var(--accent); }
 }
+
+/* Zeitraum- und Auflösungswahl der Charts */
+.range-seg { flex-wrap: wrap; }
+.range-seg button:disabled, .seg-iv button:disabled { opacity: 0.35; cursor: not-allowed; }
+.res-ctl { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .range-seg { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .range-seg button { padding: 0.4rem 0.3rem; }
+}
