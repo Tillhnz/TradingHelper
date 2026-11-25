@@ -126,7 +126,7 @@ await page.screenshot({ path: "shots/chart-box-aapl.png" });
 for (const r of ["Monat", "3 Jahre", "Gesamt"]) {
   await page.getByRole("button", { name: r, exact: true }).click();
   await page.waitForTimeout(4000);
-  console.log("range", r, await page.locator(".chart-panel .error").count(), await page.locator(".chart-panel canvas").count());
+  console.log("range", r, await page.locator(".chart-panel .error").allInnerTexts(), await page.locator(".chart-panel canvas").count());
 }
 await page.screenshot({ path: "shots/chart-gesamt.png" });
 await page.goto(`${base}/charts/AAPL`);
