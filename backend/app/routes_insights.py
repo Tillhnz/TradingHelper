@@ -8,7 +8,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from . import analysis, brain, macro, market, marketstore, social
+from . import analysis, brain, drivers, macro, market, marketstore, social
 from .config import Settings
 from .config import settings as base_settings
 from .deps import auth, get_storage, require_admin, user_cfg, user_storage
@@ -80,6 +80,12 @@ def social_view(symbol: str, st: Storage = Depends(user_storage)):
         _refresh_social(sym, st)
     return {"symbol": sym, "data": data, "refreshing": bool(stale and base_settings.social_enabled),
             "history": social.history(sym), "enabled": base_settings.social_enabled}
+
+
+@router.get("/api/why/{symbol}")
+def why(symbol: str, budget: float = 3.0, refresh: bool = False, settings: Settings = Depends(user_cfg)):
+    """Warum läuft der Wert so? Markt/Branche/Eigenes, stärkste Tage mit Schlagzeilen, Nachrichtenlage."""
+    return drivers.get(symbol, settings, budget=max(0.2, min(budget, 8)), force=refresh)
 
 
 @router.get("/api/mood")

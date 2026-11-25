@@ -122,6 +122,12 @@ console.log("quick buy", JSON.stringify(((await api("/positions")).items || []).
 await page.goto(`${base}/chart/AAPL`);
 await page.waitForTimeout(8000);
 await page.screenshot({ path: "shots/chart-box-aapl.png" });
+// Warum läuft der Kurs so? (Markt/Branche/Eigenes, stärkste Tage mit Schlagzeilen)
+await page.locator("#warum").scrollIntoViewIfNeeded();
+await page.locator("#warum .why-total, #warum .muted").first().waitFor({ timeout: 30000 }).catch(() => {});
+await page.waitForTimeout(8000);
+console.log("warum", (await page.locator("#warum").innerText()).replace(/\s+/g, " ").slice(0, 700));
+await page.locator("#warum").screenshot({ path: "shots/warum-aapl.png" }).catch(() => {});
 // Neue Zeiträume im kleinen Chart, großer Chart mit Zeitraum + Auflösung
 for (const r of ["Monat", "3 Jahre", "Gesamt"]) {
   await page.getByRole("button", { name: r, exact: true }).click();
