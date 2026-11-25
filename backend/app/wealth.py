@@ -23,6 +23,12 @@ TYPE_LABELS = {"Aktie": "Aktien", "EQUITY": "Aktien", "ETF/Fonds": "ETFs & Fonds
 def _isin(symbol: str | None) -> str | None:
     if symbol and gettex.is_gettex(symbol):
         return gettex.isin_of(symbol)
+    if symbol:  # z. B. AIR.DE: ISIN aus den gespeicherten Stammdaten (ohne Netz), damit nichts doppelt zählt
+        try:
+            isin = (market.cached_info(symbol) or {}).get("isin")
+            return str(isin).upper() if isin else None
+        except Exception:  # noqa: BLE001
+            return None
     return None
 
 

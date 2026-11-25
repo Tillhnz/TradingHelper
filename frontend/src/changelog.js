@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "2.2.1",
+    date: "25.11.2026",
+    title: "Depotbestand von finanzen.net zero",
+    items: [
+      "Die Bestandsliste von finanzen.net zero (CSV „ZERO-pos-…“) wird jetzt erkannt: Die Spalte „Art“ (AKTIE, DERIVAT) wurde vorher für Kauf/Verkauf gehalten, alle Zeilen wurden übersprungen.",
+      "Einstandskurs, aktueller Kurs und Wert werden aus der Liste richtig übernommen.",
+      "Von Hand erfasste Käufe werden dem hochgeladenen Depot zugeordnet, auch wenn sie unter einem Börsenkürzel (z. B. AIR.DE) statt der ISIN laufen – so zählt nichts doppelt.",
+    ],
+  },
+  {
     version: "2.2.0",
     date: "25.11.2026",
     title: "Charts: Zeitraum und Auflösung",
