@@ -580,7 +580,11 @@ def convert_history(df: pd.DataFrame, native: str | None, target: str | None, pe
         if rates is None:
             rates = fx_rates(base, target, period)
         days = _days(out.index)
-        aligned = rates.reindex(rates.index.union(days)).sort_index().ffill().bfill().reindex(days)
+        # Intraday: viele Kerzen je Tag – erst je Tag den Kurs bestimmen, dann jeder Kerze zuordnen
+        rates = rates[~rates.index.duplicated(keep="last")]
+        uniq = pd.DatetimeIndex(days).unique()
+        per_day = rates.reindex(rates.index.union(uniq)).sort_index().ffill().bfill().reindex(uniq)
+        aligned = per_day.reindex(days)
         mult = aligned.to_numpy() * factor
     for col in ("open", "high", "low", "close"):
         out[col] = out[col].to_numpy() * mult

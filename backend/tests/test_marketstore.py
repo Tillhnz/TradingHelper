@@ -116,3 +116,20 @@ def test_without_store_falls_back(monkeypatch):
     df = market._raw_history("MSFT", "1y", "1d")
     assert len(df) < 300
     assert market._days(df.index)[0] >= pd.Timestamp(date.today() - timedelta(days=367))
+
+
+def test_convert_history_intraday_many_bars_per_day():
+    """Stundenkerzen über einen Monat (mehrere Kerzen je Tag) in Euro umrechnen – lief früher auf einen Fehler."""
+    import numpy as np
+    import pandas as pd
+
+    from app import market
+
+    idx = pd.date_range("2026-10-27 13:30", periods=160, freq="1h", tz="America/New_York")
+    idx = idx[(idx.hour >= 9) & (idx.hour < 16)]
+    c = 200 + np.arange(len(idx), dtype=float)
+    df = pd.DataFrame({"open": c, "high": c + 1, "low": c - 1, "close": c, "volume": 1}, index=idx)
+    rates = pd.Series(0.9, index=pd.date_range("2025-11-01", "2026-11-25", freq="B"))
+    out = market.convert_history(df, "USD", "EUR", "1mo", rates=rates)
+    assert len(out) == len(df)
+    assert out["close"].iloc[0] == pytest.approx(c[0] * 0.9)
