@@ -3,6 +3,14 @@
 
 export const CHANGELOG = [
   {
+    version: "2.3.2",
+    date: "26.11.2026",
+    title: "Lernendes Modell lernt wieder",
+    items: [
+      "Das Lernen brach mit „window shape cannot be larger than input array shape“ ab, sobald TradeHelper ein paar Wochen Nachrichten-Stimmung gesammelt hatte: Im älteren Teil der Daten war diese Spalte noch leer. Behoben.",
+    ],
+  },
+  {
     version: "2.3.1",
     date: "26.11.2026",
     title: "Lernendes Modell: Fehler werden angezeigt",

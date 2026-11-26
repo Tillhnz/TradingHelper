@@ -96,3 +96,22 @@ def test_journal_verdicts(tmp_path, monkeypatch):
 def test_verdict_texts(final, cls, expect, ok):
     text, good = brain._verdict(final, cls, 0.05 if cls == 2 else -0.05, 20)
     assert text.startswith(expect) and good is ok
+
+
+def test_fit_with_feature_only_recorded_recently():
+    """News-Stimmung gibt es erst seit kurzem: im älteren Teil (Validierungs-Training) ist die Spalte ganz leer.
+    Das brach das Lernen auf echten Servern mit „window shape cannot be larger than input array shape“ ab."""
+    import numpy as np
+    import pandas as pd
+
+    from app import brain
+
+    rng = np.random.default_rng(0)
+    days = pd.bdate_range("2022-01-03", periods=600)
+    idx = days.repeat(5)
+    X = pd.DataFrame({"a": rng.normal(size=len(idx)), "news": np.nan}, index=idx)
+    X.loc[X.index >= days[-30], "news"] = rng.normal(size=int((X.index >= days[-30]).sum()))
+    y = rng.integers(0, 3, len(idx))
+    model = brain._fit(X, y, np.ones(len(idx)), brain.CONFIGS["ausgewogen"]["params"], days=pd.DatetimeIndex(idx), h=20)
+    p = brain._proba(model, X.tail(50))
+    assert p.shape == (50, 3)
