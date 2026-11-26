@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "2.3.1",
+    date: "26.11.2026",
+    title: "Lernendes Modell: Fehler werden angezeigt",
+    items: [
+      "Scheiterte das Lernen, blieb die Modell-Seite bei „Noch nicht gelernt“ – ohne Grund. Jetzt steht dort, was schiefging, auch nach einem Neustart des Servers.",
+      "Bricht ein Lauf mittendrin ab (z. B. weil dem Server der Arbeitsspeicher ausgeht), erkennt TradeHelper das beim nächsten Start und sagt es.",
+      "Das Lernen braucht weniger Arbeitsspeicher.",
+    ],
+  },
+  {
     version: "2.3.0",
     date: "25.11.2026",
     title: "Warum läuft der Kurs so?",
