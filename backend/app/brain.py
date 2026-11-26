@@ -521,6 +521,9 @@ def train(storage, horizon: str, symbols: list[str] | None = None, frames: dict 
     symbols = symbols or universe(storage)
     _set_status(step=f"{horizon}: Daten sammeln", progress=0.0)
     data = dataset(symbols, horizon, progress=lambda i, n: _set_status(progress=round(0.4 * i / n, 3)), frames=frames)
+    if not data.empty:  # halber Arbeitsspeicher: Merkmale als float32 (das Modell rechnet ohnehin mit Klassen-Bins)
+        num = [c for c in data.columns if c not in ("y", "symbol", "fwd") and pd.api.types.is_float_dtype(data[c])]
+        data[num] = data[num].astype("float32")
     lab = data[data["y"].notna()] if not data.empty else data
     if len(lab) < MIN_ROWS:
         raise RuntimeError(f"Zu wenig Daten zum Lernen ({len(lab)} Zeilen, nötig {MIN_ROWS}).")
