@@ -893,6 +893,9 @@ def run_training(storage, base, horizons: list[str] | None = None) -> dict:
         return {"running": True}
     try:
         _set_status(running=True, started=time.time(), finished=None, error=None, step="Start", progress=0.0)
+        store = marketstore.get_store()
+        if store is not None:  # Marke für „Lauf wurde abgebrochen“ (Neustart, zu wenig Arbeitsspeicher)
+            store.put("brain:last_run", {"started": time.time(), "finished": None, "error": None})
         results = {}
         syms = universe(storage)
         market.ensure_fresh(list(macro.MODEL_SYMBOLS) + syms, quotes=False)
@@ -902,15 +905,35 @@ def run_training(storage, base, horizons: list[str] | None = None) -> dict:
             except Exception as exc:  # noqa: BLE001
                 log.exception("Training %s fehlgeschlagen", h)
                 results[h] = {"error": str(exc)}
+        failed = {h: r["error"] for h, r in results.items() if isinstance(r, dict) and r.get("error")}
         _set_status(step="Vorhersagen und Journal", progress=0.97)
         results["daily"] = daily(storage, base)
-        _set_status(running=False, finished=time.time(), step="fertig", progress=1.0)
+        err = "; ".join(f"{HORIZON_LABEL.get(h, h)}: {e}" for h, e in failed.items()) or None
+        _set_status(running=False, finished=time.time(), step="fertig" if not err else "fertig mit Fehlern",
+                    progress=1.0, error=err)
+        _remember_run(results, err)
+        if failed and len(failed) == len([h for h in results if h != "daily"]):
+            raise RuntimeError(err)  # nichts gelernt: als Fehler melden, nicht als „ok“
         return results
     except Exception as exc:  # noqa: BLE001
-        _set_status(running=False, finished=time.time(), error=f"{type(exc).__name__}: {exc}")
+        msg = f"{type(exc).__name__}: {exc}"
+        _set_status(running=False, finished=time.time(), error=msg)
+        _remember_run({}, msg)
         raise
     finally:
         _TRAIN_LOCK.release()
+
+
+HORIZON_LABEL = {"short": "kurzfristig", "medium": "mittelfristig", "long": "langfristig"}
+
+
+def _remember_run(results: dict, err: str | None) -> None:
+    """Letzten Lauf dauerhaft merken – STATUS lebt nur im Speicher und ist nach einem Neustart weg."""
+    store = marketstore.get_store()
+    if store is not None:
+        prev = store.get("brain:last_run") or {}
+        store.put("brain:last_run", {"started": prev.get("started"), "finished": time.time(), "error": err,
+                                     "results": {h: r for h, r in results.items() if h != "daily"}})
 
 
 def start_training(storage, base) -> bool:
@@ -931,6 +954,14 @@ def overview(storage) -> dict:
     """Alles für die Modell-Seite."""
     store = marketstore.get_store()
     out = {"status": dict(STATUS), "horizons": {}}
+    last = store.get("brain:last_run") if store else None
+    if last and not out["status"].get("running") and not out["status"].get("finished"):
+        if last.get("started") and not last.get("finished"):
+            when = datetime.fromtimestamp(last["started"]).strftime("%d.%m. %H:%M")
+            out["status"].update(error=f"Der Lauf vom {when} Uhr wurde abgebrochen, bevor er fertig war – meist ist dem "
+                                       "Server der Arbeitsspeicher ausgegangen oder er wurde neu gestartet.")
+        else:
+            out["status"].update(finished=last.get("finished"), error=last.get("error"))
     for h in HORIZON_DAYS:
         _, meta = load(h)
         if not meta:

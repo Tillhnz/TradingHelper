@@ -29,5 +29,7 @@ except Exception:
 print("STATUS", json.dumps(brain.STATUS, default=str))
 _, meta = brain.load("medium")
 print("META", json.dumps({k: (meta or {}).get(k) for k in ("version", "rows", "symbols", "skill", "summary", "config")}, default=str))
-print(f"Dauer {time.time() - t0:.0f} s")
+import resource  # noqa: E402
+
+print(f"Dauer {time.time() - t0:.0f} s, Arbeitsspeicher max. {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.0f} MB")
 sys.exit(0 if meta else 1)
