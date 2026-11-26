@@ -366,6 +366,18 @@ def _hgb(params: dict, n_iter: int | None = None):
     return HistGradientBoostingClassifier(random_state=7, early_stopping=False, **p)
 
 
+def _fill_empty(X: pd.DataFrame) -> pd.DataFrame:
+    """Spalten ganz ohne Werte (z. B. News-Stimmung, die erst seit ein paar Wochen aufgezeichnet wird, im älteren
+    Teil der Daten) bringen den Gradient-Boosting-Algorithmus zum Absturz („window shape cannot be larger …“).
+    Mit 0 gefüllt sind sie konstant – das Modell teilt nie an ihnen, kann aber später mit echten Werten gefüttert werden."""
+    empty = [c for c in X.columns if not X[c].notna().any()]
+    if not empty:
+        return X
+    X = X.copy()
+    X[empty] = 0.0
+    return X
+
+
 def _fit(X: pd.DataFrame, y: np.ndarray, w: np.ndarray, params: dict, days: pd.DatetimeIndex | None = None,
          h: int = 20) -> Shrunk:
     """Mit zeitlicher Validierung (letzte 15 % der Tage, mit Sicherheitsabstand): beste Zahl an Bäumen und
@@ -380,7 +392,7 @@ def _fit(X: pd.DataFrame, y: np.ndarray, w: np.ndarray, params: dict, days: pd.D
             di = pd.DatetimeIndex(days)
             fit_m, val_m = np.asarray(di < fit_end), np.asarray(di >= v_start)
             if fit_m.sum() > 1000 and val_m.sum() > 200:
-                m = _hgb(params).fit(X[fit_m], y[fit_m], sample_weight=w[fit_m])
+                m = _hgb(params).fit(_fill_empty(X[fit_m]), y[fit_m], sample_weight=w[fit_m])
                 yv = y[val_m]
                 pv_prior = np.bincount(y[fit_m], minlength=3) / fit_m.sum()
                 best = (np.inf, n_iter, None)
@@ -396,7 +408,7 @@ def _fit(X: pd.DataFrame, y: np.ndarray, w: np.ndarray, params: dict, days: pd.D
                 scores = [(_logloss(a * pr + (1 - a) * pv_prior, yv), a) for a in np.linspace(0, 1, 11)]
                 ll_best, alpha = min(scores)
                 gain = base_ll - ll_best
-    model = _hgb(params, n_iter).fit(X, y, sample_weight=w)
+    model = _hgb(params, n_iter).fit(_fill_empty(X), y, sample_weight=w)
     return Shrunk(model, float(alpha), prior, int(n_iter), float(gain))
 
 
