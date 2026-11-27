@@ -33,7 +33,7 @@ const series = (rows, values) => rows.map((r, i) => (values[i] === null || value
  * - magnet: Punkte rasten an Eröffnung/Hoch/Tief/Schluss der Kerze ein
  */
 export default function WorkspaceChart({ rows, type = "candles", intraday = false, indicators = [], drawings = [],
-  tool = null, pending = null, selected = null, onPending, onDraw, magnet = true, positions = [], currency = null, live = null }) {
+  tool = null, pending = null, selected = null, onPending, onDraw, magnet = true, positions = [], currency = null, live = null, fitPlan = false }) {
   const mainRef = useRef(null);
   const subRefs = useRef({});
   const state = useRef({ charts: [], main: null, price: null, range: null });
@@ -79,7 +79,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       if (!p.buy_price) continue;
       const end = sellTimestamp(p);
       price.attachPrimitive(new PositionBox({
-        group: labelGroup, times, start: buyTimestamp(p), end, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
+        group: labelGroup, times, start: buyTimestamp(p), end, fitPlan, entry: p.buy_price, stop: end ? null : p.stop, target: end ? null : p.target,
         price: end ? p.sell_price : rows[rows.length - 1].close, qty: p.quantity, fees: p.fees || 0,
         fmt: (v, signed) => (signed ? signedMoney(v, currency) : money(v, currency)), fmtPct: (v) => pct(v, 1),
         label: `Kauf ${p.quantity}× ${money(p.buy_price, currency)}`,
@@ -95,15 +95,17 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
     for (const ind of indicators) {
       const p = ind.params || {};
       const thin = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+      // Linien im Kurs-Fenster bestimmen die Skala nicht mit: die y-Achse passt sich nur den sichtbaren Kerzen an
+      const noScale = { autoscaleInfoProvider: () => null };
       if (ind.kind === "sma" || ind.kind === "ema") {
         const n = Math.max(1, Math.round(p.period || 20));
         // Name steht in der Legende oben links – nicht als Etikett im Chart
-        const s = main.addLineSeries({ ...thin, color: ind.color, lineWidth: 2 });
+        const s = main.addLineSeries({ ...thin, ...noScale, color: ind.color, lineWidth: 2 });
         s.setData(series(rows, (ind.kind === "sma" ? sma : ema)(closes, n)));
       } else if (ind.kind === "bb") {
         const b = bollinger(closes, Math.max(2, Math.round(p.period || 20)), p.mult || 2);
         for (const [key, style] of [["upper", LineStyle.Solid], ["mid", LineStyle.Dotted], ["lower", LineStyle.Solid]]) {
-          const s = main.addLineSeries({ ...thin, color: ind.color, lineWidth: 1, lineStyle: style });
+          const s = main.addLineSeries({ ...thin, ...noScale, color: ind.color, lineWidth: 1, lineStyle: style });
           s.setData(series(rows, b[key]));
         }
       } else if (ind.kind === "volume" && rows.some((r) => r.volume)) {
@@ -281,7 +283,7 @@ export default function WorkspaceChart({ rows, type = "candles", intraday = fals
       charts.forEach((c) => c.remove());
       state.current = { ...state.current, charts: [], main: null, price: null, clearPreview: null };
     };
-  }, [rows, type, intraday, indicators, positions, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, type, intraday, indicators, positions, currency, fitPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live-Kurs: letzte Kerze fortschreiben oder – wenn eine neue Zeitspanne begonnen hat – eine neue Kerze anfangen.
   // Ohne den Chart neu aufzubauen: Zoom, Zeichnungen und Werkzeug bleiben, wie sie sind.

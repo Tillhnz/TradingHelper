@@ -785,6 +785,7 @@ class ChartLayout(BaseModel):
     interval: str = Field(default="1d", max_length=4)
     indicators: list[Indicator] = Field(default_factory=list, max_length=12)
     drawings: list[Drawing] = Field(default_factory=list, max_length=80)
+    fitPlan: bool = False  # Achse auch auf Ziel/Stopp der offenen Position ausrichten
 
 
 @app.get("/api/charts", dependencies=auth)

@@ -114,8 +114,9 @@ export class PositionBox {
 
   /** Stopp und Ziel offener Positionen gehören in die automatische Skalierung (wie bei TradingView). */
   autoscaleInfo() {
-    const { entry, stop, target, end } = this.o;
-    if (end) return null;
+    const { entry, stop, target, end, fitPlan = true } = this.o;
+    // fitPlan=false: die Achse richtet sich nur nach den sichtbaren Kursen (Ziel/Stopp dürfen außerhalb liegen)
+    if (end || !fitPlan) return null;
     const vals = [entry, stop, target].filter((v) => v != null);
     return { priceRange: { minValue: Math.min(...vals), maxValue: Math.max(...vals) } };
   }
