@@ -151,7 +151,14 @@ function Workspace({ symbol }) {
     const def = INDICATORS[kind];
     const used = new Set(layout.indicators.map((i) => i.color));
     const color = PALETTE.find((c) => !used.has(c)) || PALETTE[0];
-    update((l) => ({ indicators: [...l.indicators, { id: uid(), kind, params: { ...def.params }, color }] }));
+    update((l) => {
+      const params = { ...def.params };
+      if (kind === "sma" || kind === "ema") {  // zweiter, dritter Durchschnitt: nicht wieder dieselbe Länge
+        const used = new Set(l.indicators.filter((i) => i.kind === kind).map((i) => i.params?.period));
+        params.period = [params.period, 200, 20, 100, 10, 30].find((n) => !used.has(n)) ?? params.period;
+      }
+      return { indicators: [...l.indicators, { id: uid(), kind, params, color }] };
+    });
     setAddKind("");
   }
 
@@ -230,6 +237,11 @@ function Workspace({ symbol }) {
             ))}
           </div>
         </div>
+        {positions.some((p) => p.buy_price && !p.sell_date) && (
+          <button className={`btn small ${layout.fitPlan ? "primary" : ""}`} aria-pressed={!!layout.fitPlan}
+            title="Achse auch auf Ziel und Stopp deiner offenen Position ausrichten – sonst nur auf die sichtbaren Kurse"
+            onClick={() => update((l) => ({ fitPlan: !l.fitPlan }))}>Ziel/Stopp in der Skala</button>
+        )}
         <select value={layout.type} onChange={(e) => update(() => ({ type: e.target.value }))} aria-label="Darstellung">
           {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
@@ -265,7 +277,7 @@ function Workspace({ symbol }) {
         {!rows ? <Loading text="Lade Kurse …" /> : (
           <WorkspaceChart rows={rows} type={layout.type} intraday={intraday} indicators={indicators} drawings={drawings}
             tool={tool} pending={pending} selected={selected} onPending={setPending} onDraw={onDraw} magnet={magnet}
-            positions={positions} currency={meta?.currency} live={live} />
+            positions={positions} currency={meta?.currency} live={live} fitPlan={!!layout.fitPlan} />
         )}
         {sel && !tool && (
           <div className="ws-selbar" role="group" aria-label="Ausgewählte Zeichnung">

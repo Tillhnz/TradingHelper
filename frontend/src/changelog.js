@@ -3,6 +3,16 @@
 
 export const CHANGELOG = [
   {
+    version: "2.3.3",
+    date: "27.11.2026",
+    title: "Großer Chart: Achse passt sich den Kursen an",
+    items: [
+      "Die Preisachse im großen Chart richtet sich jetzt nach den sichtbaren Kursen. Vorher zogen Ziel und Stopp deiner Position sowie weit entfernte Durchschnittslinien die Achse auseinander – die Kerzen waren winzig.",
+      "Wer Ziel und Stopp trotzdem immer sehen will, schaltet „Ziel/Stopp in der Skala“ ein.",
+      "Ein zweiter oder dritter gleitender Durchschnitt bekommt automatisch eine andere Länge (200, 20, 100 …) statt wieder 50.",
+    ],
+  },
+  {
     version: "2.3.2",
     date: "26.11.2026",
     title: "Lernendes Modell lernt wieder",
